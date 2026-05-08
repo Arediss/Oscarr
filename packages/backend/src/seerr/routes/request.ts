@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { buildSeerrRequest } from '../adapters/request.js';
 import { filterToWhere } from '../adapters/statusMap.js';
+import { createUserRequest } from '../../services/requestService.js';
 
 const DEFAULT_TAKE = 10;
 const MAX_TAKE = 100;
@@ -53,6 +54,75 @@ export async function requestRoutes(app: FastifyInstance) {
       };
     },
   );
+
+  app.post<{
+    Body: {
+      mediaType?: string;
+      mediaId?: number | string;
+      tvdbId?: number;
+      seasons?: number[] | 'all';
+      is4k?: boolean;
+      serverId?: number;
+      profileId?: number;
+      rootFolder?: string;
+      languageProfileId?: number;
+      userId?: number;
+    };
+  }>('/request', async (request, reply) => {
+    const body = request.body ?? {};
+    const mediaType = body.mediaType;
+    if (mediaType !== 'movie' && mediaType !== 'tv') {
+      return reply.status(400).send({ error: 'INVALID_INPUT', message: 'mediaType must be "movie" or "tv"' });
+    }
+
+    // Overseerr's `mediaId` is the TMDB id (not their internal Media.id) — that's what every
+    // upstream client passes through. Reject anything that doesn't parse to a positive int so
+    // a stray internal id doesn't silently create the wrong request.
+    const tmdbId = Number(body.mediaId);
+    if (!Number.isInteger(tmdbId) || tmdbId < 1) {
+      return reply.status(400).send({ error: 'INVALID_INPUT', message: 'mediaId must be a positive TMDB id' });
+    }
+
+    // Overseerr accepts either an array of season numbers or the string "all" (which we resolve
+    // by passing `undefined` so requestService.create()'s "all seasons" default kicks in).
+    let seasons: number[] | undefined;
+    if (Array.isArray(body.seasons)) {
+      seasons = body.seasons.filter((n) => Number.isInteger(n) && n >= 0);
+    } else if (body.seasons === 'all') {
+      seasons = undefined;
+    }
+
+    const actor = request.user as { id: number };
+    const result = await createUserRequest({
+      userId: actor.id,
+      tmdbId,
+      mediaType,
+      seasons,
+      rootFolder: body.rootFolder,
+      qualityOptionId: body.profileId,
+    });
+
+    if (!result.ok) {
+      const httpStatus = result.status;
+      return reply.status(httpStatus).send({
+        error: result.code,
+        message: result.error,
+      });
+    }
+
+    const created = await prisma.mediaRequest.findUnique({
+      where: { id: result.request.id },
+      include: {
+        media: true,
+        user: { include: { providers: true } },
+        approvedBy: { include: { providers: true } },
+      },
+    });
+    if (!created) return reply.status(500).send({ error: 'INTERNAL', message: 'Created request not found on read-back' });
+
+    const requestCountByUserId = await countRequestsPerUser([created.userId]);
+    return reply.status(201).send(buildSeerrRequest({ request: created, requestCountByUserId }));
+  });
 
   app.get('/request/count', async () => {
     const groups = await prisma.mediaRequest.groupBy({ by: ['status'], _count: { _all: true } });

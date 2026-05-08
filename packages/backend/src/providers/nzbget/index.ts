@@ -7,6 +7,7 @@ export const nzbgetProvider: Provider = {
     label: 'NZBGet',
     icon: '/providers/nzbget.svg',
     category: 'download-client',
+    untested: true,
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:6789' },
       { key: 'username', labelKey: 'common.username', type: 'text' },

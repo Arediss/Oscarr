@@ -7,6 +7,7 @@ export const sabnzbdProvider: Provider = {
     label: 'SABnzbd',
     icon: '/providers/sabnzbd.svg',
     category: 'download-client',
+    untested: true,
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:8080' },
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },

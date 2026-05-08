@@ -162,6 +162,10 @@ export interface ServiceDefinition {
    *  lidarr=['music']). Used by `getServiceTypeForMedia(mediaType)` without a hardcoded
    *  lookup. Services that don't participate in media routing (plex, tautulli) omit this. */
   handlesMediaTypes?: readonly string[];
+  /** True until this connector has been validated against a real instance by the maintainer.
+   *  Surfaces an "Untested" pill in the picker and a feedback banner once selected, so users
+   *  know to report back. Removed in the same commit that confirms the integration works. */
+  untested?: boolean;
   test(config: Record<string, string>): Promise<{ ok: boolean; version?: string }>;
   createClient?(config: Record<string, string>): ArrClient;
 }

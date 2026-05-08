@@ -1,8 +1,9 @@
-import { useState, useId, useEffect, useRef } from 'react';
+import { useMemo, useState, useId, useEffect, useRef } from 'react';
 import { startPlexPinFlow, type PlexPinFlowHandle } from '@/providers/plex/pinFlow';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Eye, EyeOff, Loader2, Plug, RefreshCw, Save, KeyRound } from 'lucide-react';
+import { Combobox, ComboboxButton, ComboboxInput, ComboboxOption, ComboboxOptions } from '@headlessui/react';
+import { Check, ChevronsUpDown, Eye, EyeOff, Loader2, Plug, RefreshCw, Save, KeyRound } from 'lucide-react';
 import api from '@/lib/api';
 import { toastApiError, showToast } from '@/utils/toast';
 import { useServiceSchemas, type ServiceData } from '@/hooks/useServiceSchemas';
@@ -35,8 +36,16 @@ export function ServiceModal({ service, onClose, onSaved }: ServiceModalProps) {
   const [fetchingPlexToken, setFetchingPlexToken] = useState(false);
   const [detectingMachineId, setDetectingMachineId] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [typeQuery, setTypeQuery] = useState('');
 
   const schema = SERVICE_SCHEMAS[type];
+
+  const filteredSchemas = useMemo(() => {
+    const all = Object.entries(SERVICE_SCHEMAS);
+    const q = typeQuery.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(([key, s]) => s.label.toLowerCase().includes(q) || key.toLowerCase().includes(q));
+  }, [typeQuery, SERVICE_SCHEMAS]);
 
   const handleConfigChange = (key: string, value: string) => {
     setConfig((prev) => ({ ...prev, [key]: value }));
@@ -145,11 +154,77 @@ export function ServiceModal({ service, onClose, onSaved }: ServiceModalProps) {
           {!isEdit && (
             <div>
               <label htmlFor={`${fieldId}-type`} className="text-sm text-ndp-text mb-1.5 block">{t('admin.services.service_type')}</label>
-              <select id={`${fieldId}-type`} value={type} onChange={(e) => { setType(e.target.value); setConfig({}); }} className="input w-full">
-                {Object.entries(SERVICE_SCHEMAS).map(([key, s]) => (
-                  <option key={key} value={key}>{s.label}</option>
-                ))}
-              </select>
+              <Combobox
+                value={type}
+                onChange={(v: string | null) => {
+                  if (!v) return;
+                  setType(v);
+                  setConfig({});
+                  setTypeQuery('');
+                }}
+                immediate
+              >
+                <div className="relative">
+                  {schema && (
+                    <img
+                      src={schema.icon}
+                      alt=""
+                      aria-hidden
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 pointer-events-none"
+                    />
+                  )}
+                  <ComboboxInput
+                    id={`${fieldId}-type`}
+                    className="input w-full pl-9 pr-9"
+                    displayValue={(val: string) => SERVICE_SCHEMAS[val]?.label ?? val}
+                    onChange={(e) => setTypeQuery(e.target.value)}
+                    onFocus={(e) => e.currentTarget.select()}
+                    placeholder={t('admin.services.service_picker_search')}
+                  />
+                  <ComboboxButton className="absolute right-2 top-1/2 -translate-y-1/2 text-ndp-text-muted hover:text-ndp-text">
+                    <ChevronsUpDown size={16} aria-hidden />
+                  </ComboboxButton>
+                  <ComboboxOptions
+                    className="absolute z-50 mt-1 w-full max-h-72 overflow-auto rounded-md border border-white/10 bg-ndp-surface shadow-2xl focus:outline-none"
+                  >
+                    {filteredSchemas.length === 0 ? (
+                      <div className="px-3 py-2 text-sm text-ndp-text-muted">
+                        {t('admin.services.service_picker_empty')}
+                      </div>
+                    ) : (
+                      filteredSchemas.map(([key, s]) => (
+                        <ComboboxOption
+                          key={key}
+                          value={key}
+                          className="group flex items-center gap-2.5 px-3 py-2 cursor-pointer text-sm data-[focus]:bg-white/5"
+                        >
+                          <img src={s.icon} alt="" aria-hidden className="w-5 h-5 shrink-0" />
+                          <span className="flex-1 text-ndp-text">{s.label}</span>
+                          {s.untested && (
+                            <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300/90 border border-amber-500/30">
+                              {t('admin.services.untested_pill')}
+                            </span>
+                          )}
+                          <Check size={14} className="text-ndp-accent invisible group-data-[selected]:visible" aria-hidden />
+                        </ComboboxOption>
+                      ))
+                    )}
+                  </ComboboxOptions>
+                </div>
+              </Combobox>
+              {schema?.untested && (
+                <p className="mt-2 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/30 rounded px-2.5 py-1.5">
+                  {t('admin.services.untested_notice')}{' '}
+                  <a
+                    href={`https://github.com/arediss/Oscarr/issues/new?title=${encodeURIComponent(`[connector] ${schema.label} feedback`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-amber-200"
+                  >
+                    {t('admin.services.untested_report')}
+                  </a>
+                </p>
+              )}
             </div>
           )}
 

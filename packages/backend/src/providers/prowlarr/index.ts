@@ -7,6 +7,7 @@ export const prowlarrProvider: Provider = {
     label: 'Prowlarr',
     icon: '/providers/prowlarr.svg',
     category: 'indexer',
+    untested: true,
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:9696' },
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },

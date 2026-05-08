@@ -8,6 +8,7 @@ export const transmissionProvider: Provider = {
     label: 'Transmission',
     icon: '/providers/transmission.svg',
     category: 'download-client',
+    untested: true,
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:9091' },
       { key: 'username', labelKey: 'common.username', type: 'text' },

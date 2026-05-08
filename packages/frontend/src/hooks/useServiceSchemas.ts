@@ -15,6 +15,7 @@ export interface ServiceSchema {
   icon: string;
   category: 'arr' | 'media-server' | 'download-client' | 'indexer' | 'monitoring';
   fields: ServiceField[];
+  untested?: boolean;
 }
 
 export interface ServiceData {

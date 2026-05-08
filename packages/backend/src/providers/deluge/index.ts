@@ -7,6 +7,7 @@ export const delugeProvider: Provider = {
     label: 'Deluge',
     icon: '/providers/deluge.svg',
     category: 'download-client',
+    untested: true,
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:8112' },
       { key: 'password', labelKey: 'common.password', type: 'password' },

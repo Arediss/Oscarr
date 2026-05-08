@@ -61,6 +61,7 @@ export function getServiceSchemas() {
     icon: p.service.icon,
     category: p.service.category,
     fields: p.service.fields,
+    untested: p.service.untested ?? false,
   }));
 }
 

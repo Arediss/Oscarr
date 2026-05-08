@@ -10,6 +10,7 @@ import { isInstalled } from '../utils/install.js';
 import { appRoutes } from '../routes/app.js';
 import { notificationRoutes } from '../routes/notifications.js';
 import { pushRoutes } from '../routes/push.js';
+import { seerrRoutes } from '../seerr/index.js';
 import { getInstanceLanguages } from '../services/tmdb.js';
 
 /**
@@ -43,4 +44,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(notificationRoutes, { prefix: '/api/notifications' });
   await app.register(pushRoutes, { prefix: '/api/push' });
   await app.register((await import('../routes/webhooks.js')).webhookRoutes, { prefix: '/api/webhooks' });
+  await app.register(seerrRoutes, { prefix: '/api/v1' });
 }

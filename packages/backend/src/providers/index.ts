@@ -8,6 +8,7 @@ import { jackettProvider } from './jackett/index.js';
 import { prowlarrProvider } from './prowlarr/index.js';
 import { nzbgetProvider } from './nzbget/index.js';
 import { sabnzbdProvider } from './sabnzbd/index.js';
+import { transmissionProvider } from './transmission/index.js';
 import { tautulliProvider } from './tautulli/index.js';
 import { emailProvider } from './email/index.js';
 import { discordProvider } from './discord/index.js';
@@ -26,6 +27,7 @@ const ALL_PROVIDERS: Provider[] = [
   jellyfinProvider,
   embyProvider,
   qbittorrentProvider,
+  transmissionProvider,
   nzbgetProvider,
   sabnzbdProvider,
   jackettProvider,

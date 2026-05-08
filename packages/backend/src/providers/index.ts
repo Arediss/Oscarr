@@ -5,6 +5,7 @@ import { radarrProvider } from './radarr/index.js';
 import { sonarrProvider } from './sonarr/index.js';
 import { qbittorrentProvider } from './qbittorrent/index.js';
 import { jackettProvider } from './jackett/index.js';
+import { prowlarrProvider } from './prowlarr/index.js';
 import { tautulliProvider } from './tautulli/index.js';
 import { emailProvider } from './email/index.js';
 import { discordProvider } from './discord/index.js';
@@ -24,6 +25,7 @@ const ALL_PROVIDERS: Provider[] = [
   embyProvider,
   qbittorrentProvider,
   jackettProvider,
+  prowlarrProvider,
   tautulliProvider,
   emailProvider,
   discordProvider,

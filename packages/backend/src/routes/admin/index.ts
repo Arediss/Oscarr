@@ -18,6 +18,7 @@ import { dashboardRoutes } from './dashboard.js';
 import { plexAdminRoutes } from './plex.js';
 import { authProvidersRoutes } from './authProviders.js';
 import { setupChecklistRoutes } from './setupChecklist.js';
+import { apiKeysAdminRoutes } from './apiKeys.js';
 import { logEvent } from '../../utils/logEvent.js';
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -40,6 +41,7 @@ export async function adminRoutes(app: FastifyInstance) {
   await plexAdminRoutes(app);
   await authProvidersRoutes(app);
   await setupChecklistRoutes(app);
+  await apiKeysAdminRoutes(app);
 
   // Graceful restart — rate-limited + confirm body + actor logged.
   app.post('/restart', {

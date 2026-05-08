@@ -177,6 +177,7 @@ const PREFIX_DEFAULTS: [string, RouteRule][] = [
   ['/api/setup',    { permission: PUBLIC }],  // setup has its own secret-based guards
   ['/api/auth',     { permission: PUBLIC }],  // OAuth callback routes registered dynamically
   ['/api/webhooks', { permission: PUBLIC }],  // Auth via API key in handler
+  ['/api/v1',       { permission: PUBLIC }],  // Seerr-compat layer — auth via X-Api-Key (UserApiKey) at the route level
 ];
 
 // ── DB-backed role cache ────────────────────────────────────────────────────

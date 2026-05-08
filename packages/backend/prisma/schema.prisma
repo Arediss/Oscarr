@@ -26,6 +26,23 @@ model User {
   notifications         UserNotification[]
   blacklistedMedia      BlacklistedMedia[] @relation("BlacklistCreatedBy")
   pushSubscriptions     PushSubscription[]
+  apiKeys               UserApiKey[]
+}
+
+model UserApiKey {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  name       String              // user-chosen label, e.g. "Doplarr", "Maintainerr"
+  // sha256(plain key) — bcrypt is overkill for high-entropy tokens, sha256 lookups are constant-time enough.
+  keyHash    String    @unique
+  prefix     String              // first 12 chars of the plain key, kept for display ("oscarr_a3f2…")
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  user       User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model Role {

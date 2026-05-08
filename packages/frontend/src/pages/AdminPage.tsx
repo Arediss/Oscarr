@@ -27,6 +27,7 @@ import { RolesTab } from './admin/RolesTab';
 import { HomepageTab } from './admin/HomepageTab';
 import { LinksTab } from './admin/LinksTab';
 import { AuthProvidersTab } from './admin/AuthProvidersTab';
+import { ApiKeysTab } from './admin/ApiKeysTab';
 
 export default function AdminPage() {
   const { t } = useTranslation();
@@ -91,6 +92,7 @@ export default function AdminPage() {
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'roles' && <RolesTab />}
       {activeTab === 'auth' && <AuthProvidersTab />}
+      {activeTab === 'api-keys' && <ApiKeysTab />}
       {activeTab === 'services' && <ServicesTab />}
       {activeTab === 'quality' && <QualityTab />}
       {activeTab === 'paths' && <PathsTab />}

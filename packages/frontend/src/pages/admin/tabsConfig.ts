@@ -9,6 +9,7 @@ import {
   Plug,
   LayoutDashboard,
   Home,
+  Key,
   KeyRound,
   Star,
   Folder,
@@ -51,6 +52,7 @@ export type AdminTabId =
   | 'users'
   | 'roles'
   | 'auth'
+  | 'api-keys'
   | 'services'
   | 'quality'
   | 'paths'
@@ -84,6 +86,7 @@ export const ADMIN_GROUPS: AdminGroupDef[] = [
       { id: 'users', label: 'admin.tab.users', icon: Users },
       { id: 'roles', label: 'admin.tab.roles', icon: Shield },
       { id: 'auth', label: 'admin.tab.auth', icon: KeyRound },
+      { id: 'api-keys', label: 'admin.tab.api_keys', icon: Key },
     ],
   },
   {

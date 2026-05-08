@@ -21,6 +21,7 @@ export type TestErrorCode =
   | 'AUTH_FAILED'
   | 'AUTH_BANNED'
   | 'AUTH_NO_SESSION'
+  | 'DELUGE_DAEMON_DETACHED'
   | 'UNKNOWN';
 
 export function classifyTestError(err: unknown): TestErrorInfo {
@@ -40,6 +41,9 @@ export function classifyTestError(err: unknown): TestErrorInfo {
   }
   if (message === 'AUTH_NO_SESSION') {
     return { code: 'AUTH_NO_SESSION', message: 'Login succeeded but the service did not return a session cookie' };
+  }
+  if (message === 'DELUGE_DAEMON_DETACHED') {
+    return { code: 'DELUGE_DAEMON_DETACHED', message: 'Deluge Web is up but not attached to a daemon — connect a daemon in the Deluge UI first' };
   }
 
   if (status) {

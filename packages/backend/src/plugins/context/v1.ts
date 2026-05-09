@@ -8,7 +8,7 @@ import { notificationRegistry } from '../../notifications/index.js';
 import type { NotificationPayload } from '../../notifications/types.js';
 import { sendUserNotification } from '../../services/userNotifications.js';
 import { getArrClient, createArrClient } from '../../providers/index.js';
-import { getAllServices } from '../../utils/services.js';
+import { getAllServices, parseServiceConfig } from '../../utils/services.js';
 import type { ArrClient } from '../../providers/types.js';
 import { searchMulti, getMovieDetails, getTvDetails } from '../../services/tmdb.js';
 import { createUserRequest } from '../../services/requestService.js';
@@ -264,7 +264,10 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
       const svc = await prisma.service.findFirst({ where: { type: serviceType, enabled: true } });
       if (!svc) return null;
       try {
-        const config = JSON.parse(svc.config);
+        // parseServiceConfig() decrypts AES-256-GCM-encrypted secret fields transparently —
+        // plugins always receive the plaintext value they need to authenticate against the
+        // upstream instance.
+        const config = parseServiceConfig(svc.config);
         return { url: config.url || config.baseUrl, apiKey: config.apiKey };
       } catch {
         return null;
@@ -275,7 +278,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
       const svc = await prisma.service.findFirst({ where: { type: serviceType, enabled: true } });
       if (!svc) return null;
       try {
-        return JSON.parse(svc.config) as Record<string, unknown>;
+        return parseServiceConfig(svc.config) as Record<string, unknown>;
       } catch {
         return null;
       }

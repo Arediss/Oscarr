@@ -59,6 +59,16 @@ export function DiscoverList({
     });
   }, [registry, query, hideInstalled, showNewOnly, installedIds]);
 
+  const { newPlugins, restPlugins } = useMemo(() => {
+    const news: RegistryPlugin[] = [];
+    const rest: RegistryPlugin[] = [];
+    for (const p of filtered) {
+      if (isNewPlugin(p.updatedAt)) news.push(p);
+      else rest.push(p);
+    }
+    return { newPlugins: news, restPlugins: rest };
+  }, [filtered]);
+
   return (
     <div className="space-y-5">
       {installMessage && (
@@ -162,11 +172,10 @@ export function DiscoverList({
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map((plugin) => {
+          {(() => {
+            const renderCard = (plugin: RegistryPlugin) => {
               const isInstalled = installedIds.has(plugin.id);
               const cat = CATEGORY_CONFIG[plugin.category] || { label: plugin.category, color: 'bg-white/5 text-ndp-text-dim' };
-
               return (
                 <div key={plugin.id} className="card p-5 flex flex-col gap-4">
                   <div className="flex items-start gap-3">
@@ -176,15 +185,6 @@ export function DiscoverList({
                         <h3 className="text-sm font-semibold text-ndp-text truncate">{plugin.name}</h3>
                         {isInstalled && (
                           <Check className="w-3.5 h-3.5 text-ndp-success flex-shrink-0" aria-label={t('admin.plugins.discover.installed_label')} />
-                        )}
-                        {isNewPlugin(plugin.updatedAt) && (
-                          <span
-                            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-ndp-accent/15 text-ndp-accent ring-1 ring-ndp-accent/30 flex-shrink-0"
-                            title={t('admin.plugins.discover.new_tooltip', { days: NEW_WINDOW_DAYS })}
-                          >
-                            <Sparkles size={10} />
-                            {t('admin.plugins.discover.new_badge')}
-                          </span>
                         )}
                       </div>
                       <p className="text-xs text-ndp-text-dim mt-0.5 truncate">
@@ -276,8 +276,36 @@ export function DiscoverList({
                   </div>
                 </div>
               );
-            })}
-          </div>
+            };
+            return (
+              <>
+                {newPlugins.length > 0 && (
+                  <section>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-ndp-accent mb-3 flex items-center gap-1.5">
+                      <Sparkles size={12} />
+                      {t('admin.plugins.discover.section_new')}
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {newPlugins.map(renderCard)}
+                    </div>
+                  </section>
+                )}
+
+                {restPlugins.length > 0 && (
+                  <section className={newPlugins.length > 0 ? 'mt-8' : ''}>
+                    {newPlugins.length > 0 && (
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-ndp-text-dim mb-3">
+                        {t('admin.plugins.discover.section_rest')}
+                      </p>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {restPlugins.map(renderCard)}
+                    </div>
+                  </section>
+                )}
+              </>
+            );
+          })()}
         </>
       )}
     </div>

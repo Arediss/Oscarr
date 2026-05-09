@@ -753,6 +753,8 @@
   "admin.plugins.discover.installed_label": "Installed",
   "admin.plugins.discover.new_badge": "New",
   "admin.plugins.discover.new_tooltip": "Released or updated within the last {{days}} days",
+  "admin.plugins.discover.section_new": "Newly released",
+  "admin.plugins.discover.section_rest": "All plugins",
   "admin.plugins.badge.local": "Local",
   "admin.plugins.badge.up_to_date": "Up to date",
   "admin.plugins.badge.untested": "Untested",

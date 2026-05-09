@@ -99,6 +99,32 @@ function buildArrSettingsResponse(service: ServiceWithRelations): SeerrArrConfig
  * empty array rather than 500 — Doplarr falls back to its own defaults gracefully.
  */
 export async function settingsRoutes(app: FastifyInstance) {
+  // Doplarr (and probably others) probe /settings/main for the `partialRequestsEnabled` flag —
+  // they fail soft on 501 but log a FATAL stack trace. We return a minimal payload describing
+  // the few flags clients actually branch on; everything else stays defaulted to Overseerr-like
+  // "off" so we don't accidentally promise a feature Oscarr doesn't deliver.
+  app.get('/settings/main', async () => ({
+    apiKey: '',
+    applicationTitle: 'Oscarr',
+    applicationUrl: '',
+    csrfProtection: false,
+    cacheImages: false,
+    defaultPermissions: 32, // REQUEST
+    defaultQuotas: { movie: { quotaLimit: 0, quotaDays: 7 }, tv: { quotaLimit: 0, quotaDays: 7 } },
+    hideAvailable: false,
+    localLogin: true,
+    newPlexLogin: false,
+    region: '',
+    originalLanguage: '',
+    trustProxy: true,
+    partialRequestsEnabled: true,
+    enableSpecialEpisodes: false,
+    locale: 'en',
+    discoverRegion: '',
+    streamingRegion: 'US',
+    youtubeUrl: '',
+  }));
+
   for (const arrType of ARR_TYPES) {
     app.get(`/settings/${arrType}`, async () => {
       const services = await prisma.service.findMany({

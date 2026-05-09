@@ -92,9 +92,31 @@ export async function requestRoutes(app: FastifyInstance) {
       seasons = undefined;
     }
 
-    const actor = request.user as { id: number };
+    const actor = request.user as { id: number; role?: string };
+
+    // Overseerr-compat: clients (Doplarr) can pass `X-API-User: <id>` to attribute the
+    // request to a specific user, e.g. mapping a Discord user to an Oscarr account. We honour
+    // this only when the caller has admin scope — otherwise a non-admin could impersonate
+    // any user by spoofing the header.
+    const xApiUser = request.headers['x-api-user'];
+    const xApiUserId = Number(Array.isArray(xApiUser) ? xApiUser[0] : xApiUser);
+    let onBehalfOfUserId = actor.id;
+    if (Number.isInteger(xApiUserId) && xApiUserId > 0 && xApiUserId !== actor.id) {
+      if (actor.role !== 'admin') {
+        return reply.status(403).send({
+          error: 'FORBIDDEN',
+          message: 'X-API-User requires an admin-scoped API key',
+        });
+      }
+      const exists = await prisma.user.findUnique({ where: { id: xApiUserId }, select: { id: true } });
+      if (!exists) {
+        return reply.status(400).send({ error: 'INVALID_INPUT', message: `User ${xApiUserId} not found` });
+      }
+      onBehalfOfUserId = xApiUserId;
+    }
+
     const result = await createUserRequest({
-      userId: actor.id,
+      userId: onBehalfOfUserId,
       tmdbId,
       mediaType,
       seasons,

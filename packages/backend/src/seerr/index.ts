@@ -6,6 +6,7 @@ import { requestRoutes } from './routes/request.js';
 import { movieTvRoutes } from './routes/movieTv.js';
 import { searchRoutes } from './routes/search.js';
 import { mediaRoutes } from './routes/media.js';
+import { settingsRoutes } from './routes/settings.js';
 
 /**
  * Seerr-compatible API layer. Mounted under /api/v1 to mirror the path third-party clients
@@ -26,6 +27,7 @@ export async function seerrRoutes(app: FastifyInstance) {
   await movieTvRoutes(app);
   await searchRoutes(app);
   await mediaRoutes(app);
+  await settingsRoutes(app);
 
   // Catch-all 501 for any Overseerr endpoint we haven't mapped yet. Must be the LAST handler
   // registered on this scope so it doesn't shadow real routes.

@@ -1,10 +1,12 @@
 /**
- * Mirrors Overseerr's `/api/v1/status` SystemResource shape. We pin a known-good Overseerr
- * version so clients that gate features by `version` (Maintainerr, mobile apps) treat us as a
- * recent-enough server. Bump together with the upstream version we've validated against.
+ * Compatibility response for clients that expect an Overseerr-shaped /status payload.
+ * The numeric `version` mirrors a known-good Overseerr release so clients that gate features
+ * by it (Maintainerr, mobile apps) treat us as recent enough — but `appName` is `Oscarr` and
+ * `compatibility` makes the layer's intent explicit. This is interoperability, not impersonation;
+ * Oscarr is not affiliated with Overseerr / Jellyseerr / Seerr.
  */
-const SPOOFED_OVERSEERR_VERSION = '1.34.0';
-const SPOOFED_COMMIT_TAG = 'oscarr-compat';
+const COMPAT_VERSION = '1.34.0';
+const COMPAT_COMMIT_TAG = 'oscarr-seerr-compat';
 
 export interface SeerrStatus {
   version: string;
@@ -12,14 +14,18 @@ export interface SeerrStatus {
   updateAvailable: boolean;
   commitsBehind: number;
   restartRequired: boolean;
+  appName: string;
+  compatibility: string;
 }
 
 export function buildStatusResponse(): SeerrStatus {
   return {
-    version: SPOOFED_OVERSEERR_VERSION,
-    commitTag: SPOOFED_COMMIT_TAG,
+    version: COMPAT_VERSION,
+    commitTag: COMPAT_COMMIT_TAG,
     updateAvailable: false,
     commitsBehind: 0,
     restartRequired: false,
+    appName: 'Oscarr',
+    compatibility: 'overseerr',
   };
 }

@@ -1,8 +1,20 @@
+import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
-import { AlertTriangle, Check, Download, ExternalLink, Loader2, Package, Star } from 'lucide-react';
+import { AlertTriangle, Check, Download, Eye, EyeOff, ExternalLink, Loader2, Package, Search, Sparkles, Star, X } from 'lucide-react';
 import { PluginInitial } from './PluginCardChrome';
 import { CATEGORY_CONFIG, TAG_CONFIG, type RegistryPlugin } from './constants';
 import type { InstallMessage } from './usePluginsTab';
+
+/** A plugin counts as "new" when its latest release published within this window. */
+const NEW_WINDOW_DAYS = 14;
+const NEW_WINDOW_MS = NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+function isNewPlugin(updatedAt: string | null): boolean {
+  if (!updatedAt) return false;
+  const ts = new Date(updatedAt).getTime();
+  return Number.isFinite(ts) && Date.now() - ts < NEW_WINDOW_MS;
+}
 
 interface DiscoverListProps {
   registry: RegistryPlugin[];
@@ -22,6 +34,31 @@ export function DiscoverList({
   registry, registryLoading, registryError, installedIds,
   installing, installMessage, onRetry, onInstall, onManage,
 }: DiscoverListProps) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState('');
+  const [hideInstalled, setHideInstalled] = useState(true);
+  const [showNewOnly, setShowNewOnly] = useState(false);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return registry.filter((p) => {
+      if (hideInstalled && installedIds.has(p.id)) return false;
+      if (showNewOnly && !isNewPlugin(p.updatedAt)) return false;
+      if (q) {
+        const haystack = [
+          p.name,
+          p.description,
+          p.author,
+          p.category,
+          CATEGORY_CONFIG[p.category]?.label ?? '',
+          ...(p.tags ?? []),
+        ].join(' ').toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [registry, query, hideInstalled, showNewOnly, installedIds]);
+
   return (
     <div className="space-y-5">
       {installMessage && (
@@ -62,14 +99,71 @@ export function DiscoverList({
 
       {!registryLoading && registry.length > 0 && (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-ndp-text-dim">
-              {registry.length} plugin{registry.length !== 1 ? 's' : ''} available
-            </p>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="relative w-full sm:max-w-md sm:flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ndp-text-dim pointer-events-none" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={t('admin.plugins.discover.search_placeholder')}
+                className="input w-full pl-9 pr-9 !py-1.5 !text-sm"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-ndp-text-dim hover:text-ndp-text hover:bg-white/5"
+                  aria-label={t('admin.plugins.discover.clear_search')}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <button
+                type="button"
+                onClick={() => setShowNewOnly((v) => !v)}
+                aria-pressed={showNewOnly}
+                className={clsx(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ring-1 transition-colors whitespace-nowrap',
+                  showNewOnly
+                    ? 'bg-ndp-accent/15 text-ndp-accent ring-ndp-accent/40'
+                    : 'bg-white/[0.04] text-ndp-text-muted ring-white/10 hover:bg-white/[0.07]',
+                )}
+              >
+                <Sparkles size={14} />
+                {t('admin.plugins.discover.filter_new')}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setHideInstalled((v) => !v)}
+                aria-pressed={hideInstalled}
+                className={clsx(
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ring-1 transition-colors whitespace-nowrap',
+                  hideInstalled
+                    ? 'bg-ndp-accent/15 text-ndp-accent ring-ndp-accent/40'
+                    : 'bg-white/[0.04] text-ndp-text-muted ring-white/10 hover:bg-white/[0.07]',
+                )}
+              >
+                {hideInstalled ? <EyeOff size={14} /> : <Eye size={14} />}
+                {t('admin.plugins.discover.hide_installed')}
+              </button>
+            </div>
           </div>
 
+          {filtered.length === 0 && (
+            <div className="card p-10 text-center">
+              <Search className="w-10 h-10 text-ndp-text-dim mx-auto mb-3 opacity-50" />
+              <p className="text-ndp-text font-medium">{t('admin.plugins.discover.empty_title')}</p>
+              <p className="text-sm text-ndp-text-dim mt-1.5">{t('admin.plugins.discover.empty_help')}</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {registry.map((plugin) => {
+            {filtered.map((plugin) => {
               const isInstalled = installedIds.has(plugin.id);
               const cat = CATEGORY_CONFIG[plugin.category] || { label: plugin.category, color: 'bg-white/5 text-ndp-text-dim' };
 
@@ -81,7 +175,16 @@ export function DiscoverList({
                       <div className="flex items-center gap-2 min-w-0">
                         <h3 className="text-sm font-semibold text-ndp-text truncate">{plugin.name}</h3>
                         {isInstalled && (
-                          <Check className="w-3.5 h-3.5 text-ndp-success flex-shrink-0" aria-label="Installed" />
+                          <Check className="w-3.5 h-3.5 text-ndp-success flex-shrink-0" aria-label={t('admin.plugins.discover.installed_label')} />
+                        )}
+                        {isNewPlugin(plugin.updatedAt) && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-ndp-accent/15 text-ndp-accent ring-1 ring-ndp-accent/30 flex-shrink-0"
+                            title={t('admin.plugins.discover.new_tooltip', { days: NEW_WINDOW_DAYS })}
+                          >
+                            <Sparkles size={10} />
+                            {t('admin.plugins.discover.new_badge')}
+                          </span>
                         )}
                       </div>
                       <p className="text-xs text-ndp-text-dim mt-0.5 truncate">

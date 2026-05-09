@@ -31,6 +31,7 @@ export const CATEGORY_CONFIG: Record<string, { label: string }> = {
   'ui-themes': { label: 'Themes' },
   analytics: { label: 'Analytics' },
   utilities: { label: 'Utilities' },
+  support: { label: 'Support' },
 };
 
 /** Label + brand dot — chip is neutral, the small colored dot before the label keeps the brand

@@ -6,6 +6,7 @@ import { Combobox, ComboboxButton, ComboboxInput, ComboboxOption, ComboboxOption
 import { Check, ChevronsUpDown, Copy, Eye, EyeOff, Loader2, Plug, RefreshCw, Save } from 'lucide-react';
 import { AdminPasswordModal } from '@/components/AdminPasswordModal';
 import { copyToClipboard } from '@/utils/clipboard';
+import { SERVICE_SAVED_EVENT } from '@/pages/admin/EncryptionUpgradeBanner';
 import api from '@/lib/api';
 import { toastApiError, showToast } from '@/utils/toast';
 import { useServiceSchemas, type ServiceData } from '@/hooks/useServiceSchemas';
@@ -150,6 +151,9 @@ export function ServiceModal({ service, onClose, onSaved }: ServiceModalProps) {
       } else {
         await api.post('/admin/services', { name, type, config, isDefault });
       }
+      // Notify the encryption-upgrade banner so it can refetch and disappear if every service
+      // has been re-saved through the encrypted write path.
+      window.dispatchEvent(new CustomEvent(SERVICE_SAVED_EVENT));
       onSaved();
     } catch (err) { toastApiError(err, t(isEdit ? 'admin.services.save_failed' : 'admin.services.create_failed')); }
     finally { setSaving(false); }

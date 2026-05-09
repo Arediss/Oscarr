@@ -18,6 +18,7 @@ import { useFeatures } from '@/context/FeaturesContext';
 import { UserCluster } from '@/components/nav/UserCluster';
 import { LinkIcon } from '@/icons/LinkIcon';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { EncryptionUpgradeBanner } from '@/pages/admin/EncryptionUpgradeBanner';
 
 const ALL_NAV = [
   { path: '/', labelKey: 'nav.home', icon: Home, feature: null },
@@ -455,6 +456,7 @@ export default function Layout({ children }: Readonly<{ children: React.ReactNod
         {children}
       </main>
       <ChangelogModal open={changelogOpen} onClose={() => setChangelogOpen(false)} />
+      <EncryptionUpgradeBanner />
     </div>
   );
 }

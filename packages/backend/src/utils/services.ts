@@ -1,4 +1,5 @@
 import { prisma } from './prisma.js';
+import { decryptServiceConfig, encryptServiceConfig } from './secrets.js';
 
 export interface ServiceWithConfig {
   id: number;
@@ -8,11 +9,18 @@ export interface ServiceWithConfig {
   isDefault: boolean;
 }
 
-/** Parse a Service row's stringified JSON config. Single source of truth — any future change
- *  to the on-disk format (encryption at rest, versioning, etc.) lives here. Callers that held
- *  a raw prisma row and called `JSON.parse(row.config)` should now go through this. */
+/** Parse a Service row's stringified JSON config and decrypt any `enc:v1:`-prefixed secret
+ *  fields transparently. Plaintext values pass through untouched (legacy rows from before
+ *  encryption shipped) and are surfaced via `hasPlaintextSecret()` for the admin banner. */
 export function parseServiceConfig(configString: string): Record<string, string> {
-  return JSON.parse(configString) as Record<string, string>;
+  const raw = JSON.parse(configString) as Record<string, string>;
+  return decryptServiceConfig(raw);
+}
+
+/** Inverse of `parseServiceConfig` — encrypt sensitive fields and serialise to JSON. Use this
+ *  on every write path so a stored Service row never holds plaintext credentials. */
+export function serializeServiceConfig(config: Record<string, string>): string {
+  return JSON.stringify(encryptServiceConfig(config));
 }
 
 /** Get a single service config (first default, then any enabled). Used for backwards compat. */

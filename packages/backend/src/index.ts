@@ -1,4 +1,6 @@
 import './env.js';
+import { loadMasterKeyOrExit } from './utils/secrets.js';
+loadMasterKeyOrExit();
 import Fastify from 'fastify';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';

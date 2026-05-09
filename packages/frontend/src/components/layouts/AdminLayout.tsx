@@ -27,6 +27,7 @@ import NotificationList from '@/components/NotificationList';
 import { useNotifications } from '@/hooks/useNotifications';
 import { AdminJumpButton } from '@/components/nav/AdminJumpButton';
 import SetupChecklistMenu from '@/components/nav/SetupChecklistMenu';
+import { EncryptionUpgradeBanner } from '@/pages/admin/EncryptionUpgradeBanner';
 
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { t } = useTranslation();
@@ -605,6 +606,7 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
         <main id="main" tabIndex={-1} className="flex-1 min-w-0 min-h-0 overflow-y-auto">{children}</main>
       </div>
       </div>
+      <EncryptionUpgradeBanner />
     </div>
   );
 }

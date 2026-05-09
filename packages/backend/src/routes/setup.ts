@@ -3,6 +3,7 @@ import { prisma } from '../utils/prisma.js';
 import { logEvent } from '../utils/logEvent.js';
 import { runFullSync } from '../services/sync/index.js';
 import { initScheduler } from '../services/scheduler.js';
+import { parseServiceConfig, serializeServiceConfig } from '../utils/services.js';
 import { isInstalled, markInstalled } from '../utils/install.js';
 import { classifyTestError } from '../utils/serviceTestError.js';
 import { assertPublicUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
@@ -172,7 +173,7 @@ export async function setupRoutes(app: FastifyInstance) {
       data: {
         name,
         type,
-        config: JSON.stringify(config),
+        config: serializeServiceConfig(config),
         isDefault: true,
         enabled: true,
       },
@@ -188,7 +189,7 @@ export async function setupRoutes(app: FastifyInstance) {
     }
 
     logEvent('info', 'Setup', `Service "${name}" (${type}) added during installation`);
-    return reply.status(201).send({ ok: true, service: { ...service, config: JSON.parse(service.config) } });
+    return reply.status(201).send({ ok: true, service: { ...service, config: parseServiceConfig(service.config) } });
   });
 
   // Run first full sync during install — marks installation as complete

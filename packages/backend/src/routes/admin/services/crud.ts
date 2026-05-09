@@ -6,6 +6,7 @@ import { parseId } from '../../../utils/params.js';
 import { assertPublicUrl, SsrfBlockedError } from '../../../utils/ssrfGuard.js';
 import { verifyPassword } from '../../../utils/password.js';
 import { classifyTestError } from '../../../utils/serviceTestError.js';
+import { parseServiceConfig, serializeServiceConfig } from '../../../utils/services.js';
 
 const MASK = '__MASKED__';
 
@@ -51,7 +52,7 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
     const services = await prisma.service.findMany({ orderBy: { createdAt: 'asc' } });
     return services.map((s) => ({
       ...s,
-      config: maskServiceConfig(s.type, JSON.parse(s.config) as Record<string, unknown>),
+      config: maskServiceConfig(s.type, parseServiceConfig(s.config) as Record<string, unknown>),
     }));
   });
 
@@ -91,7 +92,7 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
     const service = await prisma.service.findUnique({ where: { id: serviceId } });
     if (!service) return reply.status(404).send({ error: 'SERVICE_NOT_FOUND' });
     logEvent('warn', 'Service', `Service "${service.name}" config revealed (user ${actor.id})`);
-    return { config: JSON.parse(service.config) as Record<string, unknown> };
+    return { config: parseServiceConfig(service.config) as Record<string, unknown> };
   });
 
   app.post('/services', {
@@ -126,10 +127,10 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
       await prisma.service.updateMany({ where: { type, isDefault: true }, data: { isDefault: false } });
     }
     const service = await prisma.service.create({
-      data: { name, type, config: JSON.stringify(config), isDefault: isDefault ?? false },
+      data: { name, type, config: serializeServiceConfig(config), isDefault: isDefault ?? false },
     });
     logEvent('info', 'Service', `Service "${name}" (${type}) added`);
-    return reply.status(201).send({ ...service, config: maskServiceConfig(service.type, JSON.parse(service.config) as Record<string, unknown>) });
+    return reply.status(201).send({ ...service, config: maskServiceConfig(service.type, parseServiceConfig(service.config) as Record<string, unknown>) });
   });
 
   app.put('/services/:id', {
@@ -165,7 +166,9 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
 
     let mergedConfig: string | undefined;
     if (config !== undefined) {
-      const stored = JSON.parse(existing.config) as Record<string, unknown>;
+      // Decrypt before merge so MASK-replacement compares against the actual stored value, not
+      // an `enc:v1:` ciphertext that no patch field could ever match.
+      const stored = parseServiceConfig(existing.config) as Record<string, unknown>;
       const merged = mergeServiceConfig(existing.type, stored, config as Record<string, unknown>);
       if (typeof merged.url === 'string' && merged.url) {
         try { await assertPublicUrl(merged.url); }
@@ -174,7 +177,7 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
           throw err;
         }
       }
-      mergedConfig = JSON.stringify(merged);
+      mergedConfig = serializeServiceConfig(merged as Record<string, string>);
     }
 
     const service = await prisma.service.update({
@@ -186,7 +189,7 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
         ...(enabled !== undefined ? { enabled } : {}),
       },
     });
-    return { ...service, config: maskServiceConfig(service.type, JSON.parse(service.config) as Record<string, unknown>) };
+    return { ...service, config: maskServiceConfig(service.type, parseServiceConfig(service.config) as Record<string, unknown>) };
   });
 
   app.delete('/services/:id', {
@@ -220,7 +223,7 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
     if (!serviceId) return reply.status(400).send({ error: 'Invalid ID' });
     const service = await prisma.service.findUnique({ where: { id: serviceId } });
     if (!service) return reply.status(404).send({ error: 'Service not found' });
-    const config = JSON.parse(service.config) as Record<string, string>;
+    const config = parseServiceConfig(service.config);
 
     const def = getServiceDefinition(service.type);
     if (!def) return reply.status(400).send({ error: 'Test not supported for this service type' });

@@ -7,9 +7,12 @@ services:
     volumes:
       - oscarr-data:/data
       - ./packages/plugins:/app/packages/plugins
+    env_file:
+      - .env
     environment:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - JWT_SECRET=${JWT_SECRET}
+      - OSCARR_SECRET_KEY=${OSCARR_SECRET_KEY}
       - DATABASE_URL=file:///data/oscarr.db
       - PORT=3456
       - NODE_ENV=production

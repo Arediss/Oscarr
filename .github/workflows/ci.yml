@@ -43,6 +43,25 @@ jobs:
       - name: Typecheck frontend
         run: npx tsc --noEmit --project packages/frontend/tsconfig.json
 
+  react-doctor:
+    name: React Doctor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: React Doctor
+        uses: millionco/react-doctor@react-doctor@0.0.38
+
   docker-build-scan:
     name: Docker Build & Trivy Scan
     if: github.event_name == 'push'

@@ -5,6 +5,7 @@ import { AdminTabLayout } from './AdminTabLayout';
 import api from '@/lib/api';
 import { showToast, toastApiError } from '@/utils/toast';
 import { copyToClipboard } from '@/utils/clipboard';
+import { ConfirmModal } from '@/components/ConfirmModal';
 
 interface ApiKeyRow {
   id: number;
@@ -31,6 +32,7 @@ export function ApiKeysTab() {
   const [newName, setNewName] = useState('');
   const [reveal, setReveal] = useState<CreatedKey | null>(null);
   const [copied, setCopied] = useState(false);
+  const [revokeTarget, setRevokeTarget] = useState<ApiKeyRow | null>(null);
 
   const dateFmt = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' });
   const formatDate = (iso: string | null) => (iso ? dateFmt.format(new Date(iso)) : null);
@@ -77,10 +79,10 @@ export function ApiKeysTab() {
     }
   };
 
-  const handleRevoke = async (key: ApiKeyRow) => {
-    if (!globalThis.confirm(t('admin.api_keys.revoke_confirm', { name: key.name }))) return;
+  const confirmRevoke = async () => {
+    if (!revokeTarget) return;
     try {
-      await api.delete(`/admin/api-keys/${key.id}`);
+      await api.delete(`/admin/api-keys/${revokeTarget.id}`);
       await load();
     } catch (err) {
       toastApiError(err, t('admin.api_keys.revoke_failed'));
@@ -202,7 +204,7 @@ export function ApiKeysTab() {
               </div>
               <button
                 type="button"
-                onClick={() => void handleRevoke(k)}
+                onClick={() => setRevokeTarget(k)}
                 className="text-ndp-text-dim hover:text-ndp-danger hover:bg-ndp-danger/10 p-2 rounded-lg transition-colors"
                 aria-label={t('admin.api_keys.revoke')}
               >
@@ -212,6 +214,16 @@ export function ApiKeysTab() {
           ))}
         </div>
       )}
+
+      <ConfirmModal
+        open={revokeTarget !== null}
+        title={t('admin.api_keys.revoke_title')}
+        description={revokeTarget ? t('admin.api_keys.revoke_confirm', { name: revokeTarget.name }) : ''}
+        confirmLabel={t('admin.api_keys.revoke')}
+        tone="danger"
+        onConfirm={confirmRevoke}
+        onClose={() => setRevokeTarget(null)}
+      />
     </AdminTabLayout>
   );
 }

@@ -1,7 +1,7 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { prisma } from '../utils/prisma.js';
 import { runFullSync, runNewMediaSync } from './sync/index.js';
-import { syncRequestsFromTags, cleanupOrphanedRequests } from './requestSync.js';
+import { cleanupOrphanedRequests } from './requestCleanup.js';
 import { retryFailedRequests } from './requestService.js';
 import { getGenreBackdrops } from './tmdb.js';
 import { syncMissingKeywords } from './sync/keywordSync.js';
@@ -19,7 +19,6 @@ function sanitize(input: string): string {
 const JOB_HANDLERS: Record<string, () => Promise<unknown>> = {
   new_media_sync: async () => runNewMediaSync(),
   full_sync: async () => runFullSync(),
-  request_sync: async () => syncRequestsFromTags(),
   cleanup_orphans: async () => cleanupOrphanedRequests(),
   retry_failed_requests: async () => retryFailedRequests(),
   genre_backdrops_refresh: async () => getGenreBackdrops(),
@@ -32,7 +31,6 @@ const JOB_HANDLERS: Record<string, () => Promise<unknown>> = {
 const DEFAULT_JOBS = [
   { key: 'new_media_sync',        label: 'admin.jobs.labels.new_media_sync',        cronExpression: '*/15 * * * *', enabled: true },
   { key: 'full_sync',              label: 'admin.jobs.labels.full_sync',              cronExpression: '0 6 * * *',    enabled: true },
-  { key: 'request_sync',           label: 'admin.jobs.labels.request_sync',           cronExpression: '*/5 * * * *',  enabled: true },
   { key: 'cleanup_orphans',        label: 'admin.jobs.labels.cleanup_orphans',        cronExpression: '0 3 * * *',    enabled: true },
   { key: 'retry_failed_requests',  label: 'admin.jobs.labels.retry_failed_requests',  cronExpression: '*/30 * * * *', enabled: true },
   { key: 'genre_backdrops_refresh', label: 'admin.jobs.labels.genre_backdrops_refresh', cronExpression: '0 4 * * *',   enabled: true },

@@ -599,7 +599,6 @@
   "admin.quality.restricted_roles_other": "Restricted to {{count}} roles",
   "admin.jobs.labels.new_media_sync": "Sync new media",
   "admin.jobs.labels.full_sync": "Full sync (Radarr + Sonarr)",
-  "admin.jobs.labels.request_sync": "Sync requests",
   "admin.jobs.labels.cleanup_orphans": "Cleanup orphaned requests",
   "admin.jobs.labels.retry_failed_requests": "Retry failed requests",
   "admin.jobs.labels.genre_backdrops_refresh": "Refresh genre backdrops",

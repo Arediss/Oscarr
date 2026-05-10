@@ -599,7 +599,6 @@
   "admin.quality.restricted_roles_other": "Restreint à {{count}} rôles",
   "admin.jobs.labels.new_media_sync": "Synchronisation des nouveautés",
   "admin.jobs.labels.full_sync": "Synchronisation complète (Radarr + Sonarr)",
-  "admin.jobs.labels.request_sync": "Synchronisation des demandes",
   "admin.jobs.labels.cleanup_orphans": "Nettoyage des demandes orphelines",
   "admin.jobs.labels.retry_failed_requests": "Réessayer les demandes échouées",
   "admin.jobs.labels.genre_backdrops_refresh": "Rafraîchir les arrière-plans de genres",

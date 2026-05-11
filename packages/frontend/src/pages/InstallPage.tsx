@@ -7,6 +7,7 @@ import { Film, Loader2, CheckCircle, RefreshCw, PartyPopper, Plus, Trash2, XCirc
 import api, { setSetupSecret as setApiSetupSecret } from '@/lib/api';
 import { useServiceSchemas } from '@/hooks/useServiceSchemas';
 import { extractApiError } from '@/utils/toast';
+import { ImportFlow } from './admin/ImportFlow';
 
 interface WizardService {
   id: string;
@@ -18,7 +19,7 @@ interface WizardService {
   saved: boolean;
 }
 
-const TOTAL_STEPS = 5; // 0-4
+const TOTAL_STEPS = 6; // 0-5
 
 export default function InstallPage() {
   const { t, i18n } = useTranslation();
@@ -257,7 +258,7 @@ export default function InstallPage() {
       const { data } = await api.post('/setup/sync').catch(() => ({ data: null }));
       if (data?.result) setSyncResult(data.result);
       setSyncDone(true);
-      setTimeout(() => setStep(4), 2000);
+      setTimeout(() => setStep(4), 2000); // step 4 = optional Import (skippable)
     } catch (err: unknown) {
       setError(extractApiError(err, t('common.error')));
     } finally { setSyncing(false); }
@@ -268,7 +269,7 @@ export default function InstallPage() {
   }, [step]);
 
   useEffect(() => {
-    if (step !== 4) return;
+    if (step !== 5) return;
     if (countdown <= 0) {
       // Hard reload instead of SPA navigation: BackendGate cached installed:false at mount.
       // A full reload re-probes /setup/install-status (now reporting installed:true) and
@@ -584,8 +585,24 @@ export default function InstallPage() {
             </div>
           )}
 
-          {/* Step 4: Done */}
+          {/* Step 4: Optional import from another tool */}
           {step === 4 && (
+            <div className="space-y-5">
+              <div>
+                <h2 className="text-lg font-bold text-ndp-text">{t('install.import_title')}</h2>
+                <p className="text-sm text-ndp-text-muted mt-1">{t('install.import_desc')}</p>
+              </div>
+              <ImportFlow onDone={() => setStep(5)} />
+              <div className="flex justify-end pt-2 border-t border-white/5">
+                <button onClick={() => setStep(5)} className="btn-secondary text-sm">
+                  {t('install.skip_import')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 5: Done */}
+          {step === 5 && (
             <div className="space-y-6 text-center">
               <div className="flex justify-center">
                 <div className="w-16 h-16 bg-ndp-success/10 rounded-full flex items-center justify-center">

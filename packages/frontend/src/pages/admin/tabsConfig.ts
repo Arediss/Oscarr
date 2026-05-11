@@ -21,6 +21,7 @@ import {
   Archive,
   ToggleRight,
   AlertTriangle,
+  DownloadCloud,
   Link as LinkIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -66,6 +67,7 @@ export type AdminTabId =
   | 'danger'
   | 'plugins'
   | 'links'
+  | 'import'
   | (string & {});
 
 export const ADMIN_GROUPS: AdminGroupDef[] = [
@@ -120,6 +122,7 @@ export const ADMIN_GROUPS: AdminGroupDef[] = [
     tabs: [
       { id: 'instance', label: 'admin.tab.instance', icon: Server },
       { id: 'backups', label: 'admin.tab.backups', icon: Archive },
+      { id: 'import', label: 'admin.tab.import', icon: DownloadCloud },
       { id: 'jobs', label: 'admin.tab.jobs', icon: RefreshCw },
       { id: 'logs', label: 'admin.tab.logs', icon: ScrollText },
       { id: 'danger', label: 'admin.tab.danger', icon: AlertTriangle },

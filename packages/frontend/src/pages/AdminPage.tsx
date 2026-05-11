@@ -28,6 +28,7 @@ import { HomepageTab } from './admin/HomepageTab';
 import { LinksTab } from './admin/LinksTab';
 import { AuthProvidersTab } from './admin/AuthProvidersTab';
 import { ApiKeysTab } from './admin/ApiKeysTab';
+import { ImportTab } from './admin/ImportTab';
 
 export default function AdminPage() {
   const { t } = useTranslation();
@@ -103,6 +104,7 @@ export default function AdminPage() {
       {activeTab === 'jobs' && <JobsTab />}
       {activeTab === 'logs' && <LogsTab />}
       {activeTab === 'backups' && <BackupsTab />}
+      {activeTab === 'import' && <ImportTab />}
       {activeTab === 'danger' && <DangerTab />}
       {activeTab === 'plugins' && <PluginsTab />}
       {activePluginTab && <PluginAdminTab pluginId={activePluginTab} />}

@@ -20,4 +20,21 @@ i18n
     },
   });
 
+// Broadcast every language change to plugins. Plugin bundles can't share our
+// react-i18next instance (they live in a separate import graph), so they
+// subscribe to this DOM event via @oscarr/sdk's `useLanguage()` hook.
+function syncLang(lng: string): void {
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('lang', lng);
+  }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('oscarr:lang-changed', { detail: lng }));
+  }
+}
+
+i18n.on('languageChanged', syncLang);
+// Also fire once on init so the <html lang> reflects the detected language
+// before any plugin mounts and reads it.
+if (i18n.language) syncLang(i18n.language);
+
 export default i18n;

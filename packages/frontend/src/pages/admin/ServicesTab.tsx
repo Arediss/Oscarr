@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Plus, Server, Trash2 } from 'lucide-react';
@@ -8,6 +8,10 @@ import { useServiceSchemas, type ServiceData } from '@/hooks/useServiceSchemas';
 import { useServicesTab } from './services/useServicesTab';
 import { ServiceRow } from './services/ServiceRow';
 import { ServiceModal } from './services/ServiceModal';
+import api from '@/lib/api';
+import { SERVICE_SAVED_EVENT } from './EncryptionUpgradeBanner';
+
+type FlagReason = 'plaintext' | 'undecryptable';
 
 /**
  * Admin → Services. Lists every configured *arr / media server / downloader, with per-row test
@@ -25,6 +29,30 @@ export function ServicesTab() {
   const [showModal, setShowModal] = useState(false);
   const [editingService, setEditingService] = useState<ServiceData | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [flags, setFlags] = useState<Map<number, FlagReason>>(new Map());
+
+  // Pull the security-flag map (plaintext / undecryptable per service) so each row can
+  // show an inline warning. Same data source as the global banner; we listen for the
+  // `oscarr:service-saved` event so it refreshes the second a row is re-saved.
+  const refreshFlags = useCallback(async () => {
+    try {
+      const { data } = await api.get<{ services: Array<{ id: number; reason: FlagReason }> }>(
+        '/admin/security/services-needing-reencryption',
+      );
+      const next = new Map<number, FlagReason>();
+      for (const s of data.services ?? []) next.set(s.id, s.reason);
+      setFlags(next);
+    } catch {
+      setFlags(new Map());
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFlags();
+    const onSaved = () => { void refreshFlags(); };
+    window.addEventListener(SERVICE_SAVED_EVENT, onSaved);
+    return () => window.removeEventListener(SERVICE_SAVED_EVENT, onSaved);
+  }, [refreshFlags]);
 
   const handleDeleteConfirmed = async (id: number) => {
     // Only close the confirm modal on success — on error the toast explains what happened and
@@ -59,6 +87,7 @@ export function ServicesTab() {
               schema={SERVICE_SCHEMAS[service.type]}
               testing={testing === service.id}
               result={testResults[service.id] || null}
+              flagReason={flags.get(service.id) ?? null}
               onTest={testService}
               onEdit={(s) => { setEditingService(s); setShowModal(true); }}
               onToggle={toggleService}

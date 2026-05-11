@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
-import { Loader2, Pencil, Plug, Power, Star, Trash2 } from 'lucide-react';
+import { AlertTriangle, Loader2, Pencil, Plug, Power, Star, Trash2 } from 'lucide-react';
 import type { ServiceData, ServiceSchema } from '@/hooks/useServiceSchemas';
 import type { ServiceTestResult } from './useServicesTab';
 
@@ -9,6 +9,10 @@ interface ServiceRowProps {
   schema: ServiceSchema | undefined;
   testing: boolean;
   result: ServiceTestResult | null;
+  /** Set when the security endpoint flagged this row — drives the inline warning icon.
+   *  "plaintext" = pending encryption upgrade; "undecryptable" = imported from another env,
+   *  credentials must be re-entered for the service to work. */
+  flagReason?: 'plaintext' | 'undecryptable' | null;
   onTest: (service: ServiceData) => void;
   onEdit: (service: ServiceData) => void;
   onToggle: (service: ServiceData) => void;
@@ -18,7 +22,7 @@ interface ServiceRowProps {
 
 /** One row in the services list — status dot, icon, name + URL, test badge, action buttons. */
 export function ServiceRow({
-  service, schema, testing, result, onTest, onEdit, onToggle, onSetDefault, onDelete,
+  service, schema, testing, result, flagReason, onTest, onEdit, onToggle, onSetDefault, onDelete,
 }: ServiceRowProps) {
   const { t } = useTranslation();
 
@@ -34,6 +38,23 @@ export function ServiceRow({
             <span className="text-sm font-semibold text-ndp-text truncate">{service.name}</span>
             {service.isDefault && (
               <span className="px-1.5 py-0.5 bg-ndp-accent/10 text-ndp-accent text-[10px] font-semibold rounded-full flex-shrink-0">{t('common.default_badge')}</span>
+            )}
+            {flagReason && (
+              <span
+                className={clsx(
+                  'flex items-center justify-center w-5 h-5 rounded-full flex-shrink-0',
+                  flagReason === 'undecryptable'
+                    ? 'bg-ndp-danger/15 text-ndp-danger'
+                    : 'bg-amber-500/15 text-amber-400',
+                )}
+                title={t(
+                  flagReason === 'undecryptable'
+                    ? 'admin.services.flag.undecryptable'
+                    : 'admin.services.flag.plaintext',
+                )}
+              >
+                <AlertTriangle className="w-3 h-3" />
+              </span>
             )}
           </div>
           <div className="flex items-center gap-3 mt-0.5">

@@ -9,6 +9,7 @@ interface FlaggedService {
   id: number;
   name: string;
   type: string;
+  reason: 'plaintext' | 'undecryptable';
 }
 
 /** Custom DOM event ServiceModal (and any future writer) dispatches after a successful save —
@@ -60,6 +61,16 @@ export function EncryptionUpgradeBanner() {
 
   if (!isAdmin || !loaded || services.length === 0) return null;
 
+  // Pick worst reason — "undecryptable" is more urgent (service is broken until re-saved)
+  // than "plaintext" (still works, just not encrypted yet).
+  const hasUndecryptable = services.some((s) => s.reason === 'undecryptable');
+  const titleKey = hasUndecryptable
+    ? 'admin.security.undecryptable_banner.title'
+    : 'admin.security.plaintext_banner.title';
+  const bodyKey = hasUndecryptable
+    ? 'admin.security.undecryptable_banner.body'
+    : 'admin.security.plaintext_banner.body';
+
   return (
     <button
       type="button"
@@ -69,10 +80,10 @@ export function EncryptionUpgradeBanner() {
       <Lock className="w-5 h-5 text-amber-300 flex-shrink-0" />
       <div className="flex-1 min-w-0">
         <p className="font-semibold text-amber-200 text-sm">
-          {t('admin.security.plaintext_banner.title', { count: services.length })}
+          {t(titleKey, { count: services.length })}
         </p>
         <p className="text-xs text-amber-100/85 mt-0.5">
-          {t('admin.security.plaintext_banner.body', { count: services.length })}
+          {t(bodyKey, { count: services.length })}
         </p>
       </div>
       <ChevronRight className="w-4 h-4 text-amber-300 flex-shrink-0" aria-hidden />

@@ -110,8 +110,11 @@ export function encryptServiceConfig(config: Record<string, string>): Record<str
 }
 
 /** Decrypt every `enc:v1:`-prefixed field. Plaintext fields pass through unchanged so legacy
- *  rows still work and the security banner can flag them. Decryption errors fall back to the
- *  raw stored value (logged) so the UI doesn't blow up if the master key was rotated/lost. */
+ *  rows still work and the security banner can flag them. Decryption errors collapse to an
+ *  empty string so admin forms don't leak raw ciphertext into password inputs — the matching
+ *  `hasUndecryptableSecret` helper surfaces these rows in the security banner so the admin
+ *  re-enters them. Triggers in practice when restoring a backup encrypted with a different
+ *  `OSCARR_SECRET_KEY` (cross-env DB clone, key rotation, lost key). */
 export function decryptServiceConfig(config: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
@@ -123,10 +126,26 @@ export function decryptServiceConfig(config: Record<string, string>): Record<str
       out[key] = decryptField(value);
     } catch (err) {
       console.error(`[secrets] decrypt failed for key "${key}":`, (err as Error).message);
-      out[key] = value;
+      out[key] = '';
     }
   }
   return out;
+}
+
+/** True when any sensitive `enc:v1:`-prefixed field can't be decrypted with the loaded master
+ *  key. Used by the security banner to flag services that survived a cross-env DB import or
+ *  a master-key rotation — the admin must re-enter the credential to make the service work
+ *  again under the new key. */
+export function hasUndecryptableSecret(config: Record<string, string>): boolean {
+  for (const [key, value] of Object.entries(config)) {
+    if (!isSensitiveKey(key) || typeof value !== 'string' || !isEncrypted(value)) continue;
+    try {
+      decryptField(value);
+    } catch {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** True when any sensitive field in this config is still stored in plaintext. Drives the

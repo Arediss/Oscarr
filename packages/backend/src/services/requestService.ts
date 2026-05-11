@@ -312,7 +312,9 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   const { tmdbId, mediaType, seasons: validSeasons } = validation;
 
   if (user.role !== 'admin' && !input.skipPluginGuard) {
-    const guardResult = await pluginEngine.runGuards('request.create', user.id);
+    const guardResult = await pluginEngine.runGuards('request.create', user.id, {
+      request: { tmdbId, mediaType, seasons: validSeasons ?? null },
+    });
     if (guardResult?.blocked) {
       return { ok: false, status: (guardResult.statusCode || 403) as 403, code: 'BLOCKED_BY_GUARD', error: guardResult.error || 'Request blocked by plugin guard' };
     }

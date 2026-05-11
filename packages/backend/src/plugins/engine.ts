@@ -518,7 +518,11 @@ export class PluginEngine {
     this.settingsCache.set(id, values);
   }
 
-  async runGuards(guardName: string, userId: number): Promise<PluginGuardResult | null> {
+  async runGuards(
+    guardName: string,
+    userId: number,
+    context?: import('./types.js').PluginGuardContext,
+  ): Promise<PluginGuardResult | null> {
     for (const [id, plugin] of this.plugins) {
       if (!plugin.enabled || plugin.error || !plugin.registration.registerGuards) continue;
       try {
@@ -526,7 +530,7 @@ export class PluginEngine {
         const guards = plugin.registration.registerGuards(ctx);
         const guard = guards[guardName];
         if (!guard) continue;
-        const result = await guard(userId);
+        const result = await guard(userId, context);
         if (result?.blocked) return result;
       } catch (err) {
         this.log('error', `Guard "${guardName}" failed for plugin "${id}": ${err}`);

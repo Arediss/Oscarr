@@ -254,11 +254,22 @@ export interface PluginGuardResult {
   statusCode?: number;
 }
 
+/** Optional context passed to guards. Lets a guard inspect what the user is trying to do
+ *  (e.g. how many TV seasons a quotas plugin should count) instead of relying solely on
+ *  past state. Guards remain free to ignore it — older guards keep working unchanged. */
+export interface PluginGuardContext {
+  request?: {
+    tmdbId: number;
+    mediaType: 'movie' | 'tv';
+    seasons?: number[] | null;
+  };
+}
+
 export interface PluginRegistration {
   manifest: PluginManifest;
   registerRoutes?(app: PluginRouter, ctx: PluginContext): Promise<void>;
   registerJobs?(ctx: PluginContext): Record<string, () => Promise<unknown>>;
-  registerGuards?(ctx: PluginContext): Record<string, (userId: number) => Promise<PluginGuardResult | null>>;
+  registerGuards?(ctx: PluginContext): Record<string, (userId: number, context?: PluginGuardContext) => Promise<PluginGuardResult | null>>;
   registerNotificationProviders?(registry: NotificationRegistry): void;
   onInstall?(ctx: PluginContext): Promise<void>;
   onEnable?(ctx: PluginContext): Promise<void>;

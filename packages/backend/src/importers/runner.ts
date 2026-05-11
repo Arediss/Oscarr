@@ -80,6 +80,18 @@ export async function preview(
       conflicts.push({ sourceRequest: r, reason: 'duplicate' });
       continue;
     }
+    // Probe TMDB resolvability up-front: if findOrCreateMedia would throw at
+    // execute time (typical case: the source's tmdbId no longer exists on TMDB,
+    // 404), we'd silently skip on every run and the same rows would resurface
+    // as "importable" forever. Pre-resolving here surfaces the failure as a
+    // tmdb_missing conflict and leaves a Media row behind that execute() can
+    // reuse — no double-fetch.
+    try {
+      await findOrCreateMedia(r.tmdbId, r.mediaType);
+    } catch {
+      conflicts.push({ sourceRequest: r, reason: 'tmdb_missing' });
+      continue;
+    }
     importable++;
   }
 

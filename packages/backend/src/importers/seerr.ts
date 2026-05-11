@@ -92,15 +92,15 @@ async function fetchAllPages<T>(creds: AdapterCredentials, path: string): Promis
   return out;
 }
 
+/** Map Overseerr's MediaRequestStatus enum to Oscarr's request status. The enum has grown
+ *  over Overseerr versions (1=pending, 2=approved, 3=declined, 4=failed/completed depending
+ *  on fork) so we whitelist only the two unambiguous codes (pending, declined) and treat
+ *  anything else as approved — a request that's been moved past the pending tray by an admin
+ *  was, by definition, accepted, regardless of what happened downstream in Radarr/Sonarr. */
 function mapStatus(code: number): CanonicalRequest['status'] {
-  switch (code) {
-    case 2:
-      return 'approved';
-    case 3:
-      return 'declined';
-    default:
-      return 'pending';
-  }
+  if (code === 1) return 'pending';
+  if (code === 3) return 'declined';
+  return 'approved';
 }
 
 /** Overseerr media.status: 5 = available, 4 = partially available. */

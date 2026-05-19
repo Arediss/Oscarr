@@ -255,23 +255,34 @@ export function DiscoverList({
                         Manage
                       </button>
                     ) : (
-                      <button
-                        onClick={() => onInstall(plugin)}
-                        disabled={installing === plugin.id}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ring-1 ring-ndp-accent/30 text-ndp-accent bg-ndp-accent/[0.06] hover:bg-ndp-accent hover:text-white hover:ring-ndp-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {installing === plugin.id ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Installing…
-                          </>
-                        ) : (
-                          <>
-                            <Download className="w-4 h-4" />
-                            Install
-                          </>
-                        )}
-                      </button>
+                      (() => {
+                        const incompat = plugin.compat?.status === 'incompatible';
+                        return (
+                          <button
+                            onClick={() => onInstall(plugin)}
+                            disabled={installing === plugin.id || incompat}
+                            title={incompat ? (plugin.compat?.reason || `Requires Oscarr ${plugin.compat?.range}`) : undefined}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ring-1 ring-ndp-accent/30 text-ndp-accent bg-ndp-accent/[0.06] hover:bg-ndp-accent hover:text-white hover:ring-ndp-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {installing === plugin.id ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Installing…
+                              </>
+                            ) : incompat ? (
+                              <>
+                                <Download className="w-4 h-4" />
+                                Requires Oscarr {plugin.compat?.range}
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4" />
+                                Install
+                              </>
+                            )}
+                          </button>
+                        );
+                      })()
                     )}
                   </div>
                 </div>

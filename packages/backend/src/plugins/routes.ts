@@ -566,6 +566,10 @@ export async function pluginRoutes(app: FastifyInstance) {
             stars: repoMeta.stargazers_count ?? 0,
             downloads,
             updatedAt: repoMeta.pushed_at || null,
+            // Compat status computed server-side against the running Oscarr version so the
+            // admin sees the badge + a disabled Install button before downloading anything.
+            // Avoids the "download → loadSingle throws on incompat → cryptic error toast" loop.
+            compat: checkCompat(manifest as unknown as PluginManifest),
             // Permission surface the plugin will request — surfaced pre-install so the admin can
             // review what they're about to grant before Oscarr downloads any code.
             services: Array.isArray(manifest.services) ? manifest.services : undefined,

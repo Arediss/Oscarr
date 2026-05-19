@@ -18,6 +18,12 @@ export interface RegistryPlugin {
   services?: string[];
   capabilities?: string[];
   capabilityReasons?: Record<string, string>;
+  compat?: {
+    status: 'verified' | 'untested' | 'incompatible' | 'unknown';
+    range?: string;
+    oscarrVersion: string;
+    reason?: string;
+  };
 }
 
 /** Display label only — chips render with a neutral pill style (was a per-category bg/text color

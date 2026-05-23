@@ -107,7 +107,7 @@ async function performInstall(
     const jobDefs = loaded.manifest.hooks?.jobs ?? [];
     if (jobDefs.length > 0) {
       const { registerPluginJobs } = await import('../services/scheduler.js');
-      await registerPluginJobs(jobDefs);
+      await registerPluginJobs(jobDefs, loaded.manifest.id);
     }
     return loaded;
   } catch (err) {

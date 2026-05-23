@@ -179,8 +179,8 @@ export async function initScheduler(pluginEngine?: PluginEngine) {
       pluginJobKeys.add(job.key);
       await prisma.cronJob.upsert({
         where: { key: job.key },
-        update: {},
-        create: { key: job.key, label: job.label, cronExpression: job.cron, enabled: true },
+        update: { pluginId: job.pluginId },
+        create: { key: job.key, label: job.label, cronExpression: job.cron, enabled: true, pluginId: job.pluginId },
       });
     }
   }
@@ -212,18 +212,39 @@ export async function triggerJob(key: string): Promise<RunJobOutcome> {
 }
 
 /** Register a plugin's job definitions after a hot install (loadSingle). Upserts CronJob rows
- *  and schedules cron tasks; without this, manual triggers and cron ticks would only see the
- *  plugin's jobs after the next process restart. */
-export async function registerPluginJobs(jobs: { key: string; label: string; cron: string }[]): Promise<void> {
+ *  with pluginId ownership and schedules cron tasks. Throws if a key is already claimed by a
+ *  different plugin — collision is unrecoverable from the engine's side. */
+export async function registerPluginJobs(
+  jobs: { key: string; label: string; cron: string }[],
+  pluginId: string,
+): Promise<void> {
   for (const job of jobs) {
+    const existing = await prisma.cronJob.findUnique({ where: { key: job.key } });
+    if (existing && existing.pluginId && existing.pluginId !== pluginId) {
+      throw new Error(`Job key "${job.key}" is already owned by plugin "${existing.pluginId}" — cannot register for "${pluginId}".`);
+    }
     pluginJobKeys.add(job.key);
     const row = await prisma.cronJob.upsert({
       where: { key: job.key },
-      update: {},
-      create: { key: job.key, label: job.label, cronExpression: job.cron, enabled: true },
+      update: { pluginId },
+      create: { key: job.key, label: job.label, cronExpression: job.cron, enabled: true, pluginId },
     });
     if (row.enabled) scheduleJob(job.key, row.cronExpression);
   }
+}
+
+/** Cancel scheduled timers + drop tracking for every job owned by `pluginId`. The DB rows
+ *  are deleted by the engine's uninstall path; this only handles the in-process state. */
+export function cancelPluginJobs(pluginId: string, keys: string[]): void {
+  for (const key of keys) {
+    const task = activeTasks.get(key);
+    if (task) {
+      task.stop();
+      activeTasks.delete(key);
+    }
+    pluginJobKeys.delete(key);
+  }
+  void pluginId; // tracked in the keys argument; explicit param keeps the call site clear.
 }
 
 /** True when `key` is currently mid-run (manual or cron-triggered). Read-only — for status APIs. */

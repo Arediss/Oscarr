@@ -7,7 +7,7 @@ import { notificationRegistry } from '../notifications/index.js';
 import { discoverPlugins } from './loader.js';
 import { parseManifest } from './manifestSchema.js';
 import { checkCompat, type CompatResult } from './compat.js';
-import { updateJobSchedule } from '../services/scheduler.js';
+import { cancelPluginJobs, updateJobSchedule } from '../services/scheduler.js';
 import { createContext, clearLogRateCounter, type ContextFactoryDeps } from './context/index.js';
 import { PluginRouter } from './router.js';
 import { enforcePluginRoutePermission, unregisterPluginRbac } from '../middleware/rbac.js';
@@ -301,12 +301,12 @@ export class PluginEngine {
     return handlers;
   }
 
-  getJobDefs(): { key: string; label: string; cron: string }[] {
-    const defs: { key: string; label: string; cron: string }[] = [];
+  getJobDefs(): { key: string; label: string; cron: string; pluginId: string }[] {
+    const defs: { key: string; label: string; cron: string; pluginId: string }[] = [];
     for (const plugin of this.plugins.values()) {
       if (!plugin.enabled || plugin.error) continue;
       for (const job of plugin.manifest.hooks?.jobs || []) {
-        defs.push(job);
+        defs.push({ ...job, pluginId: plugin.manifest.id });
       }
     }
     return defs;
@@ -395,14 +395,19 @@ export class PluginEngine {
       }
     }
 
-    // Pause jobs before the dir disappears so a cron tick doesn't try to import a removed file.
-    for (const job of plugin.manifest.hooks?.jobs ?? []) {
-      try {
-        const dbJob = await prisma.cronJob.findUnique({ where: { key: job.key } });
-        if (dbJob) await updateJobSchedule(job.key, dbJob.cronExpression, false);
-      } catch (err) {
-        this.log('warn', `Failed to pause job "${job.key}" during uninstall of "${id}": ${err}`);
+    // Drop every CronJob row owned by this plugin (queried by pluginId rather than the
+    // manifest's declared list — covers jobs registered at runtime via registerJobs() that
+    // the manifest doesn't list, e.g. dev plugins). In-process timers are cancelled too.
+    try {
+      const ownedRows = await prisma.cronJob.findMany({ where: { pluginId: id }, select: { key: true } });
+      const ownedKeys = ownedRows.map((r) => r.key);
+      cancelPluginJobs(id, ownedKeys);
+      if (ownedKeys.length > 0) {
+        await prisma.cronJob.deleteMany({ where: { pluginId: id } });
+        this.log('info', `Deleted ${ownedKeys.length} CronJob row(s) for "${id}": ${ownedKeys.join(', ')}`);
       }
+    } catch (err) {
+      this.log('warn', `Failed to drop plugin jobs during uninstall of "${id}": ${err}`);
     }
 
     // Drop routes first so no in-flight request can still hit a handler whose module is about to die.
@@ -493,18 +498,21 @@ export class PluginEngine {
       closePluginStorage(id);
     }
 
-    // Stop or restart plugin cron jobs
-    const jobDefs = plugin.manifest.hooks?.jobs || [];
-    for (const job of jobDefs) {
-      try {
-        const dbJob = await prisma.cronJob.findUnique({ where: { key: job.key } });
-        if (dbJob) {
-          await updateJobSchedule(job.key, dbJob.cronExpression, enabled && dbJob.enabled);
-          this.log('info', `${enabled ? 'Resumed' : 'Stopped'} job "${job.key}" for plugin "${id}"`);
+    // Stop or restart plugin cron jobs — queried by pluginId so jobs registered at runtime
+    // (via registerJobs() without a matching manifest hint) are covered too. Flips
+    // CronJob.enabled to mirror the plugin state so the admin Jobs tab shows the right
+    // status; manual per-job overrides are reset on toggle (acceptable simplicity).
+    try {
+      const ownedJobs = await prisma.cronJob.findMany({ where: { pluginId: id } });
+      if (ownedJobs.length > 0) {
+        await prisma.cronJob.updateMany({ where: { pluginId: id }, data: { enabled } });
+        for (const dbJob of ownedJobs) {
+          await updateJobSchedule(dbJob.key, dbJob.cronExpression, enabled);
         }
-      } catch (err) {
-        this.log('error', `Failed to ${enabled ? 'resume' : 'stop'} job "${job.key}" for plugin "${id}": ${err}`);
+        this.log('info', `${enabled ? 'Resumed' : 'Paused'} ${ownedJobs.length} job(s) for plugin "${id}"`);
       }
+    } catch (err) {
+      this.log('error', `Failed to ${enabled ? 'resume' : 'pause'} jobs for plugin "${id}": ${err}`);
     }
   }
 

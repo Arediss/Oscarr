@@ -194,12 +194,15 @@ model CronJob {
   label           String    // Display name
   cronExpression  String    @default("0 */6 * * *")
   enabled         Boolean   @default(true)
+  pluginId        String?   // null = core/system job; non-null = owned by that plugin
   lastRunAt       DateTime?
   lastStatus      String?   // "success" | "error"
   lastDuration    Int?      // ms
   lastResult      String?   // JSON result summary
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
+  @@index([pluginId])
 }
 
 model Service {

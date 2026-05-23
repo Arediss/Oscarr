@@ -17,11 +17,17 @@ interface CronJobData {
   label: string;
   cronExpression: string;
   enabled: boolean;
+  pluginId: string | null;
   lastRunAt: string | null;
   lastStatus: string | null;
   lastDuration: number | null;
   lastResult: string | null;
   running?: boolean;
+}
+
+interface PluginInfoLite {
+  id: string;
+  name: string;
 }
 
 interface SyncToast {
@@ -45,6 +51,7 @@ export function JobsTab() {
   const { t } = useTranslation();
   const { schemas: SERVICE_SCHEMAS } = useServiceSchemas();
   const [jobs, setJobs] = useState<CronJobData[]>([]);
+  const [pluginsById, setPluginsById] = useState<Map<string, PluginInfoLite>>(new Map());
   const [loading, setLoading] = useState(true);
   const [editingCron, setEditingCron] = useState<{ key: string; value: string } | null>(null);
   const [toast, setToast] = useState<SyncToast | null>(null);
@@ -94,7 +101,14 @@ export function JobsTab() {
     } catch (err) { toastApiError(err, t('admin.jobs.webhooks_load_failed')); }
   }, [SERVICE_SCHEMAS, t]);
 
-  useEffect(() => { fetchJobs(); fetchWebhooks(); }, [fetchJobs, fetchWebhooks]);
+  const fetchPlugins = useCallback(async () => {
+    try {
+      const { data } = await api.get<PluginInfoLite[]>('/plugins');
+      setPluginsById(new Map(data.map((p) => [p.id, p])));
+    } catch { /* non-critical — UI falls back to raw pluginId */ }
+  }, []);
+
+  useEffect(() => { fetchJobs(); fetchWebhooks(); fetchPlugins(); }, [fetchJobs, fetchWebhooks, fetchPlugins]);
 
   const showToast = (t: SyncToast) => { setToast(t); setTimeout(() => setToast(null), 6000); };
 
@@ -207,9 +221,87 @@ export function JobsTab() {
         </div>
       )}
 
-      {/* Jobs list */}
-      <div className="space-y-3">
-        {jobs.map((job) => {
+      {/* Jobs grouped by source: system (pluginId IS NULL) vs plugin-owned. */}
+      {(() => {
+        const systemJobs = jobs.filter((j) => !j.pluginId);
+        const pluginJobs = jobs.filter((j) => j.pluginId);
+        const pluginGroups = new Map<string, CronJobData[]>();
+        for (const j of pluginJobs) {
+          const arr = pluginGroups.get(j.pluginId!) ?? [];
+          arr.push(j);
+          pluginGroups.set(j.pluginId!, arr);
+        }
+        const activeCount = jobs.filter((j) => j.enabled).length;
+        const errorCount = jobs.filter((j) => j.lastStatus === 'error').length;
+        const runningCount = jobs.filter((j) => j.running).length;
+        return (
+          <>
+            {/* KPI row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <KpiCard
+                label={t('admin.jobs.kpi.total', 'Total')}
+                value={jobs.length}
+                hint={t('admin.jobs.kpi.total_breakdown', '{{system}} system · {{plugin}} plugin', { system: systemJobs.length, plugin: pluginJobs.length })}
+              />
+              <KpiCard
+                label={t('admin.jobs.kpi.active', 'Active')}
+                value={activeCount}
+                tone="success"
+              />
+              <KpiCard
+                label={t('admin.jobs.kpi.errors', 'Errors')}
+                value={errorCount}
+                tone={errorCount > 0 ? 'danger' : 'muted'}
+              />
+              <KpiCard
+                label={t('admin.jobs.kpi.running', 'Running')}
+                value={runningCount}
+                tone={runningCount > 0 ? 'accent' : 'muted'}
+              />
+            </div>
+
+            {/* Two-column layout: system jobs left, plugin jobs right. Collapses to a
+                single column on mobile. */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <section className="space-y-3">
+                <SectionHeading label={t('admin.jobs.section.system', 'System jobs')} count={systemJobs.length} />
+                <div className="space-y-3">
+                  {systemJobs.map((job) => renderJob(job))}
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <SectionHeading label={t('admin.jobs.section.plugin', 'Plugin jobs')} count={pluginJobs.length} />
+                {pluginGroups.size === 0 ? (
+                  <div className="card p-6 text-center text-sm text-ndp-text-dim">
+                    {t('admin.jobs.section.plugin_empty', 'No plugin jobs installed.')}
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    {[...pluginGroups.entries()].map(([pid, list]) => {
+                      const meta = pluginsById.get(pid);
+                      return (
+                        <div key={pid} className="space-y-2">
+                          <div className="flex items-center gap-2 px-1">
+                            <span className="text-xs font-medium uppercase tracking-wider text-ndp-text-dim">
+                              {meta?.name ?? pid}
+                            </span>
+                            <span className="text-[10px] text-ndp-text-dim">{list.length}</span>
+                          </div>
+                          <div className="space-y-3">
+                            {list.map((job) => renderJob(job))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+            </div>
+          </>
+        );
+
+        function renderJob(job: CronJobData) {
           const isEditing = editingCron?.key === job.key;
           return (
             <div key={job.key} className={clsx('card', !job.enabled && 'opacity-50')}>
@@ -282,8 +374,8 @@ export function JobsTab() {
               </div>
             </div>
           );
-        })}
-      </div>
+        }
+      })()}
 
       {/* Webhooks section */}
       {webhooks.length > 0 && (
@@ -346,8 +438,10 @@ export function JobsTab() {
                           showGlobalToast(t('admin.services.webhook_enabled_toast', { name: wh.serviceName }), 'success');
                         }
                         fetchWebhooks();
-                      } catch {
-                        showGlobalToast(t('admin.services.webhook_failed_toast'), 'error');
+                      } catch (err) {
+                        const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+                        const base = extractApiError(err, t('admin.services.webhook_failed_toast'));
+                        showGlobalToast(detail ? `${base}: ${detail}` : base, 'error');
                       } finally { setWebhookLoading(null); }
                     }}
                     disabled={webhookLoading === wh.serviceId}
@@ -364,5 +458,38 @@ export function JobsTab() {
       )}
 
     </AdminTabLayout>
+  );
+}
+
+function SectionHeading({ label, count }: Readonly<{ label: string; count: number }>) {
+  return (
+    <div className="flex items-baseline gap-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wider text-ndp-text-muted">{label}</h2>
+      <span className="text-xs text-ndp-text-dim">{count}</span>
+    </div>
+  );
+}
+
+function KpiCard({
+  label, value, hint, tone = 'default',
+}: Readonly<{
+  label: string;
+  value: number;
+  hint?: string;
+  tone?: 'default' | 'success' | 'danger' | 'accent' | 'muted';
+}>) {
+  const valueClass = {
+    default: 'text-ndp-text',
+    success: 'text-ndp-success',
+    danger: 'text-ndp-danger',
+    accent: 'text-ndp-accent',
+    muted: 'text-ndp-text-dim',
+  }[tone];
+  return (
+    <div className="card p-3.5">
+      <div className="text-[10px] font-medium uppercase tracking-wider text-ndp-text-dim">{label}</div>
+      <div className={clsx('text-2xl font-bold tabular-nums mt-1', valueClass)}>{value}</div>
+      {hint && <div className="text-[11px] text-ndp-text-dim mt-0.5 truncate">{hint}</div>}
+    </div>
   );
 }

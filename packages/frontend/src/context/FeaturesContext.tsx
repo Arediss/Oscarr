@@ -17,7 +17,7 @@ interface Features {
   siteName: string;
   instanceLanguage?: string;
   customLinks?: CustomLink[];
-  [key: string]: boolean | string | CustomLink[] | undefined;
+  [key: string]: boolean | string | CustomLink[] | undefined | null;
 }
 
 interface FeaturesContextType {

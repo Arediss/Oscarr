@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
-import { Menu, X, Search, ArrowUpCircle, ExternalLink, AlertCircle, Bell, CheckCheck, ChevronLeft, Home } from 'lucide-react';
+import { Menu, X, Search, ArrowUpCircle, ExternalLink, AlertCircle, Bell, CheckCheck, ChevronLeft, Home, MessageSquarePlus } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 // Diacritic-insensitive lowercase so "systeme" matches "Système" and "acces" matches "Accès".
@@ -28,6 +28,7 @@ import { useNotifications } from '@/hooks/useNotifications';
 import { AdminJumpButton } from '@/components/nav/AdminJumpButton';
 import SetupChecklistMenu from '@/components/nav/SetupChecklistMenu';
 import { EncryptionUpgradeBanner } from '@/pages/admin/EncryptionUpgradeBanner';
+import { FeedbackModal } from '@/pages/admin/FeedbackModal';
 
 export default function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { t } = useTranslation();
@@ -38,6 +39,7 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
   const { contributions: pluginTabs } = usePluginUI('admin.tabs');
   const versionInfo = useVersionInfo();
   const pluginUpdatesCount = usePluginUpdatesCount();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mobileView, setMobileView] = useState<'main' | 'notifications'>('main');
   const [warnings, setWarnings] = useState<Record<string, boolean>>({});
@@ -376,6 +378,15 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
           <ExternalLink className="w-3 h-3 flex-shrink-0" />
         </a>
       )}
+
+      <button
+        type="button"
+        onClick={() => setFeedbackOpen(true)}
+        className="mx-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] border border-white/5 text-ndp-text-muted hover:text-ndp-text text-xs font-medium transition-colors"
+      >
+        <MessageSquarePlus className="w-4 h-4 flex-shrink-0" />
+        <span className="truncate">{t('admin.feedback.button')}</span>
+      </button>
     </div>
   );
 
@@ -607,6 +618,7 @@ export default function AdminLayout({ children }: Readonly<{ children: React.Rea
       </div>
       </div>
       <EncryptionUpgradeBanner />
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} />
     </div>
   );
 }

@@ -21,6 +21,7 @@ import { setupChecklistRoutes } from './setupChecklist.js';
 import { apiKeysAdminRoutes } from './apiKeys.js';
 import { securityAdminRoutes } from './security.js';
 import { importRoutes } from './import.js';
+import { feedbackRoutes } from './feedback.js';
 import { logEvent } from '../../utils/logEvent.js';
 
 export async function adminRoutes(app: FastifyInstance) {
@@ -46,6 +47,7 @@ export async function adminRoutes(app: FastifyInstance) {
   await apiKeysAdminRoutes(app);
   await securityAdminRoutes(app);
   await importRoutes(app);
+  await feedbackRoutes(app);
 
   // Graceful restart — rate-limited + confirm body + actor logged.
   app.post('/restart', {

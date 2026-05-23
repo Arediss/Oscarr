@@ -35,17 +35,22 @@ function MediaRow({ title, media, loading, href, size = 'default' }: Readonly<Me
 
   return (
     <section className="relative group/row">
-      <div className="flex items-center gap-2 mb-4 px-4 sm:px-8">
-        <h2 className="text-xl font-bold text-ndp-text">{title}</h2>
-        {href && (
+      {/* z-10 keeps the header above the scroll container's invisible padding zone
+       *  (the row uses py-12 -my-12 to give cards room to scale on hover — without
+       *  the z-index the header click target is swallowed by that padding). */}
+      <div className="relative z-10 flex items-center gap-2 mb-4 px-4 sm:px-8">
+        {href ? (
           <Link
             to={href}
-            className="flex items-center gap-1 text-ndp-text-dim hover:text-ndp-accent transition-colors group/link"
+            className="flex items-center gap-2 text-ndp-text hover:text-ndp-accent transition-colors group/link"
             title={t('home.more_info')}
             aria-label={t('home.more_info')}
           >
-            <ArrowRight className="w-5 h-5 group-hover/link:translate-x-0.5 transition-transform" />
+            <h2 className="text-xl font-bold">{title}</h2>
+            <ArrowRight className="w-5 h-5 text-ndp-text-dim group-hover/link:text-ndp-accent group-hover/link:translate-x-0.5 transition-all" />
           </Link>
+        ) : (
+          <h2 className="text-xl font-bold text-ndp-text">{title}</h2>
         )}
       </div>
 

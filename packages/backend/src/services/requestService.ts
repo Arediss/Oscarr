@@ -490,7 +490,7 @@ export async function requestCollectionMovie(
     const sent = await sendToService(media, 'movie', tagName, user.id);
     if (!sent) {
       await transitionRequestStatus(
-        { requestId: req.id, from: 'approved', to: 'failed', why: 'dispatch-failed' },
+        { requestId: req.id, from: collectionInitialStatus, to: 'failed', why: 'dispatch-failed' },
         () => prisma.mediaRequest.update({ where: { id: req.id }, data: { status: 'failed' } }),
       );
     }

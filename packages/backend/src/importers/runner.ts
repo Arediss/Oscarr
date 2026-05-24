@@ -1,5 +1,6 @@
 import { prisma } from '../utils/prisma.js';
 import { findOrCreateMedia } from '../services/requestService.js';
+import { transitionRequestStatus } from '../services/requestStatusTransition.js';
 import type {
   AdapterCredentials,
   CanonicalUser,
@@ -181,16 +182,20 @@ export async function execute(
       continue;
     }
 
-    await prisma.mediaRequest.create({
-      data: {
-        userId,
-        mediaId: media.id,
-        mediaType: r.mediaType,
-        status: r.status === 'available' ? 'available' : r.status,
-        seasons: r.seasons?.length ? JSON.stringify(r.seasons) : null,
-        createdAt: r.createdAt,
-      },
-    });
+    const importedStatus = r.status === 'available' ? 'available' : r.status;
+    await transitionRequestStatus(
+      { requestId: undefined, from: undefined, to: importedStatus, why: 'import-existing-request' },
+      () => prisma.mediaRequest.create({
+        data: {
+          userId,
+          mediaId: media.id,
+          mediaType: r.mediaType,
+          status: importedStatus,
+          seasons: r.seasons?.length ? JSON.stringify(r.seasons) : null,
+          createdAt: r.createdAt,
+        },
+      }),
+    );
     requestsCreated++;
   }
 

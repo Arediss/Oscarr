@@ -3,6 +3,7 @@ import { getArrClient, getServiceTypeForMedia } from '../providers/index.js';
 import { normalizeLanguages } from '../utils/languages.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import { getTvDetails } from './tmdb.js';
+import { transitionRequestStatus } from './requestStatusTransition.js';
 import type { Media } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -139,8 +140,11 @@ export async function promoteMediaToAvailable(
     where: { id: mediaId },
     data: { status: 'available', ...(!hasAvailableAt ? { availableAt: new Date() } : {}) },
   });
-  await prisma.mediaRequest.updateMany({
-    where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-    data: { status: 'available' },
-  });
+  await transitionRequestStatus(
+    { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
+    () => prisma.mediaRequest.updateMany({
+      where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
+      data: { status: 'available' },
+    }),
+  );
 }

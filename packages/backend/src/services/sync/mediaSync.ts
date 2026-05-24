@@ -6,6 +6,7 @@ import { logEvent } from '../../utils/logEvent.js';
 import type { SyncResult } from './helpers.js';
 import { sendAvailabilityNotifications } from './helpers.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
+import { transitionRequestStatus } from '../requestStatusTransition.js';
 import type { Media } from '@prisma/client';
 
 export async function syncArrService(serviceType: string, since?: Date | null): Promise<SyncResult> {
@@ -220,10 +221,13 @@ async function applyUpdate(
   await prisma.$transaction(async (tx) => {
     await tx.media.update({ where: { id: existing.id }, data: updateData });
     if (becameAvailable) {
-      await tx.mediaRequest.updateMany({
-        where: { mediaId: existing.id, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-        data: { status: 'available' },
-      });
+      await transitionRequestStatus(
+        { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
+        () => tx.mediaRequest.updateMany({
+          where: { mediaId: existing.id, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
+          data: { status: 'available' },
+        }),
+      );
     }
   });
 }
@@ -269,10 +273,13 @@ async function mergeIntoCanonical(
       await tx.season.createMany({ data: seasonRows });
     }
     if (becameAvailable) {
-      await tx.mediaRequest.updateMany({
-        where: { mediaId: canonicalId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-        data: { status: 'available' },
-      });
+      await transitionRequestStatus(
+        { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available-merge' },
+        () => tx.mediaRequest.updateMany({
+          where: { mediaId: canonicalId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
+          data: { status: 'available' },
+        }),
+      );
     }
   });
   logEvent('debug', 'Sync', `Merged placeholder TV row ${placeholder.id} into canonical row ${canonicalId} (tvdb:${item.externalId})`);

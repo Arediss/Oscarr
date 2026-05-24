@@ -6,8 +6,10 @@ import { logEvent } from '../utils/logEvent.js';
 import { getServiceById, getAllServices } from '../utils/services.js';
 import { VALID_MEDIA_TYPES } from '../utils/params.js';
 import { ACTIVE_REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
+import type { RequestStatusKind } from '@oscarr/shared';
 import { safeNotify, safeUserNotify, buildSiteLink } from '../utils/safeNotify.js';
 import { pluginEngine } from '../plugins/engine.js';
+import { transitionRequestStatus } from './requestStatusTransition.js';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -357,25 +359,29 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   // Dedup + create in one transaction so two concurrent calls by the same user can't both pass
   // the dedup check and both insert (SQLite serializes writes, but defensive against future
   // backends and intent-clarity for the reader).
+  const initialStatus: RequestStatusKind = shouldAutoApprove ? 'approved' : 'pending';
   const mediaRequest = await prisma.$transaction(async (tx) => {
     const dup = await tx.mediaRequest.findFirst({
       where: { mediaId: media.id, userId: user.id, status: { in: [...ACTIVE_REQUEST_STATUSES] } },
       select: { id: true },
     });
     if (dup) throw new DuplicateRequestError();
-    return tx.mediaRequest.create({
-      data: {
-        mediaId: media.id,
-        userId: user.id,
-        mediaType,
-        seasons: validSeasons ? JSON.stringify(validSeasons) : null,
-        rootFolder: typeof input.rootFolder === 'string' ? input.rootFolder : null,
-        qualityOptionId: input.qualityOptionId ?? null,
-        status: shouldAutoApprove ? 'approved' : 'pending',
-        approvedById: shouldAutoApprove ? user.id : null,
-      },
-      include: { media: true, user: { select: { id: true, displayName: true, avatar: true } } },
-    });
+    return transitionRequestStatus(
+      { requestId: undefined, from: undefined, to: initialStatus, why: shouldAutoApprove ? 'user-request-create-auto-approve' : 'user-request-create' },
+      () => tx.mediaRequest.create({
+        data: {
+          mediaId: media.id,
+          userId: user.id,
+          mediaType,
+          seasons: validSeasons ? JSON.stringify(validSeasons) : null,
+          rootFolder: typeof input.rootFolder === 'string' ? input.rootFolder : null,
+          qualityOptionId: input.qualityOptionId ?? null,
+          status: initialStatus,
+          approvedById: shouldAutoApprove ? user.id : null,
+        },
+        include: { media: true, user: { select: { id: true, displayName: true, avatar: true } } },
+      }),
+    );
   }).catch((err) => {
     if (err instanceof DuplicateRequestError) return null;
     throw err;
@@ -399,8 +405,10 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
         logEvent('warn', 'Request', `Status-flip to 'searching' failed for media ${media.id} (request ${mediaRequest.id}): ${String(err)}`);
       });
     } else if (!sent) {
-      await prisma.mediaRequest.update({ where: { id: mediaRequest.id }, data: { status: 'failed' } })
-        .catch((err) => logEvent('warn', 'Request', `Failed to mark request ${mediaRequest.id} as failed after sendToService rejected: ${String(err)}`));
+      await transitionRequestStatus(
+        { requestId: mediaRequest.id, from: mediaRequest.status as RequestStatusKind, to: 'failed', why: 'dispatch-failed' },
+        () => prisma.mediaRequest.update({ where: { id: mediaRequest.id }, data: { status: 'failed' } }),
+      ).catch((err) => logEvent('warn', 'Request', `Failed to mark request ${mediaRequest.id} as failed after sendToService rejected: ${String(err)}`));
       sendFailed = true;
     }
   }
@@ -463,21 +471,28 @@ export async function requestCollectionMovie(
 
   const media = dbMedia ?? await findOrCreateMedia(movieTmdbId, 'movie');
 
-  const req = await prisma.mediaRequest.create({
-    data: {
-      mediaId: media.id,
-      userId: user.id,
-      mediaType: 'movie',
-      status: user.role === 'admin' ? 'approved' : 'pending',
-      approvedById: user.role === 'admin' ? user.id : null,
-    },
-  });
+  const collectionInitialStatus: RequestStatusKind = user.role === 'admin' ? 'approved' : 'pending';
+  const req = await transitionRequestStatus(
+    { requestId: undefined, from: undefined, to: collectionInitialStatus, why: user.role === 'admin' ? 'collection-request-auto-approve' : 'collection-request-create' },
+    () => prisma.mediaRequest.create({
+      data: {
+        mediaId: media.id,
+        userId: user.id,
+        mediaType: 'movie',
+        status: collectionInitialStatus,
+        approvedById: user.role === 'admin' ? user.id : null,
+      },
+    }),
+  );
 
   if (user.role === 'admin') {
     const tagName = await getUserTagName(user.id);
     const sent = await sendToService(media, 'movie', tagName, user.id);
     if (!sent) {
-      await prisma.mediaRequest.update({ where: { id: req.id }, data: { status: 'failed' } });
+      await transitionRequestStatus(
+        { requestId: req.id, from: 'approved', to: 'failed', why: 'dispatch-failed' },
+        () => prisma.mediaRequest.update({ where: { id: req.id }, data: { status: 'failed' } }),
+      );
     }
   }
 
@@ -489,13 +504,16 @@ export async function requestCollectionMovie(
 // ---------------------------------------------------------------------------
 
 export async function promoteStaleStatuses(): Promise<void> {
-  await prisma.mediaRequest.updateMany({
-    where: {
-      status: { in: [...COMPLETABLE_REQUEST_STATUSES] },
-      media: { status: 'available' },
-    },
-    data: { status: 'available' },
-  });
+  await transitionRequestStatus(
+    { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
+    () => prisma.mediaRequest.updateMany({
+      where: {
+        status: { in: [...COMPLETABLE_REQUEST_STATUSES] },
+        media: { status: 'available' },
+      },
+      data: { status: 'available' },
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -516,7 +534,10 @@ export async function retryFailedRequests(): Promise<{ retried: number; succeede
     const seasons = req.seasons ? JSON.parse(req.seasons) : undefined;
     const sent = await sendToService(req.media, req.mediaType, tagName, req.userId, seasons, req.qualityOptionId ?? undefined);
     if (sent) {
-      await prisma.mediaRequest.update({ where: { id: req.id }, data: { status: 'approved' } });
+      await transitionRequestStatus(
+        { requestId: req.id, from: req.status as RequestStatusKind, to: 'approved', why: 'scheduler-retry' },
+        () => prisma.mediaRequest.update({ where: { id: req.id }, data: { status: 'approved' } }),
+      );
       succeeded++;
     }
   }

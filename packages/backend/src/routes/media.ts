@@ -5,7 +5,9 @@ import { parseId, parsePage, VALID_MEDIA_TYPES } from '../utils/params.js';
 import { isMatureRating } from '../services/tmdb.js';
 import { normalizeLanguages } from '../utils/languages.js';
 import { performLiveCheckWithTimeout, cacheLanguageData, promoteMediaToAvailable, canSkipLiveCheck } from '../services/mediaService.js';
+import { transitionRequestStatus } from '../services/requestStatusTransition.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
+import type { Availability } from '@oscarr/shared';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
 function parseEpisodeInfo(raw: string): { season: number; episode: number; title: string } | null {
@@ -186,10 +188,14 @@ export async function mediaRoutes(app: FastifyInstance) {
         const hasAnyFiles = sonarrSeasonStats.some((s: { episodeFileCount: number }) => s.episodeFileCount > 0);
         if (hasAnyFiles && media.status !== 'processing') {
           await prisma.media.update({ where: { id: media.id }, data: { status: 'processing' } });
-          await prisma.mediaRequest.updateMany({
-            where: { mediaId: media.id, status: { in: ['approved', 'failed'] } },
-            data: { status: 'processing' },
-          });
+          await transitionRequestStatus(
+            { requestId: undefined, from: undefined, to: 'processing', why: 'cascade-media-processing' },
+            () => prisma.mediaRequest.updateMany({
+              where: { mediaId: media.id, status: { in: ['approved', 'failed'] } },
+              data: { status: 'processing' },
+            }),
+            request.log,
+          );
           media.status = 'processing';
           media.requests = media.requests.map((r) =>
             ['approved', 'failed'].includes(r.status) ? { ...r, status: 'processing' } : r
@@ -295,7 +301,10 @@ export async function mediaRoutes(app: FastifyInstance) {
     // Limit to 50 per request
     const limited = ids.slice(0, 50) as { tmdbId: number; mediaType: string }[];
 
-    const results: Record<string, { status: string; requestStatus?: string }> = {};
+    // Typed against the shared `Availability` contract so backend↔frontend can't drift.
+    // FIXME: same shape is built inline by GET /api/media/:id and GET /api/media/tmdb/:tmdbId/:mediaType
+    // — extract a builder in a follow-up so those endpoints share this typing too.
+    const results: Record<string, Pick<Availability, 'status' | 'requestStatus'>> = {};
 
     const media = await prisma.media.findMany({
       where: {
@@ -316,8 +325,8 @@ export async function mediaRoutes(app: FastifyInstance) {
     for (const m of media) {
       const key = `${m.mediaType}:${m.tmdbId}`;
       results[key] = {
-        status: m.status,
-        requestStatus: m.requests[0]?.status,
+        status: m.status as Availability['status'],
+        requestStatus: m.requests[0]?.status as Availability['requestStatus'] | undefined,
       };
     }
 

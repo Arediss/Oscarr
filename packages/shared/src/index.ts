@@ -5,3 +5,5 @@ export * from './tmdb.js';
 export * from './plugins.js';
 export * from './pluginContext.js';
 export * from './notificationTemplates.js';
+export * from './mediaState.js';
+export * from './canRequest.js';

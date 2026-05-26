@@ -87,3 +87,20 @@ CREATE UNIQUE INDEX "MediaStateMapping_serviceType_matchArrStatus_matchMonitored
 -- Partial unique index: at most one MediaStateOption row may have isFallback = true.
 -- SQLite supports partial indexes; Prisma's schema language doesn't, so this is appended manually.
 CREATE UNIQUE INDEX "MediaStateOption_isFallback_unique" ON "MediaStateOption"("isFallback") WHERE "isFallback" = 1;
+
+-- Backfill Media.statusKey from the legacy Media.status (1:1 carry-over).
+UPDATE "Media" SET "statusKey" = "status" WHERE "statusKey" = 'unknown';
+
+-- Deterministic mapping of the legacy Media.status to the closed MediaStateCategory enum.
+-- 'pending' folds into SEARCHING (Sonarr-monitored-no-files semantics).
+-- 'deleted' folds into UNAVAILABLE (the value is reserved/unused).
+UPDATE "Media" SET "statusCategory" = CASE "status"
+  WHEN 'unknown'    THEN 'UNAVAILABLE'
+  WHEN 'pending'    THEN 'SEARCHING'
+  WHEN 'upcoming'   THEN 'UPCOMING'
+  WHEN 'searching'  THEN 'SEARCHING'
+  WHEN 'processing' THEN 'PROCESSING'
+  WHEN 'available'  THEN 'AVAILABLE'
+  WHEN 'deleted'    THEN 'UNAVAILABLE'
+  ELSE 'UNAVAILABLE'
+END WHERE "statusCategory" = 'UNAVAILABLE';

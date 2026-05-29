@@ -29,7 +29,7 @@
     "@types/archiver": "^7.0.0",
     "@types/tar": "^6.1.13",
     "archiver": "^7.0.1",
-    "axios": "^1.15.0",
+    "axios": "^1.16.1",
     "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.1",
     "fastify": "^5.8.5",

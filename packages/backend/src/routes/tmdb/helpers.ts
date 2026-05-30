@@ -3,6 +3,7 @@ import { prisma } from '../../utils/prisma.js';
 import { parsePage } from '../../utils/params.js';
 import { getMovieDetails, getTvDetails, isMatureRating } from '../../services/tmdb.js';
 import { trackKeywordsFromDetails } from '../../services/sync/keywordSync.js';
+import { mediaKey } from '../../utils/mediaKey.js';
 
 export const pageQuerySchema = {
   type: 'object' as const,
@@ -57,7 +58,7 @@ export async function flagNsfwFromDb(
   });
 
   const nsfwIds: number[] = [];
-  const foundTmdbIds = new Set(mediaRows.map(r => `${r.mediaType}:${r.tmdbId}`));
+  const foundTmdbIds = new Set(mediaRows.map(mediaKey));
   const now = Date.now();
   const stale: typeof items = [];
 
@@ -78,7 +79,7 @@ export async function flagNsfwFromDb(
   }
 
   const missing = [
-    ...items.filter(i => !foundTmdbIds.has(`${i.mediaType}:${i.tmdbId}`)),
+    ...items.filter(i => !foundTmdbIds.has(mediaKey(i))),
     ...stale,
   ];
   if (missing.length > 0 && lang) {

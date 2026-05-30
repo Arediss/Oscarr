@@ -1,5 +1,6 @@
 import type { Availability } from '@oscarr/shared';
 import { prisma } from '../utils/prisma.js';
+import { mediaKey } from '../utils/mediaKey.js';
 
 interface MediaRow {
   tmdbId: number;
@@ -17,7 +18,7 @@ export function buildAvailability(
   userRequest: RequestRow | null,
   blacklistedKeys: ReadonlySet<string>,
 ): Availability {
-  const key = `${media.mediaType}:${media.tmdbId}`;
+  const key = mediaKey(media);
   const statusCategory = blacklistedKeys.has(key)
     ? 'BLACKLISTED'
     : (media.statusCategory as Availability['statusCategory']);
@@ -37,5 +38,5 @@ export async function loadBlacklistedKeys(
     where: { OR: items.map((i) => ({ tmdbId: i.tmdbId, mediaType: i.mediaType })) },
     select: { tmdbId: true, mediaType: true },
   });
-  return new Set(rows.map((r) => `${r.mediaType}:${r.tmdbId}`));
+  return new Set(rows.map(mediaKey));
 }

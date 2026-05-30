@@ -8,6 +8,7 @@ import { performLiveCheckWithTimeout, cacheLanguageData, refreshMediaCategory, c
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { Availability } from '@oscarr/shared';
 import { buildAvailability, loadBlacklistedKeys } from '../services/availability.js';
+import { mediaKey } from '../utils/mediaKey.js';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
 function parseEpisodeInfo(raw: string): { season: number; episode: number; title: string } | null {
@@ -311,7 +312,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     });
 
     for (const m of media) {
-      const key = `${m.mediaType}:${m.tmdbId}`;
+      const key = mediaKey(m);
       results[key] = buildAvailability(m, m.requests[0] ?? null, blacklistedKeys);
     }
 

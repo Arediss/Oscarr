@@ -7,6 +7,7 @@ import { getProviderConfig, isProviderEnabled } from '../providers/authSettings.
 import type { AuthHelpers } from '../providers/types.js';
 import { getPermissionsForRole } from '../middleware/rbac.js';
 import { refreshUserAvatar } from '../utils/avatarSource.js';
+import { setAuthCookie } from '../utils/authCookie.js';
 
 function buildHelpers(app: FastifyInstance): AuthHelpers {
   return {
@@ -26,20 +27,7 @@ function buildHelpers(app: FastifyInstance): AuthHelpers {
         return reply.status(401).send({ error: 'INVALID_CREDENTIALS' });
       }
 
-      const token = app.jwt.sign(
-        { id: user.id, email: user.email, role: user.role },
-        { expiresIn: '24h' }
-      );
-
-      return reply
-        .setCookie('token', token, {
-          path: '/',
-          httpOnly: true,
-          secure: process.env.COOKIE_SECURE === 'true'
-            || (process.env.COOKIE_SECURE !== 'false' && reply.request.protocol === 'https'),
-          sameSite: 'lax',
-          maxAge: 24 * 60 * 60,
-        })
+      return setAuthCookie(reply, app, user)
         .send({
           user: {
             id: user.id,

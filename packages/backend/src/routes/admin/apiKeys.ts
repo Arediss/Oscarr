@@ -1,23 +1,8 @@
-import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
+import { generatePlainKey, hashKey, plainPrefix } from '../../utils/userApiKey.js';
 
-const PLAIN_PREFIX = 'oscarr_';
-const KEY_BYTES = 32; // 256-bit entropy
-const PREFIX_DISPLAY_CHARS = PLAIN_PREFIX.length + 5; // "oscarr_" + 5 hex chars
 const MAX_NAME_LENGTH = 80;
-
-function generatePlainKey(): string {
-  return PLAIN_PREFIX + crypto.randomBytes(KEY_BYTES).toString('hex');
-}
-
-function hashKey(plain: string): string {
-  return crypto.createHash('sha256').update(plain).digest('hex');
-}
-
-function plainPrefix(plain: string): string {
-  return plain.slice(0, PREFIX_DISPLAY_CHARS);
-}
 
 /**
  * Admin-managed API keys for third-party app integrations (Doplarr, Maintainerr, mobile Seerr

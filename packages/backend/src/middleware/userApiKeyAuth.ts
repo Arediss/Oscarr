@@ -1,12 +1,6 @@
-import crypto from 'node:crypto';
 import type { FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../utils/prisma.js';
-
-const PLAIN_PREFIX = 'oscarr_';
-
-function hashKey(plain: string): string {
-  return crypto.createHash('sha256').update(plain).digest('hex');
-}
+import { PLAIN_PREFIX, hashKey } from '../utils/userApiKey.js';
 
 // lastUsedAt is best-effort — we batch updates every 5s to avoid one DB write per request when
 // a chatty client (Maintainerr scan, dashboard widget poll) hits us repeatedly.

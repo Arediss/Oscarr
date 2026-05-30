@@ -3,6 +3,7 @@ import { getArrClient, getArrClientForService, getServiceTypeForMedia } from '..
 import { getMovieDetails, getTvDetails } from './tmdb.js';
 import { matchFolderRule } from './folderRules.js';
 import { logEvent } from '../utils/logEvent.js';
+import { isQualityAllowedForRole } from '../utils/qualityAccess.js';
 import { getServiceById, getAllServices } from '../utils/services.js';
 import { VALID_MEDIA_TYPES } from '../utils/params.js';
 import { ACTIVE_REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
@@ -338,19 +339,8 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   let shouldAutoApprove = user.role === 'admin' || (settings?.autoApproveRequests ?? false);
   if (input.qualityOptionId != null) {
     const qualityOpt = await prisma.qualityOption.findUnique({ where: { id: input.qualityOptionId } });
-    if (qualityOpt?.allowedRoles && user.role !== 'admin') {
-      try {
-        const roles = JSON.parse(qualityOpt.allowedRoles) as string[];
-        if (roles.length > 0 && !roles.includes(user.role)) {
-          return { ok: false, status: 403, code: 'QUALITY_NOT_ALLOWED', error: 'QUALITY_NOT_ALLOWED' };
-        }
-      } catch (err) {
-        // Historical HTTP behaviour was permissive here, but silently opening a role-gated
-        // quality option on corrupt `allowedRoles` JSON is an ACL-bypass footgun. Keep the
-        // permissive fallback for compat, but surface the corruption so an admin can fix
-        // the bad row instead of learning about it via unexpected approvals.
-        logEvent('error', 'Request', `Malformed allowedRoles JSON on qualityOption ${input.qualityOptionId} — permissive fallback engaged: ${String(err)}`);
-      }
+    if (qualityOpt && user.role !== 'admin' && !isQualityAllowedForRole(qualityOpt.allowedRoles, user.role)) {
+      return { ok: false, status: 403, code: 'QUALITY_NOT_ALLOWED', error: 'QUALITY_NOT_ALLOWED' };
     }
     if (qualityOpt?.approvalMode === 'auto') shouldAutoApprove = true;
     else if (qualityOpt?.approvalMode === 'manual') shouldAutoApprove = user.role === 'admin';

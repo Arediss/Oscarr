@@ -6,6 +6,7 @@ import { prisma } from '../utils/prisma.js';
 import { pluginEngine } from '../plugins/engine.js';
 import { getArrClient } from '../providers/index.js';
 import { getServiceConfig } from '../utils/services.js';
+import { isQualityAllowedForRole } from '../utils/qualityAccess.js';
 import { PROJECT_PACKAGE_JSON } from '../utils/paths.js';
 import { getHomepageLayout } from './admin/homepage.js';
 
@@ -78,13 +79,7 @@ export async function appRoutes(app: FastifyInstance) {
       orderBy: { position: 'asc' },
     });
     if (!user || user.role === 'admin') return options;
-    return options.filter(opt => {
-      if (!opt.allowedRoles) return true;
-      try {
-        const roles = JSON.parse(opt.allowedRoles) as string[];
-        return roles.length === 0 || roles.includes(user.role);
-      } catch { return false; }
-    });
+    return options.filter(opt => isQualityAllowedForRole(opt.allowedRoles, user.role));
   });
 
   // ─── Health check (authenticated via API key) ─────────────────────

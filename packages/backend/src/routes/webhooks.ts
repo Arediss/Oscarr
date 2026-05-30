@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../utils/prisma.js';
-import { getArrClient, getServiceDefinition } from '../providers/index.js';
+import { getArrClient, getServiceDefinition, arrIdFieldForService } from '../providers/index.js';
 import { promoteMediaToAvailable, findMediaByExternalId } from '../services/mediaService.js';
 import { sendAvailabilityNotifications } from '../services/sync/helpers.js';
 import { logEvent } from '../utils/logEvent.js';
@@ -82,7 +82,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       const mediaType = client.mediaType;
       const media = await findMediaByExternalId(mediaType, event.externalId);
       if (media && media.statusCategory !== 'AVAILABLE') {
-        const arrIdField = serviceType === 'radarr' ? 'radarrId' : serviceType === 'sonarr' ? 'sonarrId' : null;
+        const arrIdField = arrIdFieldForService(serviceType);
         await prisma.media.update({
           where: { id: media.id },
           data: {
@@ -102,7 +102,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       const existing = await findMediaByExternalId(mediaType, event.externalId);
 
       if (!existing) {
-        const arrIdField = serviceType === 'radarr' ? 'radarrId' : serviceType === 'sonarr' ? 'sonarrId' : null;
+        const arrIdField = arrIdFieldForService(serviceType);
         // Enrich with poster/quality/seasons via getMediaById — without this the row stayed
         // poster-less until next periodic sync (~15 min) and rendered an empty card on /home.
         let enriched: Awaited<ReturnType<typeof client.getMediaById>> = null;
@@ -192,7 +192,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       // home's "Recently added" query (which filters on radarrId/sonarrId IS NOT NULL)
       // skips webhook-only media even though they're correctly marked `available`.
       if (event.internalId !== undefined && event.internalId > 0) {
-        const arrIdField = serviceType === 'radarr' ? 'radarrId' : serviceType === 'sonarr' ? 'sonarrId' : null;
+        const arrIdField = arrIdFieldForService(serviceType);
         if (arrIdField) {
           const current = (media as Record<string, unknown>)[arrIdField];
           if (current === null || current === undefined) {

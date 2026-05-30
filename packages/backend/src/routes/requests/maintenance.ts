@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
-import { getArrClient, getServiceTypeForMedia } from '../../providers/index.js';
+import { getArrClient, getServiceTypeForMedia, arrIdForMedia } from '../../providers/index.js';
 import { logEvent } from '../../utils/logEvent.js';
 import { pluginEngine } from '../../plugins/engine.js';
 
@@ -48,7 +48,7 @@ export async function requestMaintenanceRoutes(app: FastifyInstance) {
     }
 
     try {
-      const serviceId = mediaType === 'movie' ? media.radarrId : media.sonarrId;
+      const serviceId = arrIdForMedia(media);
       if (!serviceId) {
         return reply.status(400).send({ error: 'This media is not yet in the service' });
       }
@@ -97,8 +97,8 @@ export async function requestMaintenanceRoutes(app: FastifyInstance) {
 
         for (const req of requests) {
           try {
-            const serviceType = req.media.mediaType === 'movie' ? 'radarr' : 'sonarr';
-            const serviceId = req.media.mediaType === 'movie' ? req.media.radarrId : req.media.sonarrId;
+            const serviceType = getServiceTypeForMedia(req.media.mediaType);
+            const serviceId = arrIdForMedia(req.media);
             if (serviceId) {
               const client = await getArrClient(serviceType);
               await client.deleteMedia(serviceId, true);

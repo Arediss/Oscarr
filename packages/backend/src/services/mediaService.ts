@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma.js';
-import { getArrClient, getServiceTypeForMedia } from '../providers/index.js';
+import { getArrClient, getServiceTypeForMedia, arrIdForMedia } from '../providers/index.js';
 import { normalizeLanguages } from '../utils/languages.js';
 import { logEvent } from '../utils/logEvent.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
@@ -181,7 +181,7 @@ export async function refreshMediaCategory(media: {
 }): Promise<MediaStateCategory | null> {
   try {
     const client = await getArrClient(getServiceTypeForMedia(media.mediaType));
-    const currentArrId = media.mediaType === 'movie' ? media.radarrId : media.sonarrId;
+    const currentArrId = arrIdForMedia(media);
     let serviceMediaId = currentArrId;
     if (!serviceMediaId) {
       const externalId = media.mediaType === 'movie' ? media.tmdbId : media.tvdbId;

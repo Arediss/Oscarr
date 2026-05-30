@@ -145,13 +145,34 @@ export function createArrClient(type: string, config: Record<string, string>): A
  *  `ALL_PROVIDERS` for the first service whose `handlesMediaTypes` includes the requested
  *  value. New providers (e.g. lidarr for music) just declare the field on their ServiceDefinition
  *  — no hardcoded lookup to patch. */
-export function getServiceTypeForMedia(mediaType: string): string {
+export function findServiceTypeForMedia(mediaType: string): string | null {
   for (const provider of ALL_PROVIDERS) {
     if (provider.service?.handlesMediaTypes?.includes(mediaType)) {
       return provider.service.id;
     }
   }
-  throw new Error(`No service type for media type "${mediaType}"`);
+  return null;
+}
+
+/** Like findServiceTypeForMedia but throws when no service handles the type. */
+export function getServiceTypeForMedia(mediaType: string): string {
+  const type = findServiceTypeForMedia(mediaType);
+  if (!type) throw new Error(`No service type for media type "${mediaType}"`);
+  return type;
+}
+
+/** Media DB column holding a service's *arr id (radarr → radarrId, sonarr → sonarrId). null = not an *arr service. */
+export function arrIdFieldForService(serviceType: string): 'radarrId' | 'sonarrId' | null {
+  if (serviceType === 'radarr') return 'radarrId';
+  if (serviceType === 'sonarr') return 'sonarrId';
+  return null;
+}
+
+/** The *arr id stored on a media row, for the service that owns its media type. */
+export function arrIdForMedia(media: { mediaType: string; radarrId: number | null; sonarrId: number | null }): number | null {
+  const type = findServiceTypeForMedia(media.mediaType);
+  const field = type ? arrIdFieldForService(type) : null;
+  return field ? media[field] : null;
 }
 
 // Re-export types

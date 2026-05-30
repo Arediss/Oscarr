@@ -1,5 +1,6 @@
 import type { Media } from '@prisma/client';
 import { mapMediaStatus } from './statusMap.js';
+import { arrIdForMedia } from '../../providers/index.js';
 
 /**
  * Subset of Overseerr's `Media` entity that Seerr clients actually read. We omit fields tied to
@@ -39,7 +40,7 @@ export interface SeerrMediaInfo {
 export function buildSeerrMedia(media: Media): SeerrMediaInfo {
   // *arr internal id (Radarr movie.id / Sonarr series.id) — exposed as Overseerr's
   // externalServiceId so dashboards can deep-link into the *arr UI.
-  const externalServiceId = media.mediaType === 'movie' ? media.radarrId : media.sonarrId;
+  const externalServiceId = arrIdForMedia(media);
 
   return {
     id: media.id,

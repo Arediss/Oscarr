@@ -3,6 +3,7 @@ import { prisma } from '../../utils/prisma.js';
 import { parseId, parsePage } from '../../utils/params.js';
 import { REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import { promoteStaleStatuses, resolveServiceContext } from '../../services/requestService.js';
+import { getServiceTypeForMedia } from '../../providers/index.js';
 
 const VALID_STATUSES = new Set<string>(REQUEST_STATUSES);
 
@@ -136,7 +137,7 @@ export async function requestListRoutes(app: FastifyInstance) {
 
     const matchedRuleName = ctx.ruleMatch?.ruleName ?? null;
 
-    const serviceType = mediaRequest.mediaType === 'movie' ? 'radarr' : 'sonarr';
+    const serviceType = getServiceTypeForMedia(mediaRequest.mediaType);
     let availableRootFolders: { path: string }[] = [];
     try {
       const { getArrClient, getArrClientForService } = await import('../../providers/index.js');

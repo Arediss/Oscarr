@@ -35,19 +35,15 @@ export function mapRequestStatus(oscarrStatus: string): number {
   return SEERR_REQUEST_STATUS.APPROVED;
 }
 
-/**
- * Oscarr media status: "unknown" | "pending" | "processing" | "available" | "deleted"
- * Maps cleanly except for PARTIALLY_AVAILABLE — Oscarr doesn't currently distinguish a TV
- * series with some seasons available from one fully available, so callers should treat
- * AVAILABLE as "at least one season is available" for shows.
- */
-export function mapMediaStatus(oscarrStatus: string | null | undefined): number {
-  switch (oscarrStatus) {
-    case 'pending':    return SEERR_MEDIA_STATUS.PENDING;
-    case 'processing': return SEERR_MEDIA_STATUS.PROCESSING;
-    case 'available':  return SEERR_MEDIA_STATUS.AVAILABLE;
-    case 'deleted':    return SEERR_MEDIA_STATUS.DELETED;
-    default:           return SEERR_MEDIA_STATUS.UNKNOWN;
+/** Oscarr MediaStateCategory → Overseerr MediaStatus. PROCESSING covers downloading and partial. */
+export function mapMediaStatus(category: string | null | undefined): number {
+  switch (category) {
+    case 'UPCOMING':    return SEERR_MEDIA_STATUS.PENDING;
+    case 'SEARCHING':   return SEERR_MEDIA_STATUS.PROCESSING;
+    case 'PROCESSING':  return SEERR_MEDIA_STATUS.PROCESSING;
+    case 'AVAILABLE':   return SEERR_MEDIA_STATUS.AVAILABLE;
+    case 'BLACKLISTED': return SEERR_MEDIA_STATUS.BLACKLISTED;
+    default:            return SEERR_MEDIA_STATUS.UNKNOWN; // UNAVAILABLE + unmapped
   }
 }
 

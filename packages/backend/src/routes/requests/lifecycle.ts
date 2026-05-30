@@ -39,10 +39,10 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
 
     // Flip to 'searching' so the UI reflects the service-side pickup; preserve 'available' and
     // 'processing' (TV partial) so the "request rest" CTA stays visible.
-    if (sent && mediaRequest.media.status !== 'available' && mediaRequest.media.status !== 'processing') {
+    if (sent && mediaRequest.media.statusCategory !== 'AVAILABLE' && mediaRequest.media.statusCategory !== 'PROCESSING') {
       await prisma.media.update({
         where: { id: mediaRequest.media.id },
-        data: { status: 'searching' },
+        data: { statusCategory: 'SEARCHING' },
       }).catch((err) => {
         request.log.warn({ err, mediaId: mediaRequest.media.id, requestId }, 'status flip to searching failed');
       });

@@ -135,7 +135,7 @@ export default function CategoryPage() {
       const type = item.media_type || (item.title ? 'movie' : 'tv');
       const key = `${type}:${item.id}`;
       if (!(key in statuses)) return false; // status not loaded yet -- hide to prevent flash
-      return statuses[key].status === 'unknown';
+      return statuses[key].statusCategory === 'UNAVAILABLE';
     });
   }, [results, filters.hideRequested, statuses]);
 

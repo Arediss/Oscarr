@@ -1,17 +1,19 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Star, CheckCircle, Clock, Film, Tv, Search, CalendarClock, Plus, Loader2, EyeOff } from 'lucide-react';
+import { Star, CheckCircle, Film, Tv, Plus, Loader2, EyeOff } from 'lucide-react';
 import api, { posterUrl } from '@/lib/api';
+import { canRequest, type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
 import type { TmdbMedia } from '@/types';
 import { clsx } from 'clsx';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
+import { MediaStateBadge } from '@/utils/mediaStateDisplay';
 import { toastApiError } from '@/utils/toast';
 
 interface MediaCardProps {
   media: TmdbMedia;
   className?: string;
-  availability?: { status: string; requestStatus?: string } | null;
+  availability?: { statusCategory: MediaStateCategory; requestStatus?: RequestStatus } | null;
   index?: number;
 }
 
@@ -29,9 +31,7 @@ export default function MediaCard({ media, className, availability, index = 0 }:
   const type = media.media_type || (media.title ? 'movie' : 'tv');
   const link = `/${type}/${media.id}`;
 
-  const statusBadge = getAvailabilityBadge(availability, type, t);
-
-  const canRequest = !availability || (availability.status === 'unknown' && !availability.requestStatus);
+  const showRequest = !availability || canRequest(availability.statusCategory, availability.requestStatus ?? null);
 
   const handleRequest = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -135,21 +135,17 @@ export default function MediaCard({ media, className, availability, index = 0 }:
       )}
 
       {/* Bottom-right: availability status (hidden on hover) */}
-      {statusBadge && (
-        <div className={clsx(
-          'absolute bottom-2 right-2 flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-semibold transition-opacity duration-300 group-hover:opacity-0',
-          statusBadge.bgClass
-        )}>
-          <statusBadge.icon className="w-3 h-3" />
-          {statusBadge.label}
-        </div>
-      )}
+      <MediaStateBadge
+        availability={availability}
+        mediaType={type}
+        className="absolute bottom-2 right-2 transition-opacity duration-300 group-hover:opacity-0"
+      />
       </Link>
 
       {/* Quick request — rendered OUTSIDE the Link so the click never bubbles to the
        *  anchor. Visible only on hover (matches the rest of the overlay), positioned
        *  absolute so it overlays the top-right of the card. */}
-      {canRequest && !requested && (
+      {showRequest && !requested && (
         <button
           onClick={handleRequest}
           className="absolute top-2 right-2 p-1.5 bg-ndp-accent rounded-full hover:bg-ndp-accent/80 transition-colors shadow-lg opacity-0 group-hover:opacity-100 z-10"
@@ -166,61 +162,6 @@ export default function MediaCard({ media, className, availability, index = 0 }:
       )}
     </div>
   );
-}
-
-function getAvailabilityBadge(availability?: { status: string; requestStatus?: string } | null, mediaType?: string, t?: (key: string) => string) {
-  if (!availability || availability.status === 'unknown') return null;
-
-  if (availability.status === 'available') {
-    return {
-      label: t?.('status.available') ?? 'Available',
-      icon: CheckCircle,
-      bgClass: 'bg-ndp-success/80 text-white',
-    };
-  }
-
-  if (availability.status === 'upcoming') {
-    return {
-      label: t?.('status.upcoming') ?? 'Upcoming',
-      icon: CalendarClock,
-      bgClass: 'bg-purple-600/80 text-white',
-    };
-  }
-
-  if (availability.status === 'searching') {
-    return {
-      label: t?.('status.searching') ?? 'Searching',
-      icon: Search,
-      bgClass: 'bg-ndp-accent/80 text-white',
-    };
-  }
-
-  // Only TV shows can be "partially available"
-  if (availability.status === 'processing' && mediaType === 'tv') {
-    return {
-      label: t?.('status.partial') ?? 'Partial',
-      icon: Clock,
-      bgClass: 'bg-ndp-accent/80 text-white',
-    };
-  }
-
-  if (availability.requestStatus === 'pending') {
-    return {
-      label: t?.('status.requested') ?? 'Requested',
-      icon: Clock,
-      bgClass: 'bg-ndp-warning/80 text-white',
-    };
-  }
-
-  if (availability.requestStatus === 'approved') {
-    return {
-      label: t?.('status.processing') ?? 'Processing',
-      icon: Clock,
-      bgClass: 'bg-ndp-accent/80 text-white',
-    };
-  }
-
-  return null;
 }
 
 export function MediaCardSkeleton({ className }: Readonly<{ className?: string }>) {

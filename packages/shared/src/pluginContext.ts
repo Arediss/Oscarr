@@ -7,6 +7,7 @@
  *  backwards-compatible; removals are breaking changes. Treat this file as a contract. */
 
 import type { TmdbMedia } from './tmdb.js';
+import type { MediaStateCategory } from './mediaState.js';
 
 // ─── Media / Requests projections ───────────────────────────────────
 
@@ -21,8 +22,8 @@ export interface PluginMedia {
   title: string;
   /** Poster path as stored (relative TMDB path — plugins can build full URLs themselves). */
   posterPath: string | null;
-  /** Oscarr-side status, normalised: pending | searching | processing | available. */
-  status: string;
+  /** Canonical media category (closed MediaStateCategory vocabulary). */
+  statusCategory: MediaStateCategory;
 }
 
 /** Subset of `MediaRequest` + its Media relation, exposed to plugins. Omits approvedById,
@@ -42,8 +43,8 @@ export interface PluginMediaRequest {
 export type PluginMediaBatchKey = `${'movie' | 'tv'}:${number}`;
 
 export interface PluginMediaBatchStatus {
-  /** Canonical Oscarr media status (matches `PluginMedia.status`). */
-  status: string;
+  /** Canonical media category (closed MediaStateCategory vocabulary). */
+  statusCategory: MediaStateCategory;
   /** The requesting user's current request status for this media, if any. Null when the user
    *  hasn't requested it (used by `ctx.media.batchStatus` only when a userId is passed). */
   userRequestStatus: string | null;

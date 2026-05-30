@@ -70,7 +70,7 @@ export default function DiscoverGenrePage() {
       const type = item.media_type || (item.title ? 'movie' : 'tv');
       const key = `${type}:${item.id}`;
       if (!(key in statuses)) return false;
-      return statuses[key].status === 'unknown';
+      return statuses[key].statusCategory === 'UNAVAILABLE';
     });
   }, [results, filters.hideRequested, statuses]);
 

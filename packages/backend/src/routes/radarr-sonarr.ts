@@ -142,7 +142,7 @@ export async function radarrSonarrRoutes(app: FastifyInstance) {
       return {
         radarr: {
           totalMovies: radarrMedia.length,
-          moviesWithFiles: radarrMedia.filter(m => m.status === 'available').length,
+          moviesWithFiles: radarrMedia.filter(m => m.statusCategory === 'AVAILABLE').length,
           monitoredMovies: radarrMedia.length, // All synced media is monitored by definition in getAllMedia
           totalSizeOnDisk: 0, // Not available via normalized interface
         },

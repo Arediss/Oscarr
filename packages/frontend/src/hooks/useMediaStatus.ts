@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import type { TmdbMedia } from '@/types';
+import type { MediaStateCategory, RequestStatus } from '@oscarr/shared';
 
 interface MediaStatus {
-  status: string;
-  requestStatus?: string;
+  statusCategory: MediaStateCategory;
+  requestStatus?: RequestStatus;
 }
 
 type StatusMap = Record<string, MediaStatus>;
@@ -34,7 +35,7 @@ async function sendBatch(items: { tmdbId: number; mediaType: string }[]) {
   for (const item of items) {
     const key = `${item.mediaType}:${item.tmdbId}`;
     if (!(key in data)) {
-      globalCache[key] = { status: 'unknown' };
+      globalCache[key] = { statusCategory: 'UNAVAILABLE' };
       cacheTimes[key] = now;
     }
   }
@@ -78,9 +79,9 @@ export function invalidateMediaStatus(tmdbId: number, mediaType: string) {
 }
 
 /** Update cache for a specific media with a known status (avoids stale data on back navigation) */
-export function updateMediaStatusCache(tmdbId: number, mediaType: string, status: string, requestStatus?: string) {
+export function updateMediaStatusCache(tmdbId: number, mediaType: string, statusCategory: MediaStateCategory, requestStatus?: RequestStatus) {
   const key = `${mediaType}:${tmdbId}`;
-  globalCache[key] = { status, requestStatus };
+  globalCache[key] = { statusCategory, requestStatus };
   cacheTimes[key] = Date.now();
   listeners.forEach((cb) => cb());
 }

@@ -78,7 +78,22 @@ export async function webhookRoutes(app: FastifyInstance) {
     }
 
     if (event.type === 'grab') {
-      logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" grabbed for download`);
+      // Grab = *arr started downloading → PROCESSING (+ backfill the internal id if missing).
+      const mediaType = client.mediaType;
+      const media = await findMediaByExternalId(mediaType, event.externalId);
+      if (media && media.statusCategory !== 'AVAILABLE') {
+        const arrIdField = serviceType === 'radarr' ? 'radarrId' : serviceType === 'sonarr' ? 'sonarrId' : null;
+        await prisma.media.update({
+          where: { id: media.id },
+          data: {
+            statusCategory: 'PROCESSING',
+            ...(arrIdField && event.internalId !== undefined && event.internalId > 0 && (media as Record<string, unknown>)[arrIdField] == null
+              ? { [arrIdField]: event.internalId }
+              : {}),
+          },
+        }).catch((err) => logEvent('warn', 'Webhook', `grab → PROCESSING failed for media ${media.id}: ${String(err)}`));
+      }
+      logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" grabbed → processing`);
       return reply.send({ ok: true });
     }
 
@@ -106,7 +121,7 @@ export async function webhookRoutes(app: FastifyInstance) {
             ...(mediaType === 'tv' ? { tvdbId: event.externalId } : {}),
             mediaType,
             title: enriched?.title ?? sanitize(event.title),
-            status: 'searching',
+            statusCategory: 'SEARCHING',
             posterPath: enriched?.posterPath ?? null,
             backdropPath: enriched?.backdropPath ?? null,
             qualityProfileId: enriched?.qualityProfileId ?? null,
@@ -123,7 +138,7 @@ export async function webhookRoutes(app: FastifyInstance) {
                 mediaId: created.id,
                 seasonNumber: s.seasonNumber,
                 episodeCount: s.totalEpisodeCount,
-                status: s.status,
+                statusCategory: s.statusCategory,
               })),
           }).catch((err) => {
             logEvent('warn', 'Webhook', `Season backfill failed for media ${created.id}: ${String(err)}`);
@@ -138,10 +153,10 @@ export async function webhookRoutes(app: FastifyInstance) {
       const mediaType = client.mediaType;
       const media = await findMediaByExternalId(mediaType, event.externalId);
 
-      if (media?.status === 'available') {
+      if (media?.statusCategory === 'AVAILABLE') {
         await prisma.media.update({
           where: { id: media.id },
-          data: { status: 'deleted' },
+          data: { statusCategory: 'UNAVAILABLE' },
         });
         logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" deleted from service`);
         logEvent('debug', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" deleted`);
@@ -159,7 +174,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       }
 
       // Promote to available if not already
-      if (media.status !== 'available') {
+      if (media.statusCategory !== 'AVAILABLE') {
         await promoteMediaToAvailable(media.id, !!media.availableAt);
         sendAvailabilityNotifications(
           media.title || sanitize(event.title),

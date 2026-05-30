@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { MediaStateCategory } from '@oscarr/shared';
 
 // ─── Arr Client Shared Types ────────────────────────────────────────
 
@@ -16,7 +17,7 @@ export interface ArrMediaItem {
    *  placeholder, so home-page batch-status queries (which key by positive tmdbId) match. */
   tmdbId?: number;
   title: string;
-  status: string;
+  statusCategory: MediaStateCategory;
   posterPath: string | null;
   backdropPath: string | null;
   qualityProfileId: number;
@@ -32,7 +33,7 @@ export interface ArrSeasonItem {
   episodeFileCount: number;
   totalEpisodeCount: number;
   percentComplete: number;
-  status: string;
+  statusCategory: MediaStateCategory;
 }
 
 export interface ArrAvailabilityResult {

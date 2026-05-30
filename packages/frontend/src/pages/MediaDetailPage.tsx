@@ -88,10 +88,10 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     resetOnNavigation();
   }, [id, type]);
 
-  const isAvailable = dbMedia?.status === 'available' || inLibrary;
-  const isPartiallyAvailable = !isAvailable && dbMedia?.status === 'processing' && type === 'tv';
-  const isUpcoming = dbMedia?.status === 'upcoming';
-  const isSearching = dbMedia?.status === 'searching';
+  const isAvailable = dbMedia?.statusCategory === 'AVAILABLE' || inLibrary;
+  const isPartiallyAvailable = !isAvailable && dbMedia?.statusCategory === 'PROCESSING' && type === 'tv';
+  const isUpcoming = dbMedia?.statusCategory === 'UPCOMING';
+  const isSearching = dbMedia?.statusCategory === 'SEARCHING';
   const isDownloading = !!download;
   const activeRequests = dbMedia?.requests?.filter(
     (r) => (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(r.status)

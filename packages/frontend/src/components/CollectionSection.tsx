@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Check, Loader2, Plus, Film } from 'lucide-react';
 import { clsx } from 'clsx';
 import api, { posterUrl } from '@/lib/api';
-import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
+import { ACTIVE_REQUEST_STATUSES, type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
+import { MediaStateBadge } from '@/utils/mediaStateDisplay';
 import type { TmdbMedia } from '@/types';
 
 interface Props {
@@ -14,7 +15,7 @@ interface Props {
 export default function CollectionSection({ collection }: Readonly<Props>) {
   const { t } = useTranslation();
   const [parts, setParts] = useState<TmdbMedia[]>([]);
-  const [statuses, setStatuses] = useState<Record<string, { status: string; requestStatus?: string }>>({});
+  const [statuses, setStatuses] = useState<Record<string, { statusCategory: MediaStateCategory; requestStatus?: RequestStatus }>>({});
   const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
   const [result, setResult] = useState<{ requested: number; skipped: number; total: number } | null>(null);
@@ -46,10 +47,10 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
     finally { setRequesting(false); }
   };
 
-  const availableCount = parts.filter((p) => statuses[`movie:${p.id}`]?.status === 'available').length;
+  const availableCount = parts.filter((p) => statuses[`movie:${p.id}`]?.statusCategory === 'AVAILABLE').length;
   const handledCount = parts.filter((p) => {
     const s = statuses[`movie:${p.id}`];
-    return s?.status === 'available' || (s?.requestStatus && (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(s.requestStatus));
+    return s?.statusCategory === 'AVAILABLE' || (s?.requestStatus && (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(s.requestStatus));
   }).length;
   const totalCount = parts.length;
   const allHandled = totalCount > 0 && handledCount === totalCount;
@@ -94,7 +95,7 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
         <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
           {parts.map((movie) => {
             const status = statuses[`movie:${movie.id}`];
-            const isAvail = status?.status === 'available';
+            const isAvail = status?.statusCategory === 'AVAILABLE';
             const isRequested = !isAvail && status?.requestStatus && (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(status.requestStatus);
             return (
               <Link key={movie.id} to={`/movie/${movie.id}`} className="flex-shrink-0 w-[120px] group">
@@ -104,21 +105,7 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
                   ) : (
                     <div className="w-full h-full flex items-center justify-center"><Film className="w-6 h-6 text-ndp-text-dim" /></div>
                   )}
-                  {isAvail && (
-                    <div className="absolute top-1.5 right-1.5 bg-ndp-success/80 rounded-full p-0.5">
-                      <Check className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                  {isRequested && (
-                    <div className="absolute top-1.5 right-1.5 bg-ndp-accent/80 rounded-full p-0.5">
-                      <Loader2 className="w-3 h-3 text-white" />
-                    </div>
-                  )}
-                  {status && !isAvail && !isRequested && status.status !== 'unknown' && (
-                    <div className="absolute top-1.5 right-1.5 bg-ndp-warning/80 rounded-full p-0.5">
-                      <Plus className="w-3 h-3 text-white" />
-                    </div>
-                  )}
+                  <MediaStateBadge availability={status} mediaType="movie" className="absolute top-1.5 right-1.5" />
                 </div>
                 <p className="text-xs text-ndp-text-muted truncate">{movie.title}</p>
               </Link>

@@ -90,6 +90,8 @@
   "status.upcoming": "Prochainement",
   "status.failed": "Échec",
   "status.partial": "Partiel",
+  "status.unavailable": "Disponible à demander",
+  "status.blocked": "Bloqué",
   "status.requested": "Demandé",
   "status.downloading": "Téléchargement {{progress}}%",
   "status.searching_long": "Recherche en cours",

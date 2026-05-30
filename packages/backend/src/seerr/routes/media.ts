@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { buildSeerrMedia } from '../adapters/media.js';
-import { mapMediaStatus } from '../adapters/statusMap.js';
 
 const DEFAULT_TAKE = 10;
 const MAX_TAKE = 100;
@@ -21,7 +20,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       const where: Record<string, unknown> = {};
 
       const filterStatus = mapFilterToOscarrStatus(request.query.filter);
-      if (filterStatus) where.status = filterStatus;
+      if (filterStatus) where.statusCategory = filterStatus;
 
       const [results, totalResults] = await Promise.all([
         prisma.media.findMany({ where, orderBy: { [sort]: 'desc' }, take, skip }),
@@ -60,29 +59,26 @@ export async function mediaRoutes(app: FastifyInstance) {
 
   // Tip clients that ask for status counts grouped by Overseerr's MediaStatus enum.
   app.get('/media/count', async () => {
-    const groups = await prisma.media.groupBy({ by: ['status'], _count: { _all: true } });
+    const groups = await prisma.media.groupBy({ by: ['statusCategory'], _count: { _all: true } });
     const byStatus = new Map<string, number>();
-    for (const g of groups) byStatus.set(g.status, g._count._all);
+    for (const g of groups) byStatus.set(g.statusCategory, g._count._all);
     return {
       total: [...byStatus.values()].reduce((a, b) => a + b, 0),
-      pending:    byStatus.get('pending') ?? 0,
-      processing: byStatus.get('processing') ?? 0,
-      available:  byStatus.get('available') ?? 0,
-      deleted:    byStatus.get('deleted') ?? 0,
+      pending:    byStatus.get('UPCOMING') ?? 0,
+      processing: (byStatus.get('PROCESSING') ?? 0) + (byStatus.get('SEARCHING') ?? 0),
+      available:  byStatus.get('AVAILABLE') ?? 0,
+      deleted:    byStatus.get('UNAVAILABLE') ?? 0,
     };
   });
 
-  // Suppress unused-import warning while we still want the helper available for richer filtering
-  // (e.g. status >= AVAILABLE) once we extend the filter map.
-  void mapMediaStatus;
 }
 
 function mapFilterToOscarrStatus(filter: string | undefined): string | null {
   switch (filter) {
-    case 'available':           return 'available';
-    case 'processing':          return 'processing';
-    case 'pending':             return 'pending';
-    case 'deleted':             return 'deleted';
+    case 'available':           return 'AVAILABLE';
+    case 'processing':          return 'PROCESSING';
+    case 'pending':             return 'UPCOMING';
+    case 'deleted':             return 'UNAVAILABLE';
     default:                    return null;
   }
 }

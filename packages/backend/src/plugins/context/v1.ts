@@ -408,10 +408,10 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           where: {
             OR: items.map(i => ({ tmdbId: i.tmdbId, mediaType: i.mediaType })),
           },
-          select: { id: true, tmdbId: true, mediaType: true, status: true },
+          select: { id: true, tmdbId: true, mediaType: true, statusCategory: true },
         });
-        const mediaByKey = new Map<string, { id: number; status: string }>();
-        for (const m of mediaRows) mediaByKey.set(`${m.mediaType}:${m.tmdbId}`, { id: m.id, status: m.status });
+        const mediaByKey = new Map<string, { id: number; statusCategory: string }>();
+        for (const m of mediaRows) mediaByKey.set(`${m.mediaType}:${m.tmdbId}`, { id: m.id, statusCategory: m.statusCategory });
 
         const userRequestsByMediaId = new Map<number, string>();
         if (userId !== undefined && mediaRows.length > 0) {
@@ -436,7 +436,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           const m = mediaByKey.get(key);
           const userStatus = m ? userRequestsByMediaId.get(m.id) ?? null : null;
           out[key] = {
-            status: m?.status ?? 'unknown',
+            statusCategory: (m?.statusCategory ?? 'UNAVAILABLE') as PluginMediaBatchStatus['statusCategory'],
             userRequestStatus: userStatus,
             userHasActiveRequest: userStatus !== null,
           };
@@ -447,7 +447,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
         req('requests:read', 'media.getById');
         const row = await prisma.media.findUnique({
           where: { id: mediaId },
-          select: { id: true, tmdbId: true, tvdbId: true, mediaType: true, title: true, posterPath: true, status: true },
+          select: { id: true, tmdbId: true, tvdbId: true, mediaType: true, title: true, posterPath: true, statusCategory: true },
         });
         if (!row) return null;
         return {
@@ -457,7 +457,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           mediaType: row.mediaType as 'movie' | 'tv',
           title: row.title,
           posterPath: row.posterPath,
-          status: row.status,
+          statusCategory: row.statusCategory as PluginMedia['statusCategory'],
         } satisfies PluginMedia;
       },
     },
@@ -474,7 +474,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           take: limit,
           select: {
             id: true, userId: true, mediaType: true, seasons: true, status: true, createdAt: true,
-            media: { select: { id: true, tmdbId: true, tvdbId: true, mediaType: true, title: true, posterPath: true, status: true } },
+            media: { select: { id: true, tmdbId: true, tvdbId: true, mediaType: true, title: true, posterPath: true, statusCategory: true } },
           },
         });
         return rows.map((r): PluginMediaRequest => ({
@@ -491,7 +491,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
             mediaType: r.media.mediaType as 'movie' | 'tv',
             title: r.media.title,
             posterPath: r.media.posterPath,
-            status: r.media.status,
+            statusCategory: r.media.statusCategory as PluginMedia['statusCategory'],
           },
         }));
       },

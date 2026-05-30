@@ -1,7 +1,6 @@
-// Closed business enum. Customisable MediaStateOption.key values map to one of these.
+// Closed canonical vocabulary. Each connector's resolveState produces one of these.
 export const MEDIA_STATE_CATEGORIES = [
   'UNAVAILABLE',
-  'PENDING_DECISION',
   'UPCOMING',
   'SEARCHING',
   'PROCESSING',
@@ -36,10 +35,21 @@ export function isMediaStateCategory(value: unknown): value is MediaStateCategor
   return typeof value === 'string' && (MEDIA_STATE_CATEGORIES as readonly string[]).includes(value);
 }
 
-export function isColorToken(value: unknown): value is ColorToken {
-  return typeof value === 'string' && (COLOR_TOKENS as readonly string[]).includes(value);
+export interface MediaStateDisplay {
+  /** i18n key, e.g. 'status.available'. */
+  labelKey: string;
+  colorToken: ColorToken;
+  iconName: IconName;
+  /** Default request-CTA policy for this category. */
+  showsRequestCTA: boolean;
 }
 
-export function isIconName(value: unknown): value is IconName {
-  return typeof value === 'string' && (ICON_NAMES as readonly string[]).includes(value);
-}
+// One entry per category (the Record enforces exhaustiveness).
+export const MEDIA_STATE_DISPLAY: Record<MediaStateCategory, MediaStateDisplay> = {
+  UNAVAILABLE: { labelKey: 'status.unavailable', colorToken: 'muted',   iconName: 'HelpCircle',    showsRequestCTA: true  },
+  UPCOMING:    { labelKey: 'status.upcoming',    colorToken: 'info',    iconName: 'CalendarClock', showsRequestCTA: false },
+  SEARCHING:   { labelKey: 'status.searching',   colorToken: 'accent',  iconName: 'Search',        showsRequestCTA: false },
+  PROCESSING:  { labelKey: 'status.processing',  colorToken: 'accent',  iconName: 'Loader2',       showsRequestCTA: false },
+  AVAILABLE:   { labelKey: 'status.available',   colorToken: 'success', iconName: 'CheckCircle',   showsRequestCTA: false },
+  BLACKLISTED: { labelKey: 'status.blocked',     colorToken: 'danger',  iconName: 'Ban',           showsRequestCTA: false },
+};

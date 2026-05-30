@@ -2,6 +2,7 @@ import axios, { type AxiosInstance } from 'axios';
 import type { ArrClient, ArrTag, ArrQualityProfile, ArrRootFolder, ArrMediaItem, ArrAvailabilityResult, ArrHistoryEntry, ArrAddMediaOptions, ArrEpisode, ArrWebhookEvent } from '../types.js';
 import { extractImageFromArr } from '../types.js';
 import type { SonarrSeries, SonarrSeason, SonarrQueueItem, SonarrEpisode, SonarrEpisodeFile, SonarrHistoryRecord } from './types.js';
+import type { MediaStateCategory } from '@oscarr/shared';
 import { logEvent } from '../../utils/logEvent.js';
 import { attachAxiosRetry } from '../../utils/fetchWithRetry.js';
 
@@ -170,30 +171,31 @@ export class SonarrClient implements ArrClient {
 
   // ─── Normalized interface methods ─────────────────────────────────
 
-  private getSeriesStatus(show: SonarrSeries): string {
-    const stats = show.statistics;
-    if (!stats) return 'unknown';
-    if (stats.percentOfEpisodes >= 100) return 'available';
-    if (stats.episodeFileCount > 0) return 'processing';
-    if (show.monitored) return 'pending';
-    return 'unknown';
+  /** Maps native Sonarr state to the Oscarr vocabulary. Reused for series and seasons. */
+  private resolveState(
+    stats: { percentOfEpisodes: number; episodeFileCount: number } | undefined,
+    monitored: boolean,
+    inActiveQueue: boolean,
+    nativeStatus?: string,
+  ): MediaStateCategory {
+    if (stats && stats.percentOfEpisodes >= 100) return 'AVAILABLE';
+    if (inActiveQueue) return 'PROCESSING';
+    if (stats && stats.episodeFileCount > 0) return 'PROCESSING';
+    if (nativeStatus === 'upcoming') return 'UPCOMING';
+    if (monitored) return 'SEARCHING';
+    return 'UNAVAILABLE';
   }
 
-  private getSeasonStatus(season: { monitored: boolean; statistics?: { percentOfEpisodes: number; episodeFileCount: number } }): string {
-    if (!season.statistics) return 'unknown';
-    if (season.statistics.percentOfEpisodes >= 100) return 'available';
-    if (season.statistics.episodeFileCount > 0) return 'processing';
-    if (season.monitored) return 'pending';
-    return 'unknown';
-  }
-
-  private seriesToArrItem(show: SonarrSeries): ArrMediaItem {
+  private seriesToArrItem(
+    show: SonarrSeries,
+    active: { seriesIds: ReadonlySet<number>; seasonKeys: ReadonlySet<string> },
+  ): ArrMediaItem {
     return {
       serviceMediaId: show.id,
       externalId: show.tvdbId,
       tmdbId: show.tmdbId && show.tmdbId > 0 ? show.tmdbId : undefined,
       title: show.title,
-      status: this.getSeriesStatus(show),
+      statusCategory: this.resolveState(show.statistics, show.monitored, active.seriesIds.has(show.id), show.status),
       posterPath: extractImageFromArr(show.images, 'poster'),
       backdropPath: extractImageFromArr(show.images, 'fanart'),
       qualityProfileId: show.qualityProfileId,
@@ -208,20 +210,36 @@ export class SonarrClient implements ArrClient {
           episodeFileCount: s.statistics?.episodeFileCount ?? 0,
           totalEpisodeCount: s.statistics?.totalEpisodeCount ?? 0,
           percentComplete: s.statistics?.percentOfEpisodes ?? 0,
-          status: this.getSeasonStatus(s),
+          statusCategory: this.resolveState(s.statistics, s.monitored, active.seasonKeys.has(`${show.id}:${s.seasonNumber}`)),
         })),
     };
   }
 
+  /** Sonarr download queue → active series ids + seriesId:seasonNumber keys (⇒ PROCESSING). */
+  private async getActiveQueue(): Promise<{ seriesIds: Set<number>; seasonKeys: Set<string> }> {
+    try {
+      const { records } = await this.getQueue();
+      const seriesIds = new Set<number>();
+      const seasonKeys = new Set<string>();
+      for (const r of records) {
+        seriesIds.add(r.seriesId);
+        if (r.episode?.seasonNumber != null) seasonKeys.add(`${r.seriesId}:${r.episode.seasonNumber}`);
+      }
+      return { seriesIds, seasonKeys };
+    } catch {
+      return { seriesIds: new Set(), seasonKeys: new Set() };
+    }
+  }
+
   async getAllMedia(): Promise<ArrMediaItem[]> {
-    const series = await this.getSeries();
-    return series.map((s) => this.seriesToArrItem(s));
+    const [series, active] = await Promise.all([this.getSeries(), this.getActiveQueue()]);
+    return series.map((s) => this.seriesToArrItem(s, active));
   }
 
   async getMediaById(serviceMediaId: number): Promise<ArrMediaItem | null> {
     try {
-      const series = await this.getSeriesById(serviceMediaId);
-      return series ? this.seriesToArrItem(series) : null;
+      const [series, active] = await Promise.all([this.getSeriesById(serviceMediaId), this.getActiveQueue()]);
+      return series ? this.seriesToArrItem(series, active) : null;
     } catch (err) {
       if ((err as { response?: { status?: number } })?.response?.status === 404) return null;
       throw err;

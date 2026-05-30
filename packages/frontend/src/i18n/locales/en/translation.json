@@ -91,6 +91,8 @@
   "status.upcoming": "Upcoming",
   "status.failed": "Failed",
   "status.partial": "Partial",
+  "status.unavailable": "Available to request",
+  "status.blocked": "Blocked",
   "status.requested": "Requested",
   "status.downloading": "Downloading {{progress}}%",
   "status.searching_long": "Searching...",

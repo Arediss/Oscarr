@@ -97,13 +97,11 @@ model Media {
   genres              String?   // JSON string array
   keywordIds          String?   // JSON array of TMDB keyword IDs, e.g. "[210024,818]"
   contentRating       String?   // Content rating from TMDB (e.g. "TV-MA", "18", "R")
-  status              String    @default("unknown") // KEEP during migration window
-  statusKey           String    @default("unknown")
   statusCategory      String    @default("UNAVAILABLE")
   radarrId            Int?
   sonarrId            Int?
   qualityProfileId    Int?      // Quality profile ID from Radarr/Sonarr
-  availableAt         DateTime? // Set when status transitions to "available"
+  availableAt         DateTime? // Set when statusCategory becomes AVAILABLE
   lastMissingSearchAt DateTime? // Last time a missing episode search was triggered
   lastEpisodeInfo     String?   // JSON: latest episode added (e.g. {"season":2,"episode":5,"title":"..."})
   audioLanguages      String?   // JSON array of normalized audio languages, cached when available
@@ -116,12 +114,10 @@ model Media {
 
   @@unique([tmdbId, mediaType])
   @@index([tvdbId])
-  @@index([status])
   @@index([availableAt])
   @@index([radarrId])
   @@index([sonarrId])
   @@index([contentRating])
-  @@index([status, availableAt])
   @@index([statusCategory])
   @@index([statusCategory, availableAt])
 }
@@ -131,7 +127,7 @@ model Season {
   mediaId       Int
   seasonNumber  Int
   episodeCount  Int       @default(0)
-  status        String    @default("unknown") // "unknown" | "pending" | "available"
+  statusCategory String   @default("UNAVAILABLE")
 
   media         Media     @relation(fields: [mediaId], references: [id], onDelete: Cascade)
 
@@ -395,36 +391,4 @@ model PluginLog {
   @@index([pluginId, createdAt])
 }
 
-model MediaStateOption {
-  id              Int      @id @default(autoincrement())
-  key             String   @unique
-  category        String
-  label           String
-  description     String?
-  position        Int      @default(0)
-  colorToken      String
-  iconName        String
-  showsRequestCTA Boolean  @default(false)
-  seerrCode       Int
-  isBuiltin       Boolean  @default(false)
-  isFallback      Boolean  @default(false)
-  createdAt       DateTime @default(now())
-
-  mappings        MediaStateMapping[]
-}
-
-model MediaStateMapping {
-  id                  Int      @id @default(autoincrement())
-  mediaStateOptionId  Int
-  serviceType         String
-  matchArrStatus      String?
-  matchMonitored      Boolean?
-  matchHasFile        Boolean?
-  matchInActiveQueue  Boolean?
-  priority            Int      @default(0)
-
-  mediaStateOption    MediaStateOption @relation(fields: [mediaStateOptionId], references: [id], onDelete: Cascade)
-
-  @@unique([serviceType, matchArrStatus, matchMonitored, matchHasFile, matchInActiveQueue])
-  @@index([serviceType, priority])
-}
+// Status-to-category mapping lives in each connector (resolveState), not in the DB.

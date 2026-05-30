@@ -1,3 +1,5 @@
+import type { MediaStateCategory } from '@oscarr/shared';
+
 export interface UserProviderInfo {
   provider: string;
   username?: string | null;
@@ -66,7 +68,7 @@ export interface Media {
   releaseDate: string | null;
   voteAverage: number | null;
   genres: string | null;
-  status: string;
+  statusCategory: MediaStateCategory;
   radarrId: number | null;
   sonarrId: number | null;
   contentRating: string | null;
@@ -79,7 +81,7 @@ export interface Season {
   mediaId: number;
   seasonNumber: number;
   episodeCount: number;
-  status: string;
+  statusCategory: MediaStateCategory;
 }
 
 export interface MediaRequest {

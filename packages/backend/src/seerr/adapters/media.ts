@@ -47,7 +47,7 @@ export function buildSeerrMedia(media: Media): SeerrMediaInfo {
     tmdbId: media.tmdbId,
     tvdbId: media.tvdbId,
     imdbId: null,
-    status: mapMediaStatus(media.status),
+    status: mapMediaStatus(media.statusCategory),
     // Oscarr doesn't track a separate 4k pipeline; report UNKNOWN so 4k-aware UIs hide that column.
     status4k: 1,
     createdAt: media.createdAt.toISOString(),

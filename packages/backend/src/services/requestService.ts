@@ -397,10 +397,10 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
 
     // Post-send writes go through a single transaction so the request status and the media
     // status flip can't drift if the process crashes between them.
-    if (sent && media.status !== 'available' && media.status !== 'processing') {
+    if (sent && media.statusCategory !== 'AVAILABLE' && media.statusCategory !== 'PROCESSING') {
       await prisma.media.update({
         where: { id: media.id },
-        data: { status: 'searching' },
+        data: { statusCategory: 'SEARCHING' },
       }).catch((err) => {
         logEvent('warn', 'Request', `Status-flip to 'searching' failed for media ${media.id} (request ${mediaRequest.id}): ${String(err)}`);
       });
@@ -467,7 +467,7 @@ export async function requestCollectionMovie(
   const dbMedia = await prisma.media.findUnique({
     where: { tmdbId_mediaType: { tmdbId: movieTmdbId, mediaType: 'movie' } },
   });
-  if (dbMedia?.status === 'available') return false;
+  if (dbMedia?.statusCategory === 'AVAILABLE') return false;
 
   const media = dbMedia ?? await findOrCreateMedia(movieTmdbId, 'movie');
 
@@ -509,7 +509,7 @@ export async function promoteStaleStatuses(): Promise<void> {
     () => prisma.mediaRequest.updateMany({
       where: {
         status: { in: [...COMPLETABLE_REQUEST_STATUSES] },
-        media: { status: 'available' },
+        media: { statusCategory: 'AVAILABLE' },
       },
       data: { status: 'available' },
     }),

@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
 import { useDownloadForMedia, useOnDownloadComplete } from '@/hooks/useDownloads';
 import { invalidateMediaStatus, updateMediaStatusCache } from '@/hooks/useMediaStatus';
+import type { MediaStateCategory } from '@oscarr/shared';
 import type { TmdbMedia, Media } from '@/types';
 
 interface SonarrSeason {
@@ -50,15 +51,15 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
     if (data.id) setDbMedia(data as unknown as Media);
     if (data.sonarrSeasons) setSonarrSeasons(data.sonarrSeasons as SonarrSeason[]);
     if (data.inLibrary) setInLibrary(true);
-    if (data.status === 'available' && !data.id) setInLibrary(true);
+    if (data.statusCategory === 'AVAILABLE' && !data.id) setInLibrary(true);
     if (data.activeQualityOptionIds) setActiveQualityOptionIds(data.activeQualityOptionIds as number[]);
     if (data.audioLanguages) setAudioLanguages(data.audioLanguages as string[]);
     if (data.subtitleLanguages) setSubtitleLanguages(data.subtitleLanguages as string[]);
     if (data.nsfw && id) addNsfwIds([Number.parseInt(id, 10)]);
     // Update global status cache so list pages reflect the latest state on back navigation
-    if (data.status && id) {
+    if (data.statusCategory && id) {
       const tmdbId = Number.parseInt(id, 10);
-      if (tmdbId) updateMediaStatusCache(tmdbId, type, data.status as string);
+      if (tmdbId) updateMediaStatusCache(tmdbId, type, data.statusCategory as MediaStateCategory);
     }
   }, [id, type, addNsfwIds]);
 
@@ -133,7 +134,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
       api.get(`/media/tmdb/${capturedId}/${type}`).then(({ data }) => {
         if (id !== capturedId) return;
         applyDbData(data);
-        if (data.status !== 'available' && !data.inLibrary && retries < 3) {
+        if (data.statusCategory !== 'AVAILABLE' && !data.inLibrary && retries < 3) {
           retries++;
           retryTimerRef.current = setTimeout(check, 5000);
         }

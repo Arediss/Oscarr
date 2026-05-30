@@ -27,11 +27,13 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
     if (since) {
       const newlyAdded = allMedia.filter(m => m.addedDate && new Date(m.addedDate) > since);
       // Items with file that aren't marked available in DB
-      const availableItems = allMedia.filter(m => m.status === 'available');
+      const availableItems = allMedia.filter(m => m.statusCategory === 'AVAILABLE');
       const availableExternalIds = new Set(availableItems.map(m => m.externalId));
+      // Always refresh in-progress items (queue / partial) so PROCESSING + the *arr id land within one cycle, even without a webhook.
+      const inProgressItems = allMedia.filter(m => m.statusCategory === 'PROCESSING');
 
       const notAvailableInDb = await prisma.media.findMany({
-        where: { mediaType: client.mediaType, status: { in: ['unknown', 'pending', 'searching', 'processing', 'upcoming'] } },
+        where: { mediaType: client.mediaType, statusCategory: { in: ['UNAVAILABLE', 'UPCOMING', 'SEARCHING', 'PROCESSING'] } },
         select: { tmdbId: true, tvdbId: true },
       });
 
@@ -43,7 +45,7 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
 
       const toUpdate = availableItems.filter(m => needsUpdateIds.has(m.externalId));
       const combined = new Map<number, ArrMediaItem>();
-      for (const m of [...newlyAdded, ...toUpdate]) combined.set(m.externalId, m);
+      for (const m of [...newlyAdded, ...toUpdate, ...inProgressItems]) combined.set(m.externalId, m);
       filtered = [...combined.values()];
 
       if (needsUpdateIds.size > 0) {
@@ -94,7 +96,7 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
             mediaId: p.mediaId,
             seasonNumber: s.seasonNumber,
             episodeCount: s.totalEpisodeCount,
-            status: s.status,
+            statusCategory: s.statusCategory,
           })),
       );
       await prisma.$transaction([
@@ -175,10 +177,10 @@ async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void>
         title: item.title,
         posterPath: item.posterPath,
         backdropPath: item.backdropPath,
-        status: item.status,
+        statusCategory: item.statusCategory,
         radarrId: item.serviceMediaId,
         qualityProfileId: item.qualityProfileId,
-        ...(item.status === 'available' ? { availableAt: new Date() } : {}),
+        ...(item.statusCategory === 'AVAILABLE' ? { availableAt: new Date() } : {}),
       },
     });
     return;
@@ -193,10 +195,10 @@ async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void>
       title: item.title,
       posterPath: item.posterPath,
       backdropPath: item.backdropPath,
-      status: item.status,
+      statusCategory: item.statusCategory,
       sonarrId: item.serviceMediaId,
       qualityProfileId: item.qualityProfileId,
-      ...(item.status === 'available' ? { availableAt: new Date() } : {}),
+      ...(item.statusCategory === 'AVAILABLE' ? { availableAt: new Date() } : {}),
     },
   });
   if (item.seasons?.length) {
@@ -207,7 +209,7 @@ async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void>
           mediaId: created.id,
           seasonNumber: s.seasonNumber,
           episodeCount: s.totalEpisodeCount,
-          status: s.status,
+          statusCategory: s.statusCategory,
         })),
     });
   }
@@ -249,7 +251,7 @@ async function mergeIntoCanonical(
       mediaId: canonicalId,
       seasonNumber: s.seasonNumber,
       episodeCount: s.totalEpisodeCount,
-      status: s.status,
+      statusCategory: s.statusCategory,
     }));
   const { tmdbId: _drop, ...mergeData } = updateData;
 
@@ -297,9 +299,9 @@ async function processSingleMedia(
     return 'added';
   }
 
-  const becameAvailable = item.status === 'available' && existing.status !== 'available';
+  const becameAvailable = item.statusCategory === 'AVAILABLE' && existing.statusCategory !== 'AVAILABLE';
   if (becameAvailable) {
-    logEvent('debug', 'Sync', `"${item.title}" (${client.serviceType}:${item.externalId}) status: ${existing.status} -> ${item.status}`);
+    logEvent('debug', 'Sync', `"${item.title}" (${client.serviceType}:${item.externalId}) status: ${existing.statusCategory} -> ${item.statusCategory}`);
     sendAvailabilityNotifications(
       existing.title || item.title,
       client.mediaType,
@@ -311,7 +313,7 @@ async function processSingleMedia(
 
   const updateData: Record<string, unknown> = {
     [client.dbIdField]: item.serviceMediaId,
-    status: item.status,
+    statusCategory: item.statusCategory,
     qualityProfileId: item.qualityProfileId,
     title: existing.title || item.title,
     ...(item.posterPath && !existing.posterPath ? { posterPath: item.posterPath } : {}),

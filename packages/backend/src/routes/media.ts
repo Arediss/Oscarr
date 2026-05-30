@@ -4,10 +4,10 @@ import { getArrClient } from '../providers/index.js';
 import { parseId, parsePage, VALID_MEDIA_TYPES } from '../utils/params.js';
 import { isMatureRating } from '../services/tmdb.js';
 import { normalizeLanguages } from '../utils/languages.js';
-import { performLiveCheckWithTimeout, cacheLanguageData, promoteMediaToAvailable, canSkipLiveCheck } from '../services/mediaService.js';
-import { transitionRequestStatus } from '../services/requestStatusTransition.js';
+import { performLiveCheckWithTimeout, cacheLanguageData, refreshMediaCategory, canSkipLiveCheck } from '../services/mediaService.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { Availability } from '@oscarr/shared';
+import { buildAvailability, loadBlacklistedKeys } from '../services/availability.js';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
 function parseEpisodeInfo(raw: string): { season: number; episode: number; title: string } | null {
@@ -45,7 +45,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 
     const where: Record<string, unknown> = {};
     if (mediaType && VALID_MEDIA_TYPES.includes(mediaType)) where.mediaType = mediaType;
-    if (status) where.status = status;
+    if (status) where.statusCategory = status;
 
     const [media, total] = await Promise.all([
       prisma.media.findMany({
@@ -149,7 +149,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 
     // ── Phase 2: Live check Radarr/Sonarr (with timeout) ────────────
     // Skipped when DB state is fresh — pending/processing still hit to catch transitions fast.
-    const skipLive = canSkipLiveCheck(media?.status, media?.availableAt ?? null);
+    const skipLive = canSkipLiveCheck(media?.statusCategory, media?.availableAt ?? null);
     const liveCheck = skipLive
       ? { liveAvailable: true, sonarrSeasonStats: null, audioLanguages: null, subtitleLanguages: null, timedOut: false }
       : await performLiveCheckWithTimeout(
@@ -160,7 +160,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     // ── Phase 3: Assemble response ──────────────────────────────────
     if (!media) {
       const result: Record<string, unknown> = { exists: false };
-      if (liveAvailable) result.status = 'available';
+      if (liveAvailable) result.statusCategory = 'AVAILABLE';
       if (sonarrSeasonStats) result.sonarrSeasons = sonarrSeasonStats;
       if (liveAvailable) result.inLibrary = true;
       if (audioLanguages) result.audioLanguages = normalizeLanguages(audioLanguages);
@@ -178,25 +178,14 @@ export async function mediaRoutes(app: FastifyInstance) {
       finalAudio = (audioLanguages ? normalizeLanguages(audioLanguages) : null) || cachedAudio;
       finalSubs = (subtitleLanguages ? normalizeLanguages(subtitleLanguages) : null) || cachedSubs;
 
-      if (liveAvailable && media.status !== 'available') {
-        await promoteMediaToAvailable(media.id, !!media.availableAt);
-        media.status = 'available';
-        media.requests = media.requests.map((r) =>
-          (COMPLETABLE_REQUEST_STATUSES as readonly string[]).includes(r.status) ? { ...r, status: 'available' } : r
-        );
-      } else if (!liveAvailable && sonarrSeasonStats) {
-        const hasAnyFiles = sonarrSeasonStats.some((s: { episodeFileCount: number }) => s.episodeFileCount > 0);
-        if (hasAnyFiles && media.status !== 'processing') {
-          await prisma.media.update({ where: { id: media.id }, data: { status: 'processing' } });
-          await transitionRequestStatus(
-            { requestId: undefined, from: undefined, to: 'processing', why: 'cascade-media-processing' },
-            () => prisma.mediaRequest.updateMany({
-              where: { mediaId: media.id, status: { in: ['approved', 'failed'] } },
-              data: { status: 'processing' },
-            }),
-            request.log,
+      const refreshedCat = await refreshMediaCategory(media);
+      if (refreshedCat && refreshedCat !== media.statusCategory) {
+        media.statusCategory = refreshedCat;
+        if (refreshedCat === 'AVAILABLE') {
+          media.requests = media.requests.map((r) =>
+            (COMPLETABLE_REQUEST_STATUSES as readonly string[]).includes(r.status) ? { ...r, status: 'available' } : r
           );
-          media.status = 'processing';
+        } else if (refreshedCat === 'PROCESSING') {
           media.requests = media.requests.map((r) =>
             ['approved', 'failed'].includes(r.status) ? { ...r, status: 'processing' } : r
           );
@@ -205,7 +194,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     }
 
     const activeQualityOptionIds: number[] = [];
-    if ((media.status === 'available' || liveAvailable) && media.qualityProfileId) {
+    if ((media.statusCategory === 'AVAILABLE' || liveAvailable) && media.qualityProfileId) {
       const mappings = await prisma.qualityMapping.findMany({
         where: { qualityProfileId: media.qualityProfileId },
         select: { qualityOptionId: true },
@@ -241,7 +230,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     const media = await prisma.media.findMany({
       where: {
         tmdbId: { gt: 0 },
-        status: 'available',
+        statusCategory: 'AVAILABLE',
         availableAt: { not: null },
         OR: [
           { radarrId: { not: null } },
@@ -258,7 +247,7 @@ export async function mediaRoutes(app: FastifyInstance) {
         backdropPath: true,
         releaseDate: true,
         voteAverage: true,
-        status: true,
+        statusCategory: true,
         lastEpisodeInfo: true,
       },
     });
@@ -301,10 +290,9 @@ export async function mediaRoutes(app: FastifyInstance) {
     // Limit to 50 per request
     const limited = ids.slice(0, 50) as { tmdbId: number; mediaType: string }[];
 
-    // Typed against the shared `Availability` contract so backend↔frontend can't drift.
-    // FIXME: same shape is built inline by GET /api/media/:id and GET /api/media/tmdb/:tmdbId/:mediaType
-    // — extract a builder in a follow-up so those endpoints share this typing too.
-    const results: Record<string, Pick<Availability, 'status' | 'requestStatus'>> = {};
+    // Single wire-Availability builder.
+    const results: Record<string, Availability> = {};
+    const blacklistedKeys = await loadBlacklistedKeys(limited);
 
     const media = await prisma.media.findMany({
       where: {
@@ -315,7 +303,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       },
       include: {
         requests: {
-          select: { status: true },
+          select: { id: true, status: true },
           orderBy: { createdAt: 'desc' },
           take: 1,
         },
@@ -324,10 +312,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 
     for (const m of media) {
       const key = `${m.mediaType}:${m.tmdbId}`;
-      results[key] = {
-        status: m.status as Availability['status'],
-        requestStatus: m.requests[0]?.status as Availability['requestStatus'] | undefined,
-      };
+      results[key] = buildAvailability(m, m.requests[0] ?? null, blacklistedKeys);
     }
 
     return results;

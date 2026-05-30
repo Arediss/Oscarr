@@ -1,7 +1,9 @@
 import { prisma } from '../utils/prisma.js';
 import { getArrClient, getServiceTypeForMedia } from '../providers/index.js';
 import { normalizeLanguages } from '../utils/languages.js';
+import { logEvent } from '../utils/logEvent.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
+import type { MediaStateCategory } from '@oscarr/shared';
 import { getTvDetails } from './tmdb.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
 import type { Media } from '@prisma/client';
@@ -56,7 +58,7 @@ const LIVE_CHECK_TIMEOUT = 2000;
 const LIVE_CHECK_SKIP_WINDOW_MS = 15 * 60 * 1000;
 
 export function canSkipLiveCheck(mediaStatus: string | null | undefined, availableAt: Date | null | undefined): boolean {
-  if (mediaStatus !== 'available' || !availableAt) return false;
+  if (mediaStatus !== 'AVAILABLE' || !availableAt) return false;
   return Date.now() - new Date(availableAt).getTime() < LIVE_CHECK_SKIP_WINDOW_MS;
 }
 
@@ -132,19 +134,85 @@ export async function cacheLanguageData(
   await prisma.media.update({ where: { id: mediaId }, data: langUpdate });
 }
 
+/** Cascades a media's category onto its linked requests (guarded transition).
+ *  AVAILABLE completes in-flight requests; PROCESSING marks approved/failed as downloading. */
+async function cascadeRequestsForCategory(mediaId: number, category: MediaStateCategory): Promise<void> {
+  if (category === 'AVAILABLE') {
+    await transitionRequestStatus(
+      { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
+      () => prisma.mediaRequest.updateMany({
+        where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
+        data: { status: 'available' },
+      }),
+    );
+  } else if (category === 'PROCESSING') {
+    await transitionRequestStatus(
+      { requestId: undefined, from: undefined, to: 'processing', why: 'cascade-media-processing' },
+      () => prisma.mediaRequest.updateMany({
+        where: { mediaId, status: { in: ['approved', 'failed'] } },
+        data: { status: 'processing' },
+      }),
+    );
+  }
+}
+
 export async function promoteMediaToAvailable(
   mediaId: number,
   hasAvailableAt: boolean,
 ): Promise<void> {
   await prisma.media.update({
     where: { id: mediaId },
-    data: { status: 'available', ...(!hasAvailableAt ? { availableAt: new Date() } : {}) },
+    data: { statusCategory: 'AVAILABLE', ...(!hasAvailableAt ? { availableAt: new Date() } : {}) },
   });
-  await transitionRequestStatus(
-    { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
-    () => prisma.mediaRequest.updateMany({
-      where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-      data: { status: 'available' },
-    }),
-  );
+  await cascadeRequestsForCategory(mediaId, 'AVAILABLE');
+}
+
+/** Recomputes a media's category via the connector (queue included) and persists it.
+ *  Resolves the *arr id by externalId when missing, then cascades linked requests. Best-effort. */
+export async function refreshMediaCategory(media: {
+  id: number;
+  mediaType: string;
+  tmdbId: number;
+  tvdbId: number | null;
+  statusCategory: string;
+  radarrId: number | null;
+  sonarrId: number | null;
+  availableAt: Date | null;
+}): Promise<MediaStateCategory | null> {
+  try {
+    const client = await getArrClient(getServiceTypeForMedia(media.mediaType));
+    const currentArrId = media.mediaType === 'movie' ? media.radarrId : media.sonarrId;
+    let serviceMediaId = currentArrId;
+    if (!serviceMediaId) {
+      const externalId = media.mediaType === 'movie' ? media.tmdbId : media.tvdbId;
+      if (!externalId) return null;
+      const found = await client.findByExternalId(externalId);
+      if (!found) return null;
+      serviceMediaId = found.id;
+    }
+    const item = await client.getMediaById(serviceMediaId);
+    if (!item) return null;
+    const cat = item.statusCategory;
+    if (cat === media.statusCategory && serviceMediaId === currentArrId) return cat;
+
+    const becameAvailable = cat === 'AVAILABLE' && media.statusCategory !== 'AVAILABLE';
+    await prisma.media.update({
+      where: { id: media.id },
+      data: {
+        statusCategory: cat,
+        [client.dbIdField]: serviceMediaId,
+        ...(becameAvailable && !media.availableAt ? { availableAt: new Date() } : {}),
+      },
+    });
+
+    if (becameAvailable) {
+      await cascadeRequestsForCategory(media.id, 'AVAILABLE');
+    } else if (cat === 'PROCESSING' && media.statusCategory !== 'PROCESSING') {
+      await cascadeRequestsForCategory(media.id, 'PROCESSING');
+    }
+    return cat;
+  } catch (err) {
+    logEvent('warn', 'Media', `refreshMediaCategory failed for ${media.mediaType}:${media.tmdbId}`, err);
+    return null;
+  }
 }

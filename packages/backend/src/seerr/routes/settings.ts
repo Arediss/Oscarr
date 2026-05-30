@@ -1,17 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { getArrClientForService } from '../../providers/index.js';
+import { parseServiceConfig } from '../../utils/services.js';
+import { logEvent } from '../../utils/logEvent.js';
 
 const ARR_TYPES = ['radarr', 'sonarr'] as const;
 type ArrType = typeof ARR_TYPES[number];
 
-interface ArrConfig {
-  url?: string;
-  apiKey?: string;
-}
-
-function parseArrConfig(raw: string): ArrConfig {
-  try { return JSON.parse(raw) as ArrConfig; } catch { return {}; }
+function parseArrConfig(raw: string): Record<string, string> {
+  // Decrypt via the canonical parser; stay lenient (degrade to {}) but log so an undecryptable row is diagnosable.
+  try { return parseServiceConfig(raw); }
+  catch (err) { logEvent('warn', 'Seerr', 'parseArrConfig: config parse/decrypt failed', err); return {}; }
 }
 
 interface SeerrArrConfig {
@@ -138,7 +137,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       `/settings/${arrType}/:id/profiles`,
       async (request, reply) => loadArrSubResource(request.params.id, arrType, reply, async (service, type) => {
         const cfg = parseArrConfig(service.config);
-        const client = getArrClientForService(service.id, type, cfg as Record<string, string>);
+        const client = getArrClientForService(service.id, type, cfg);
         const profiles = await client.getQualityProfiles();
         return profiles.map((p) => ({ id: p.id, name: p.name }));
       }),
@@ -148,7 +147,7 @@ export async function settingsRoutes(app: FastifyInstance) {
       `/settings/${arrType}/:id/rootfolders`,
       async (request, reply) => loadArrSubResource(request.params.id, arrType, reply, async (service, type) => {
         const cfg = parseArrConfig(service.config);
-        const client = getArrClientForService(service.id, type, cfg as Record<string, string>);
+        const client = getArrClientForService(service.id, type, cfg);
         const folders = await client.getRootFolders();
         return folders.map((f) => ({ id: f.id, path: f.path, freeSpace: f.freeSpace }));
       }),

@@ -35,6 +35,11 @@ export function isMediaStateCategory(value: unknown): value is MediaStateCategor
   return typeof value === 'string' && (MEDIA_STATE_CATEGORIES as readonly string[]).includes(value);
 }
 
+/** Coerce any value (e.g. a raw DB string) to a valid category, defaulting to UNAVAILABLE. */
+export function toMediaStateCategory(value: unknown): MediaStateCategory {
+  return isMediaStateCategory(value) ? value : 'UNAVAILABLE';
+}
+
 export interface MediaStateDisplay {
   /** i18n key, e.g. 'status.available'. */
   labelKey: string;

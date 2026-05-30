@@ -3,7 +3,7 @@ import api from '@/lib/api';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
 import { useDownloadForMedia, useOnDownloadComplete } from '@/hooks/useDownloads';
 import { invalidateMediaStatus, updateMediaStatusCache } from '@/hooks/useMediaStatus';
-import type { MediaStateCategory } from '@oscarr/shared';
+import { type MediaStateCategory, toMediaStateCategory } from '@oscarr/shared';
 import type { TmdbMedia, Media } from '@/types';
 
 interface SonarrSeason {
@@ -59,7 +59,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
     // Update global status cache so list pages reflect the latest state on back navigation
     if (data.statusCategory && id) {
       const tmdbId = Number.parseInt(id, 10);
-      if (tmdbId) updateMediaStatusCache(tmdbId, type, data.statusCategory as MediaStateCategory);
+      if (tmdbId) updateMediaStatusCache(tmdbId, type, toMediaStateCategory(data.statusCategory));
     }
   }, [id, type, addNsfwIds]);
 

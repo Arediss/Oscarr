@@ -1,4 +1,5 @@
 import type { Availability } from '@oscarr/shared';
+import { toMediaStateCategory } from '@oscarr/shared';
 import { prisma } from '../utils/prisma.js';
 import { mediaKey } from '../utils/mediaKey.js';
 
@@ -21,7 +22,7 @@ export function buildAvailability(
   const key = mediaKey(media);
   const statusCategory = blacklistedKeys.has(key)
     ? 'BLACKLISTED'
-    : (media.statusCategory as Availability['statusCategory']);
+    : toMediaStateCategory(media.statusCategory);
   return {
     statusCategory,
     requestStatus: (userRequest?.status as Availability['requestStatus']) ?? null,

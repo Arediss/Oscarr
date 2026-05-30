@@ -20,7 +20,7 @@ import type {
   PluginMediaBatchStatus,
   PluginFolderRule,
 } from '@oscarr/shared';
-import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
+import { ACTIVE_REQUEST_STATUSES, toMediaStateCategory } from '@oscarr/shared';
 import {
   registerRoutePermission as rbacRegisterRoute,
   registerPluginPermission as rbacRegisterPermission,
@@ -427,7 +427,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           const m = mediaByKey.get(key);
           const userStatus = m ? userRequestsByMediaId.get(m.id) ?? null : null;
           out[key] = {
-            statusCategory: (m?.statusCategory ?? 'UNAVAILABLE') as PluginMediaBatchStatus['statusCategory'],
+            statusCategory: toMediaStateCategory(m?.statusCategory),
             userRequestStatus: userStatus,
             userHasActiveRequest: userStatus !== null,
           };
@@ -448,7 +448,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           mediaType: row.mediaType as 'movie' | 'tv',
           title: row.title,
           posterPath: row.posterPath,
-          statusCategory: row.statusCategory as PluginMedia['statusCategory'],
+          statusCategory: toMediaStateCategory(row.statusCategory),
         } satisfies PluginMedia;
       },
     },
@@ -482,7 +482,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
             mediaType: r.media.mediaType as 'movie' | 'tv',
             title: r.media.title,
             posterPath: r.media.posterPath,
-            statusCategory: r.media.statusCategory as PluginMedia['statusCategory'],
+            statusCategory: toMediaStateCategory(r.media.statusCategory),
           },
         }));
       },

@@ -88,20 +88,6 @@ export type {
 } from '@oscarr/shared';
 import type { TmdbMovie, TmdbTv, TmdbMediaResult, TmdbPerson, TmdbCollection } from '@oscarr/shared';
 
-const ANIME_COUNTRIES = new Set(['JP', 'KR', 'CN', 'TW']);
-const ANIMATION_GENRE_ID = 16;
-
-export function isAnime(tv: TmdbTv): boolean {
-  const isAnimation = tv.genres?.some(g => g.id === ANIMATION_GENRE_ID)
-    || tv.genre_ids?.includes(ANIMATION_GENRE_ID)
-    || false;
-
-  const isAsianOrigin = tv.origin_country?.some(c => ANIME_COUNTRIES.has(c))
-    || (tv.original_language ? ['ja', 'ko', 'zh'].includes(tv.original_language) : false);
-
-  return isAnimation && isAsianOrigin;
-}
-
 /** Extract keywords array from movie or TV details (different TMDB response shapes) */
 export function extractKeywords(details: TmdbMovie | TmdbTv): { id: number; name: string }[] {
   const movie = details as TmdbMovie;

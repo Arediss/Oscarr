@@ -16,7 +16,7 @@
     "@oscarr/shared": "*",
     "@tanstack/react-virtual": "^3.13.24",
     "@types/react-grid-layout": "^1.3.6",
-    "axios": "^1.15.0",
+    "axios": "^1.17.0",
     "clsx": "^2.1.1",
     "cronstrue": "^3.14.0",
     "i18next": "^26.0.3",
@@ -27,7 +27,7 @@
     "react-dom": "^19.1.0",
     "react-grid-layout": "^1.5.3",
     "react-i18next": "^16.6.6",
-    "react-router-dom": "^7.14.0",
+    "react-router-dom": "^7.18.0",
     "simple-icons": "^16.18.0"
   },
   "devDependencies": {
@@ -39,7 +39,7 @@
     "rolldown": "^1.0.0-rc.13",
     "tailwindcss": "^3.4.17",
     "typescript": "^6.0.2",
-    "vite": "^8.0.6",
+    "vite": "^8.0.16",
     "vite-plugin-pwa": "^1.2.0"
   }
 }

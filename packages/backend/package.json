@@ -29,7 +29,7 @@
     "@types/archiver": "^7.0.0",
     "@types/tar": "^6.1.13",
     "archiver": "^7.0.1",
-    "axios": "^1.15.0",
+    "axios": "^1.17.0",
     "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.1",
     "fastify": "^5.8.5",
@@ -38,7 +38,7 @@
     "resend": "^6.10.0",
     "semver": "^7.6.0",
     "tar": "^7.5.13",
-    "undici": "^8.1.0",
+    "undici": "^8.5.0",
     "web-push": "^3.6.7",
     "zod": "^3.25.76"
   },
@@ -48,7 +48,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/semver": "^7.7.1",
     "dotenv-cli": "^11.0.0",
-    "esbuild": "^0.25.9",
+    "esbuild": "^0.28.1",
     "tsx": "^4.19.3",
     "typescript": "^6.0.2"
   }

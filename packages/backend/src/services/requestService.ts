@@ -151,7 +151,8 @@ export async function resolveServiceContext(
     const mapping = await prisma.qualityMapping.findFirst({
       where: {
         qualityOptionId,
-        service: { type: serviceType, enabled: true },
+        serviceId: targetServiceId ?? undefined,
+        service: targetServiceId ? undefined : { type: serviceType, enabled: true },
       },
       include: { service: true },
     });

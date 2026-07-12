@@ -1,10 +1,22 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { getServiceById } from '../../../utils/services.js';
-import { getAuthProvider, getArrClient, createArrClient } from '../../../providers/index.js';
+import { getAuthProvider, getArrClient, createArrClient, getServiceDefinition, type ArrClient } from '../../../providers/index.js';
 import { plexCreatePin, plexCheckPin, plexFetchMachineId } from '../../../providers/plex/index.js';
 import { parseId } from '../../../utils/params.js';
 import { classifyTestError } from '../../../utils/serviceTestError.js';
 import { assertPublicUrl, SsrfBlockedError } from '../../../utils/ssrfGuard.js';
+
+/** Call an *arr method via the default client; on failure answer 502 and return undefined so the
+ *  handler can `return` it directly (Fastify ignores the undefined return once the reply is sent). */
+async function reachArr<T>(reply: FastifyReply, serviceType: string, call: (client: ArrClient) => Promise<T>): Promise<T | undefined> {
+  try {
+    return await call(await getArrClient(serviceType));
+  } catch {
+    const label = getServiceDefinition(serviceType)?.label ?? serviceType;
+    reply.status(502).send({ error: `Unable to reach ${label}` });
+    return undefined;
+  }
+}
 
 /** Service-config helpers — Plex token passthrough + quality profile / root folder lookups.
  *
@@ -16,7 +28,7 @@ export async function servicesHelperRoutes(app: FastifyInstance) {
   app.get('/plex-token', async (request, reply) => {
     const provider = getAuthProvider('plex');
     if (!provider?.getToken) return reply.status(404).send({ error: 'Plex provider not available' });
-    const adminUser = request.user as { id: number };
+    const adminUser = request.user;
     const token = await provider.getToken(adminUser.id);
     if (!token) return reply.status(404).send({ error: 'No Plex token found' });
     return { token };
@@ -83,41 +95,10 @@ export async function servicesHelperRoutes(app: FastifyInstance) {
     }
   });
 
-  app.get('/radarr/profiles', async (_request, reply) => {
-    try {
-      const radarr = await getArrClient('radarr');
-      return await radarr.getQualityProfiles();
-    } catch {
-      return reply.status(502).send({ error: 'Unable to reach Radarr' });
-    }
-  });
-
-  app.get('/radarr/rootfolders', async (_request, reply) => {
-    try {
-      const radarr = await getArrClient('radarr');
-      return await radarr.getRootFolders();
-    } catch {
-      return reply.status(502).send({ error: 'Unable to reach Radarr' });
-    }
-  });
-
-  app.get('/sonarr/profiles', async (_request, reply) => {
-    try {
-      const sonarr = await getArrClient('sonarr');
-      return await sonarr.getQualityProfiles();
-    } catch {
-      return reply.status(502).send({ error: 'Unable to reach Sonarr' });
-    }
-  });
-
-  app.get('/sonarr/rootfolders', async (_request, reply) => {
-    try {
-      const sonarr = await getArrClient('sonarr');
-      return await sonarr.getRootFolders();
-    } catch {
-      return reply.status(502).send({ error: 'Unable to reach Sonarr' });
-    }
-  });
+  app.get('/radarr/profiles', (_request, reply) => reachArr(reply, 'radarr', (c) => c.getQualityProfiles()));
+  app.get('/radarr/rootfolders', (_request, reply) => reachArr(reply, 'radarr', (c) => c.getRootFolders()));
+  app.get('/sonarr/profiles', (_request, reply) => reachArr(reply, 'sonarr', (c) => c.getQualityProfiles()));
+  app.get('/sonarr/rootfolders', (_request, reply) => reachArr(reply, 'sonarr', (c) => c.getRootFolders()));
 
   app.get('/services/:id/profiles', {
     schema: {

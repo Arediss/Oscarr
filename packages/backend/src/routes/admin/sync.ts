@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../utils/prisma.js';
+import { getAppSettings, patchAppSettings } from '../../utils/appSettings.js';
 import { syncArrService } from '../../services/sync/mediaSync.js';
 import { syncAvailabilityDates } from '../../services/sync/availabilitySync.js';
 import { triggerJob } from '../../services/scheduler.js';
@@ -8,7 +8,7 @@ export async function syncRoutes(app: FastifyInstance) {
   // Keep legacy sync endpoints for backwards compat
   app.get('/sync/status', async (request, reply) => {
 
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     return {
       lastRadarrSync: settings?.lastRadarrSync,
       lastSonarrSync: settings?.lastSonarrSync,
@@ -23,11 +23,7 @@ export async function syncRoutes(app: FastifyInstance) {
 
   app.post('/sync/force', { config: { rateLimit: { max: 1, timeWindow: '5 minutes' } } }, async (request, reply) => {
 
-    await prisma.appSettings.upsert({
-      where: { id: 1 },
-      update: { lastRadarrSync: null, lastSonarrSync: null },
-      create: { id: 1, lastRadarrSync: null, lastSonarrSync: null, updatedAt: new Date() },
-    });
+    await patchAppSettings({ lastRadarrSync: null, lastSonarrSync: null });
     const radarrResult = await syncArrService('radarr', null);
     const sonarrResult = await syncArrService('sonarr', null);
     await syncAvailabilityDates(null);

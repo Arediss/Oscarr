@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings } from '../utils/appSettings.js';
 import { logEvent } from '../utils/logEvent.js';
 import type { NotificationProvider, NotificationEventType, NotificationPayload } from './types.js';
 
@@ -23,11 +24,6 @@ export class NotificationRegistry {
     logEvent('debug', 'NotificationRegistry', `Registered provider "${provider.id}"${pluginId ? ` (plugin: ${pluginId})` : ''}`);
   }
 
-  unregisterProvider(id: string): void {
-    this.providers.delete(id);
-    for (const set of this.providerOwners.values()) set.delete(id);
-  }
-
   /** Drop every provider registered by the given plugin. Called on disable + uninstall. */
   removeAllForPlugin(pluginId: string): number {
     const owned = this.providerOwners.get(pluginId);
@@ -38,10 +34,6 @@ export class NotificationRegistry {
     }
     this.providerOwners.delete(pluginId);
     return removed;
-  }
-
-  getProvider(id: string): NotificationProvider | undefined {
-    return this.providers.get(id);
   }
 
   getAllProviders(): NotificationProvider[] {
@@ -60,10 +52,6 @@ export class NotificationRegistry {
     }
   }
 
-  getEventType(key: string): NotificationEventType | undefined {
-    return this.eventTypes.get(key);
-  }
-
   getAllEventTypes(): NotificationEventType[] {
     return Array.from(this.eventTypes.values());
   }
@@ -80,7 +68,7 @@ export class NotificationRegistry {
       const configMap = new Map(configs.map(c => [c.providerId, c]));
 
       // Load notification matrix from AppSettings
-      const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+      const settings = await getAppSettings();
       if (!settings) return;
 
       const matrix: Record<string, Record<string, boolean>> = settings.notificationMatrix

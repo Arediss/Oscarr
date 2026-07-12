@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../utils/prisma.js';
+import { getAppSettings, patchAppSettings } from '../../utils/appSettings.js';
 import { logEvent } from '../../utils/logEvent.js';
 
 const DEFAULT_LAYOUT = {
@@ -75,7 +75,7 @@ function migrate(stored: unknown): LayoutV2 {
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.get('/dashboard-layout', async () => {
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     if (!settings?.adminDashboardLayout) return DEFAULT_LAYOUT;
     try {
       return migrate(JSON.parse(settings.adminDashboardLayout));
@@ -87,20 +87,12 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   app.put('/dashboard-layout', { schema: { body: layoutBodySchema } }, async (request) => {
     const body = request.body as LayoutV2;
-    await prisma.appSettings.upsert({
-      where: { id: 1 },
-      update: { adminDashboardLayout: JSON.stringify(body) },
-      create: { id: 1, adminDashboardLayout: JSON.stringify(body), updatedAt: new Date() },
-    });
+    await patchAppSettings({ adminDashboardLayout: JSON.stringify(body) });
     return { ok: true };
   });
 
   app.delete('/dashboard-layout', async () => {
-    await prisma.appSettings.upsert({
-      where: { id: 1 },
-      update: { adminDashboardLayout: null },
-      create: { id: 1, updatedAt: new Date() },
-    });
+    await patchAppSettings({ adminDashboardLayout: null });
     return { ok: true };
   });
 }

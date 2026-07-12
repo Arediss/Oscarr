@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { invalidateNsfwIdsCache } from '../media.js';
+import { parseId } from '../../utils/params.js';
 
 export async function keywordsRoutes(app: FastifyInstance) {
   // === KEYWORDS ===
@@ -47,8 +48,8 @@ export async function keywordsRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { tmdbId } = request.params as { tmdbId: string };
     const { tag } = request.body as { tag: string | null };
-    const id = Number.parseInt(tmdbId, 10);
-    if (Number.isNaN(id)) return reply.status(400).send({ error: 'Invalid tmdbId' });
+    const id = parseId(tmdbId);
+    if (!id) return reply.status(400).send({ error: 'Invalid tmdbId' });
 
     const keyword = await prisma.keyword.findUnique({ where: { tmdbId: id } });
     if (!keyword) return reply.status(404).send({ error: 'Keyword not found' });

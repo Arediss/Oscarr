@@ -1,12 +1,12 @@
 import { prisma } from '../../utils/prisma.js';
+import { patchAppSettings } from '../../utils/appSettings.js';
 import { getArrClient } from '../../providers/index.js';
 import type { ArrClient, ArrMediaItem } from '../../providers/types.js';
 import { getServiceConfig } from '../../utils/services.js';
 import { logEvent } from '../../utils/logEvent.js';
 import type { SyncResult } from './helpers.js';
 import { sendAvailabilityNotifications } from './helpers.js';
-import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
-import { transitionRequestStatus } from '../requestStatusTransition.js';
+import { isTmdbMediaTypeConflict, mergeTvPlaceholderInto, cascadeRequestsForCategory } from '../mediaService.js';
 import type { Media } from '@prisma/client';
 
 export async function syncArrService(serviceType: string, since?: Date | null): Promise<SyncResult> {
@@ -108,11 +108,7 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
 
     // Update last sync timestamp
     const syncField = client.mediaType === 'movie' ? 'lastRadarrSync' : 'lastSonarrSync';
-    await prisma.appSettings.upsert({
-      where: { id: 1 },
-      update: { [syncField]: new Date() },
-      create: { id: 1, [syncField]: new Date(), updatedAt: new Date() },
-    });
+    await patchAppSettings({ [syncField]: new Date() });
   } catch (err) {
     logEvent('error', 'Sync', `${serviceType} sync failed: ${err}`);
     errors++;
@@ -156,16 +152,6 @@ async function bulkFetchExisting(
     map.set(key, row);
   }
   return map;
-}
-
-/** True iff the error is a P2002 unique-constraint violation on `(tmdbId, mediaType)`. */
-function isTmdbMediaTypeConflict(err: unknown): boolean {
-  if (!err || typeof err !== 'object') return false;
-  const e = err as { code?: string; meta?: { target?: unknown } };
-  if (e.code !== 'P2002') return false;
-  const target = e.meta?.target;
-  if (Array.isArray(target)) return target.includes('tmdbId') && target.includes('mediaType');
-  return typeof target === 'string' && target.includes('tmdbId');
 }
 
 async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void> {
@@ -222,69 +208,8 @@ async function applyUpdate(
 ): Promise<void> {
   await prisma.$transaction(async (tx) => {
     await tx.media.update({ where: { id: existing.id }, data: updateData });
-    if (becameAvailable) {
-      await transitionRequestStatus(
-        { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
-        () => tx.mediaRequest.updateMany({
-          where: { mediaId: existing.id, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-          data: { status: 'available' },
-        }),
-      );
-    }
+    if (becameAvailable) await cascadeRequestsForCategory(existing.id, 'AVAILABLE', tx);
   });
-}
-
-/** Merge a placeholder TV row into the canonical positive-tmdbId row, deleting the placeholder.
- *  Dedups requests by userId so re-parenting doesn't multiply rows when both sides already had
- *  one for the same user. Atomic: races on the unique key are resolved by retrying merge from
- *  the caller's catch, never by leaving the DB partially merged. */
-async function mergeIntoCanonical(
-  placeholder: Media,
-  canonicalId: number,
-  item: ArrMediaItem,
-  updateData: Record<string, unknown>,
-  becameAvailable: boolean,
-): Promise<void> {
-  const seasonRows = (item.seasons ?? [])
-    .filter((s) => s.seasonNumber > 0)
-    .map((s) => ({
-      mediaId: canonicalId,
-      seasonNumber: s.seasonNumber,
-      episodeCount: s.totalEpisodeCount,
-      statusCategory: s.statusCategory,
-    }));
-  const { tmdbId: _drop, ...mergeData } = updateData;
-
-  await prisma.$transaction(async (tx) => {
-    const canonicalRequesters = await tx.mediaRequest.findMany({
-      where: { mediaId: canonicalId },
-      select: { userId: true },
-    });
-    const dupUserIds = canonicalRequesters.map((r) => r.userId);
-    if (dupUserIds.length > 0) {
-      await tx.mediaRequest.deleteMany({
-        where: { mediaId: placeholder.id, userId: { in: dupUserIds } },
-      });
-    }
-    await tx.mediaRequest.updateMany({ where: { mediaId: placeholder.id }, data: { mediaId: canonicalId } });
-    await tx.season.deleteMany({ where: { mediaId: placeholder.id } });
-    await tx.media.delete({ where: { id: placeholder.id } });
-    await tx.media.update({ where: { id: canonicalId }, data: mergeData });
-    if (seasonRows.length > 0) {
-      await tx.season.deleteMany({ where: { mediaId: canonicalId } });
-      await tx.season.createMany({ data: seasonRows });
-    }
-    if (becameAvailable) {
-      await transitionRequestStatus(
-        { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available-merge' },
-        () => tx.mediaRequest.updateMany({
-          where: { mediaId: canonicalId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-          data: { status: 'available' },
-        }),
-      );
-    }
-  });
-  logEvent('debug', 'Sync', `Merged placeholder TV row ${placeholder.id} into canonical row ${canonicalId} (tvdb:${item.externalId})`);
 }
 
 async function processSingleMedia(
@@ -337,7 +262,8 @@ async function processSingleMedia(
           select: { id: true },
         });
         if (!canonical) throw err;
-        await mergeIntoCanonical(existing, canonical.id, item, updateData, becameAvailable);
+        const seasons = (item.seasons ?? []).filter((s) => s.seasonNumber > 0).map((s) => ({ seasonNumber: s.seasonNumber, episodeCount: s.totalEpisodeCount, statusCategory: s.statusCategory }));
+        await mergeTvPlaceholderInto(existing, canonical.id, updateData, { seasons, becameAvailable });
         return 'merged';
       }
     }

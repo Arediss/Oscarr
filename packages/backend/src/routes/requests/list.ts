@@ -26,7 +26,7 @@ export async function requestListRoutes(app: FastifyInstance) {
       },
     },
   }, async (request) => {
-    const user = request.user as { id: number; role: string };
+    const user = request.user;
     const { status, page, userId, mediaType, qualityOptionId } = request.query as {
       status?: string; page?: string; userId?: string; mediaType?: string; qualityOptionId?: string;
     };
@@ -87,7 +87,7 @@ export async function requestListRoutes(app: FastifyInstance) {
   });
 
   app.get('/stats', async (request) => {
-    const user = request.user as { id: number; role: string };
+    const user = request.user;
     const userFilter = request.ownerScoped ? { userId: user.id } : {};
 
     // `processing` was counting Media.status values ('searching'/'upcoming') which are

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from '../../utils/prisma.js';
+import { getAppSettings, patchAppSettings } from '../../utils/appSettings.js';
 import { getTmdbApi } from '../../services/tmdb.js';
 import { buildDiscoverParams, type DiscoverQuery } from '../../utils/tmdbDiscoverQuery.js';
 
@@ -29,7 +29,7 @@ export async function getHomepageLayout(): Promise<unknown> {
   if (homepageLayoutCache && now - homepageLayoutCache.at < LAYOUT_CACHE_TTL) {
     return homepageLayoutCache.data;
   }
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { homepageLayout: true } });
+  const settings = await getAppSettings();
   const layout = settings?.homepageLayout ? JSON.parse(settings.homepageLayout) : getDefaultLayout();
   homepageLayoutCache = { data: layout, at: now };
   return layout;
@@ -38,7 +38,7 @@ export async function getHomepageLayout(): Promise<unknown> {
 export async function homepageRoutes(app: FastifyInstance) {
   // GET /homepage — Returns the current layout or default
   app.get('/homepage', async () => {
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { homepageLayout: true } });
+    const settings = await getAppSettings();
     if (settings?.homepageLayout) {
       return JSON.parse(settings.homepageLayout);
     }
@@ -52,11 +52,7 @@ export async function homepageRoutes(app: FastifyInstance) {
 
     // Handle reset
     if (!Array.isArray(body) && (body as any).reset) {
-      await prisma.appSettings.upsert({
-        where: { id: 1 },
-        update: { homepageLayout: null },
-        create: { id: 1, homepageLayout: null, updatedAt: new Date() },
-      });
+      await patchAppSettings({ homepageLayout: null });
       homepageLayoutCache = null;
       return { ok: true, sections: getDefaultLayout() };
     }
@@ -71,11 +67,7 @@ export async function homepageRoutes(app: FastifyInstance) {
         return reply.status(400).send({ error: 'Each section must have id, type, enabled, and title' });
       }
     }
-    await prisma.appSettings.upsert({
-      where: { id: 1 },
-      update: { homepageLayout: JSON.stringify(sections) },
-      create: { id: 1, homepageLayout: JSON.stringify(sections), updatedAt: new Date() },
-    });
+    await patchAppSettings({ homepageLayout: JSON.stringify(sections) });
     // Invalidate the public layout cache
     invalidateHomepageLayoutCache();
     return { ok: true };

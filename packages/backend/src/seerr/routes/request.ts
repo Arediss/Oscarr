@@ -3,6 +3,7 @@ import { prisma } from '../../utils/prisma.js';
 import { buildSeerrRequest } from '../adapters/request.js';
 import { filterToWhere } from '../adapters/statusMap.js';
 import { createUserRequest } from '../../services/requestService.js';
+import { clampInt, buildSeerrPageInfo, countRequestsPerUser, SEERR_REQUEST_INCLUDE } from '../shared.js';
 
 const DEFAULT_TAKE = 10;
 const MAX_TAKE = 100;
@@ -27,11 +28,7 @@ export async function requestRoutes(app: FastifyInstance) {
           orderBy: { [sort]: 'desc' },
           take,
           skip,
-          include: {
-            media: true,
-            user: { include: { providers: true } },
-            approvedBy: { include: { providers: true } },
-          },
+          include: SEERR_REQUEST_INCLUDE,
         }),
         prisma.mediaRequest.count({ where }),
       ]);
@@ -44,12 +41,7 @@ export async function requestRoutes(app: FastifyInstance) {
       const requestCountByUserId = await countRequestsPerUser([...userIds]);
 
       return {
-        pageInfo: {
-          pages: Math.max(1, Math.ceil(totalResults / take)),
-          pageSize: take,
-          results: totalResults,
-          page: Math.floor(skip / take) + 1,
-        },
+        pageInfo: buildSeerrPageInfo(take, skip, totalResults),
         results: results.map((r) => buildSeerrRequest({ request: r, requestCountByUserId })),
       };
     },
@@ -92,7 +84,7 @@ export async function requestRoutes(app: FastifyInstance) {
       seasons = undefined;
     }
 
-    const actor = request.user as { id: number; role?: string };
+    const actor = request.user;
 
     // Overseerr-compat: clients (Doplarr) can pass `X-API-User: <id>` to attribute the
     // request to a specific user, e.g. mapping a Discord user to an Oscarr account. We honour
@@ -134,11 +126,7 @@ export async function requestRoutes(app: FastifyInstance) {
 
     const created = await prisma.mediaRequest.findUnique({
       where: { id: result.request.id },
-      include: {
-        media: true,
-        user: { include: { providers: true } },
-        approvedBy: { include: { providers: true } },
-      },
+      include: SEERR_REQUEST_INCLUDE,
     });
     if (!created) return reply.status(500).send({ error: 'INTERNAL', message: 'Created request not found on read-back' });
 
@@ -172,11 +160,7 @@ export async function requestRoutes(app: FastifyInstance) {
 
     const found = await prisma.mediaRequest.findUnique({
       where: { id },
-      include: {
-        media: true,
-        user: { include: { providers: true } },
-        approvedBy: { include: { providers: true } },
-      },
+      include: SEERR_REQUEST_INCLUDE,
     });
     if (!found) return reply.status(404).send({ error: 'NOT_FOUND' });
 
@@ -188,23 +172,7 @@ export async function requestRoutes(app: FastifyInstance) {
   });
 }
 
-function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
 function parseIntOrNull(raw: string | undefined): number | null {
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : null;
-}
-
-async function countRequestsPerUser(userIds: number[]): Promise<Map<number, number>> {
-  if (userIds.length === 0) return new Map();
-  const groups = await prisma.mediaRequest.groupBy({
-    by: ['userId'],
-    where: { userId: { in: userIds } },
-    _count: { _all: true },
-  });
-  return new Map(groups.map((g) => [g.userId, g._count._all]));
 }

@@ -371,12 +371,12 @@ function resolveRule(method: string, url: string): RouteRule | null {
  * RBAC already ran (request.user is set, disabled check done). Mirrors the role + owner-scope
  * logic of the main rbacPlugin hook.
  */
-export function enforcePluginRoutePermission(
+export async function enforcePluginRoutePermission(
   request: FastifyRequest,
   reply: FastifyReply,
   method: string,
   url: string
-): boolean {
+): Promise<boolean> {
   const rule = resolveRule(method, url);
   if (!rule || rule.permission === PUBLIC || rule.permission === AUTH) return true;
 
@@ -386,20 +386,30 @@ export function enforcePluginRoutePermission(
     return false;
   }
 
+  // Fresh DB role (disabled already checked by the global hook) so role changes apply here too.
+  const { role } = await getFreshUserState(jwtUser.id, jwtUser.role);
+  return applyRolePermission(request, reply, role, rule);
+}
+
+/** Shared role→permission decision: view-as-role derivation + hasPermission + owner-scope.
+ *  Returns true if allowed (sets request.ownerScoped); false after sending a 403. */
+function applyRolePermission(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  resolvedRole: string,
+  rule: { permission: string; ownerScoped?: boolean },
+): boolean {
+  // view-as-role: admin only, never on admin routes, known roles only (junk can't reach hasPermission).
   const viewAsRole = request.headers['x-view-as-role'] as string | undefined;
-  // Restrict to roles that actually exist — without this, header could be any string
-  // (downstream hasPermission returns false on unknowns, so privilege escalation is
-  // already blocked, but logging unknown attempts helps audit + tightens the surface).
   const isKnownRole = !!viewAsRole && (roleCacheReady ? roleCache[viewAsRole] !== undefined : viewAsRole in FALLBACK_ROLES);
-  const effectiveRole = (isKnownRole && jwtUser.role === 'admin' && !rule.permission.startsWith('admin'))
+  const effectiveRole = (isKnownRole && resolvedRole === 'admin' && !rule.permission.startsWith('admin'))
     ? viewAsRole
-    : jwtUser.role;
+    : resolvedRole;
 
   if (!hasPermission(effectiveRole, rule.permission)) {
     reply.status(403).send({ error: 'FORBIDDEN' });
     return false;
   }
-
   if (rule.ownerScoped && shouldOwnerScope(effectiveRole, rule.permission)) {
     request.ownerScoped = true;
   }
@@ -458,21 +468,6 @@ export function rbacPlugin(app: FastifyInstance): void {
     // Any authenticated user is enough
     if (rule.permission === AUTH) return;
 
-    // "View as role" simulation — admin only, never applies to admin routes. Restrict to
-    // known roles so an arbitrary header string can't reach hasPermission with junk input.
-    const viewAsRole = request.headers['x-view-as-role'] as string | undefined;
-    const isKnownRole = !!viewAsRole && (roleCacheReady ? roleCache[viewAsRole] !== undefined : viewAsRole in FALLBACK_ROLES);
-    const effectiveRole = (isKnownRole && freshRole === 'admin' && !rule.permission.startsWith('admin'))
-      ? viewAsRole
-      : freshRole;
-
-    if (!hasPermission(effectiveRole, rule.permission)) {
-      return reply.status(403).send({ error: 'FORBIDDEN' });
-    }
-
-    // Flag owner-scoped routes for handlers
-    if (rule.ownerScoped && shouldOwnerScope(effectiveRole, rule.permission)) {
-      request.ownerScoped = true;
-    }
+    if (!applyRolePermission(request, reply, freshRole, rule)) return;
   });
 }

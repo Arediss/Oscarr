@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings, patchAppSettings } from '../utils/appSettings.js';
 import { serializeServiceConfig } from '../utils/services.js';
 import type { DerivedConfig } from './seerrConfig.js';
 
@@ -63,22 +64,12 @@ export async function applyDerivedConfig(derived: DerivedConfig): Promise<ApplyR
   // ── Default folders ────────────────────────────────────────────────
   const movieFolder = derived.radarr.find((r) => r.rootFolder)?.rootFolder;
   const tvFolder = derived.sonarr.find((s) => s.rootFolder)?.rootFolder;
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
 
-  await prisma.appSettings.upsert({
-    where: { id: 1 },
-    update: {
-      defaultMovieFolder: settings?.defaultMovieFolder || movieFolder || undefined,
-      defaultTvFolder: settings?.defaultTvFolder || tvFolder || undefined,
-      instanceLanguages: settings?.instanceLanguages || (derived.locale ? JSON.stringify([derived.locale.split('-')[0]]) : undefined),
-    },
-    create: {
-      id: 1,
-      updatedAt: new Date(),
-      defaultMovieFolder: movieFolder,
-      defaultTvFolder: tvFolder,
-      instanceLanguages: derived.locale ? JSON.stringify([derived.locale.split('-')[0]]) : undefined,
-    },
+  await patchAppSettings({
+    defaultMovieFolder: settings?.defaultMovieFolder || movieFolder || undefined,
+    defaultTvFolder: settings?.defaultTvFolder || tvFolder || undefined,
+    instanceLanguages: settings?.instanceLanguages || (derived.locale ? JSON.stringify([derived.locale.split('-')[0]]) : undefined),
   });
 
   return {

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import axios from 'axios';
 import crypto from 'node:crypto';
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings, parseInstanceLanguages } from '../utils/appSettings.js';
 import { pluginEngine } from '../plugins/engine.js';
 import { getArrClient } from '../providers/index.js';
 import { getServiceConfig } from '../utils/services.js';
@@ -67,13 +68,13 @@ export async function appRoutes(app: FastifyInstance) {
 
   // Get incident banner (no auth — displayed before login)
   app.get('/banner', async () => {
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     return { banner: settings?.incidentBanner || null };
   });
 
   // Quality options available for requests (only those with at least one mapping)
   app.get('/quality-options', async (request) => {
-    const user = request.user as { id: number; role: string } | undefined;
+    const user = request.user;
     const options = await prisma.qualityOption.findMany({
       where: { mappings: { some: {} } },
       orderBy: { position: 'asc' },
@@ -91,7 +92,7 @@ export async function appRoutes(app: FastifyInstance) {
       return reply.status(401).send({ error: 'API key required (X-Api-Key header or Authorization: Bearer)' });
     }
 
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     if (!settings?.apiKey) {
       return reply.status(403).send({ error: 'Invalid API key' });
     }
@@ -130,9 +131,9 @@ export async function appRoutes(app: FastifyInstance) {
   // `instanceLanguage` drives the frontend UI locale in prod: the user-facing language switcher
   // is dev-only (see UserCluster), so the instance-wide setting is what everyone actually sees.
   app.get('/features', async () => {
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     const pluginFeatures = pluginEngine.getAllFeatureFlags();
-    const languages: string[] = settings?.instanceLanguages ? JSON.parse(settings.instanceLanguages) : ['en'];
+    const languages = parseInstanceLanguages(settings?.instanceLanguages);
     // Custom links (#167) shipped with the features payload so the Layout topbar has them at
     // mount without a second round-trip. Bad JSON falls back to an empty list — admins fix it
     // via the editor without breaking the page.

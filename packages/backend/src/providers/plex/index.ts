@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { prisma } from '../../utils/prisma.js';
+import { getAppSettings } from '../../utils/appSettings.js';
 import { getPlexUser, createPlexPin, checkPlexPin, getSharedServerUsers } from './client.js';
 import { logEvent } from '../../utils/logEvent.js';
 import { parseServiceConfig } from '../../utils/services.js';
@@ -215,7 +216,7 @@ const plexAuth: AuthProvider = {
 };
 
 async function resolveMachineId(): Promise<string | null> {
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
   if (settings?.plexMachineId) return settings.plexMachineId;
   const plexService = await prisma.service.findFirst({ where: { type: 'plex', enabled: true } });
   if (plexService) {

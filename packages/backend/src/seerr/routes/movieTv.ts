@@ -40,7 +40,7 @@ export async function movieTvRoutes(app: FastifyInstance) {
 
       const [tmdb, oscarrMedia] = await Promise.all([
         safeFetch(() => getTvDetails(tmdbId, request.query.language)),
-        prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType: 'tv' } } }),
+        prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType: 'tv' } }, include: { seasons: { select: { statusCategory: true } } } }),
       ]);
 
       if (!tmdb) return reply.status(404).send({ error: 'NOT_FOUND' });

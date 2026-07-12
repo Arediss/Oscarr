@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { buildSeerrMedia } from '../adapters/media.js';
+import { clampInt, buildSeerrPageInfo } from '../shared.js';
 
 const DEFAULT_TAKE = 10;
 const MAX_TAKE = 100;
@@ -20,20 +21,18 @@ export async function mediaRoutes(app: FastifyInstance) {
       const where: Record<string, unknown> = {};
 
       const filterStatus = mapFilterToOscarrStatus(request.query.filter);
-      if (filterStatus) where.statusCategory = filterStatus;
+      if (filterStatus) where.statusCategory = { in: filterStatus };
 
       const [results, totalResults] = await Promise.all([
-        prisma.media.findMany({ where, orderBy: { [sort]: 'desc' }, take, skip }),
+        prisma.media.findMany({
+          where, orderBy: { [sort]: 'desc' }, take, skip,
+          include: { seasons: { select: { statusCategory: true } } },
+        }),
         prisma.media.count({ where }),
       ]);
 
       return {
-        pageInfo: {
-          pages: Math.max(1, Math.ceil(totalResults / take)),
-          pageSize: take,
-          results: totalResults,
-          page: Math.floor(skip / take) + 1,
-        },
+        pageInfo: buildSeerrPageInfo(take, skip, totalResults),
         results: results.map(buildSeerrMedia),
       };
     },
@@ -43,7 +42,10 @@ export async function mediaRoutes(app: FastifyInstance) {
     const id = Number(request.params.id);
     if (!Number.isInteger(id) || id < 1) return reply.status(400).send({ error: 'INVALID_ID' });
 
-    const media = await prisma.media.findUnique({ where: { id } });
+    const media = await prisma.media.findUnique({
+      where: { id },
+      include: { seasons: { select: { statusCategory: true } } },
+    });
     if (!media) return reply.status(404).send({ error: 'NOT_FOUND' });
     return buildSeerrMedia(media);
   });
@@ -64,8 +66,8 @@ export async function mediaRoutes(app: FastifyInstance) {
     for (const g of groups) byStatus.set(g.statusCategory, g._count._all);
     return {
       total: [...byStatus.values()].reduce((a, b) => a + b, 0),
-      pending:    byStatus.get('UPCOMING') ?? 0,
-      processing: (byStatus.get('PROCESSING') ?? 0) + (byStatus.get('SEARCHING') ?? 0),
+      pending:    (byStatus.get('UPCOMING') ?? 0) + (byStatus.get('SEARCHING') ?? 0),
+      processing: byStatus.get('PROCESSING') ?? 0,
       available:  byStatus.get('AVAILABLE') ?? 0,
       deleted:    byStatus.get('UNAVAILABLE') ?? 0,
     };
@@ -73,18 +75,14 @@ export async function mediaRoutes(app: FastifyInstance) {
 
 }
 
-function mapFilterToOscarrStatus(filter: string | undefined): string | null {
+// Buckets must stay in lockstep with /media/count above and mapMediaStatus (adapters/statusMap.ts),
+// or count-vs-list diverge and some rows become unreachable through every filter.
+function mapFilterToOscarrStatus(filter: string | undefined): string[] | null {
   switch (filter) {
-    case 'available':           return 'AVAILABLE';
-    case 'processing':          return 'PROCESSING';
-    case 'pending':             return 'UPCOMING';
-    case 'deleted':             return 'UNAVAILABLE';
+    case 'available':           return ['AVAILABLE'];
+    case 'processing':          return ['PROCESSING'];
+    case 'pending':             return ['UPCOMING', 'SEARCHING'];
+    case 'deleted':             return ['UNAVAILABLE'];
     default:                    return null;
   }
-}
-
-function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
 }

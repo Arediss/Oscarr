@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../utils/prisma.js';
+import { patchAppSettings } from '../utils/appSettings.js';
 import { logEvent } from '../utils/logEvent.js';
 import { runFullSync } from '../services/sync/index.js';
 import { initScheduler } from '../services/scheduler.js';
@@ -181,11 +182,7 @@ export async function setupRoutes(app: FastifyInstance) {
 
     // If Plex with machineId, store in AppSettings
     if (type === 'plex' && config.machineId) {
-      await prisma.appSettings.upsert({
-        where: { id: 1 },
-        update: { plexMachineId: config.machineId },
-        create: { id: 1, plexMachineId: config.machineId, updatedAt: new Date() },
-      });
+      await patchAppSettings({ plexMachineId: config.machineId });
     }
 
     logEvent('info', 'Setup', `Service "${name}" (${type}) added during installation`);

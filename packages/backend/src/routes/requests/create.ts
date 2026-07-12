@@ -27,7 +27,7 @@ export async function requestCreateRoutes(app: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const user = request.user as { id: number; role: string };
+    const user = request.user;
     const body = request.body as { tmdbId: unknown; mediaType: unknown; seasons?: unknown; rootFolder?: string; qualityOptionId?: number };
 
     const result = await createUserRequest({
@@ -54,7 +54,7 @@ export async function requestCreateRoutes(app: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const user = request.user as { id: number; role: string };
+    const user = request.user;
     const { collectionId } = request.body as { collectionId: unknown };
 
     if (typeof collectionId !== 'number' || !Number.isFinite(collectionId) || collectionId < 1) {

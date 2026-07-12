@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { prisma } from './prisma.js';
+import { getAppSettings } from './appSettings.js';
 import { logEvent } from './logEvent.js';
 import { scrubSecrets } from './logScrubber.js';
 
@@ -7,10 +7,7 @@ let enabled = false;
 
 export async function refreshVerboseRequestLogFlag(): Promise<void> {
   try {
-    const s = await prisma.appSettings.findUnique({
-      where: { id: 1 },
-      select: { verboseRequestLog: true },
-    });
+    const s = await getAppSettings();
     enabled = s?.verboseRequestLog === true;
   } catch {
     // settings table missing on first boot — keep default off

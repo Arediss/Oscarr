@@ -1,4 +1,4 @@
-import { prisma } from '../../utils/prisma.js';
+import { getAppSettings } from '../../utils/appSettings.js';
 import { syncArrService } from './mediaSync.js';
 import { syncAvailabilityDates } from './availabilitySync.js';
 import type { SyncResult } from './helpers.js';
@@ -8,7 +8,7 @@ import type { SyncResult } from './helpers.js';
 // ---------------------------------------------------------------------------
 
 export async function runNewMediaSync(): Promise<{ radarr: SyncResult; sonarr: SyncResult }> {
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
   // Sequential to avoid SQLite write lock contention
   const radarrResult = await syncArrService('radarr', settings?.lastRadarrSync);
   const sonarrResult = await syncArrService('sonarr', settings?.lastSonarrSync);

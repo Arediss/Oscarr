@@ -1,10 +1,17 @@
-import { CheckCircle, Clock, Search, CalendarClock, Loader2, Ban, HelpCircle } from 'lucide-react';
+import {
+  CheckCircle, Clock, Search, CalendarClock, Loader2, AlertCircle, AlertTriangle, Ban, XCircle,
+  HelpCircle, Download, Film, Tv, Star, Bookmark, BookmarkX, Eye, EyeOff, Lock, Unlock,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { MEDIA_STATE_DISPLAY, COLOR_TOKEN_CLASSES, type MediaStateCategory } from '@oscarr/shared';
+import { MEDIA_STATE_DISPLAY, COLOR_TOKEN_CLASSES, type MediaStateCategory, type IconName } from '@oscarr/shared';
 
-const ICONS: Record<string, LucideIcon> = { CheckCircle, Clock, Search, CalendarClock, Loader2, Ban, HelpCircle };
+// keyed by IconName so a missing icon is a compile error, not a silent HelpCircle fallback
+const ICONS: Record<IconName, LucideIcon> = {
+  CheckCircle, Clock, Search, CalendarClock, Loader2, AlertCircle, AlertTriangle, Ban, XCircle,
+  HelpCircle, Download, Film, Tv, Star, Bookmark, BookmarkX, Eye, EyeOff, Lock, Unlock,
+};
 
 export interface BadgeView {
   label: string;
@@ -39,9 +46,10 @@ export function resolveDisplayState(
   if (cat === 'UNAVAILABLE') {
     if (requestStatus === 'pending') return { label: t('status.requested'), Icon: Clock, badgeClass: COLOR_TOKEN_CLASSES.warning };
     if (requestStatus === 'approved' || requestStatus === 'processing') return { label: t('status.processing'), Icon: Clock, badgeClass: COLOR_TOKEN_CLASSES.accent };
+    if (requestStatus === 'failed') return { label: t('status.failed'), Icon: AlertTriangle, badgeClass: COLOR_TOKEN_CLASSES.danger };
     return null;
   }
-  if (cat === 'PROCESSING' && mediaType === 'tv') return { label: t('status.partial'), Icon: Clock, badgeClass: COLOR_TOKEN_CLASSES.accent };
+  if (cat === 'PROCESSING' && mediaType === 'tv') return { label: t('status.partial'), Icon: Loader2, badgeClass: COLOR_TOKEN_CLASSES.accent };
   return mediaStateDisplay(cat, t);
 }
 

@@ -185,7 +185,7 @@ export class PluginEngine {
           // Plugin-registered permission overrides (ctx.registerRoutePermission) are keyed by the
           // real URL the plugin declared — reconstruct it here so RBAC can find the rule.
           const fullUrl = `/api/plugins/${pluginId}${match.entry.pattern}`;
-          if (!enforcePluginRoutePermission(request, reply, method, fullUrl)) return;
+          if (!(await enforcePluginRoutePermission(request, reply, method, fullUrl))) return;
 
           // Swap the catch-all's params for the sub-route's params before calling the handler.
           (request as { params: Record<string, string> }).params = match.params;

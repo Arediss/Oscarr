@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
+import { getAppSettings, patchAppSettings } from '../../utils/appSettings.js';
 
 interface ChecklistItem {
   id: string;
@@ -14,7 +15,7 @@ async function computeItems(): Promise<ChecklistItem[]> {
     prisma.service.count({ where: { type: 'radarr', enabled: true } }),
     prisma.service.count({ where: { type: 'sonarr', enabled: true } }),
     prisma.qualityOption.count(),
-    prisma.appSettings.findUnique({ where: { id: 1 } }),
+    getAppSettings(),
     prisma.folderRule.count(),
     prisma.notificationProviderConfig.count({ where: { enabled: true } }),
   ]);
@@ -33,25 +34,18 @@ async function computeItems(): Promise<ChecklistItem[]> {
 
 export async function setupChecklistRoutes(app: FastifyInstance) {
   app.get('/setup-checklist', async () => {
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { setupChecklistDismissed: true } });
+    const settings = await getAppSettings();
     const items = await computeItems();
     return { items, dismissed: settings?.setupChecklistDismissed ?? false };
   });
 
   app.post('/setup-checklist/dismiss', async () => {
-    await prisma.appSettings.upsert({
-      where: { id: 1 },
-      update: { setupChecklistDismissed: true },
-      create: { id: 1, setupChecklistDismissed: true, updatedAt: new Date() },
-    });
+    await patchAppSettings({ setupChecklistDismissed: true });
     return { ok: true };
   });
 
   app.post('/setup-checklist/reset', async () => {
-    await prisma.appSettings.update({
-      where: { id: 1 },
-      data: { setupChecklistDismissed: false },
-    });
+    await patchAppSettings({ setupChecklistDismissed: false });
     return { ok: true };
   });
 }

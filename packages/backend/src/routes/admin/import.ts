@@ -54,6 +54,14 @@ export async function importRoutes(app: FastifyInstance) {
   app.post('/import/preview', { schema: { body: credsSchema } }, async (request, reply) => {
     const { source, url, apiKey } = request.body as CredsBody;
     try {
+      await assertPublicUrl(url);
+    } catch (err) {
+      if (err instanceof SsrfBlockedError) {
+        return reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
+      }
+      throw err;
+    }
+    try {
       const adapter = pickAdapter(source);
       const result = await preview(adapter, { url, apiKey });
       return result;
@@ -89,6 +97,14 @@ export async function importRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const { source, url, apiKey, decisions } = request.body as ExecuteBody;
+    try {
+      await assertPublicUrl(url);
+    } catch (err) {
+      if (err instanceof SsrfBlockedError) {
+        return reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
+      }
+      throw err;
+    }
     try {
       const adapter = pickAdapter(source);
       const result = await execute(adapter, { url, apiKey }, decisions);

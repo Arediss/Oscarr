@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { buildSeerrUser } from '../adapters/user.js';
+import { clampInt, buildSeerrPageInfo, countRequestsPerUser, SEERR_REQUEST_INCLUDE } from '../shared.js';
 
 const DEFAULT_TAKE = 10;
 const MAX_TAKE = 200;
@@ -40,12 +41,7 @@ export async function userRoutes(app: FastifyInstance) {
       const requestCountByUserId = await countRequestsPerUser(results.map((u) => u.id));
 
       return {
-        pageInfo: {
-          pages: Math.max(1, Math.ceil(totalResults / take)),
-          pageSize: take,
-          results: totalResults,
-          page: Math.floor(skip / take) + 1,
-        },
+        pageInfo: buildSeerrPageInfo(take, skip, totalResults),
         results: results.map((user) => buildSeerrUser({
           user,
           requestCount: requestCountByUserId.get(user.id) ?? 0,
@@ -90,23 +86,14 @@ export async function userRoutes(app: FastifyInstance) {
         orderBy: { createdAt: 'desc' },
         take,
         skip,
-        include: {
-          media: true,
-          user: { include: { providers: true } },
-          approvedBy: { include: { providers: true } },
-        },
+        include: SEERR_REQUEST_INCLUDE,
       });
       const requestCountByUserId = await countRequestsPerUser(
         [...new Set(results.flatMap((r) => r.approvedById ? [r.userId, r.approvedById] : [r.userId]))],
       );
       const { buildSeerrRequest } = await import('../adapters/request.js');
       return {
-        pageInfo: {
-          pages: Math.max(1, Math.ceil(totalResults / take)),
-          pageSize: take,
-          results: totalResults,
-          page: Math.floor(skip / take) + 1,
-        },
+        pageInfo: buildSeerrPageInfo(take, skip, totalResults),
         results: results.map((r) => buildSeerrRequest({ request: r, requestCountByUserId })),
       };
     },
@@ -120,20 +107,4 @@ function orderByForSort(sort: string | undefined): Record<string, 'asc' | 'desc'
     case 'displayname': return { displayName: 'asc' };
     default: return { id: 'asc' };
   }
-}
-
-function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
-async function countRequestsPerUser(userIds: number[]): Promise<Map<number, number>> {
-  if (userIds.length === 0) return new Map();
-  const groups = await prisma.mediaRequest.groupBy({
-    by: ['userId'],
-    where: { userId: { in: userIds } },
-    _count: { _all: true },
-  });
-  return new Map(groups.map((g) => [g.userId, g._count._all]));
 }

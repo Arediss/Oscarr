@@ -1,6 +1,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 import { pluginEventBus } from '../eventBus.js';
 import { prisma } from '../../utils/prisma.js';
+import { getAppSettings as getAppSettingsSingleton } from '../../utils/appSettings.js';
 import { getPluginDataDir } from '../../utils/dataPath.js';
 import { getKV, openPluginDb, migrate as migrateDb, type PluginDatabase, type Migration } from '../storage/index.js';
 import { scrubSecrets } from '../../utils/logScrubber.js';
@@ -9,6 +10,7 @@ import type { NotificationPayload } from '../../notifications/types.js';
 import { sendUserNotification } from '../../services/userNotifications.js';
 import { getArrClient, createArrClient } from '../../providers/index.js';
 import { getAllServices, parseServiceConfig } from '../../utils/services.js';
+import { mediaKey } from '../../utils/mediaKey.js';
 import type { ArrClient } from '../../providers/types.js';
 import { searchMulti, getMovieDetails, getTvDetails } from '../../services/tmdb.js';
 import { createUserRequest } from '../../services/requestService.js';
@@ -226,7 +228,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
     },
     async getAppSettings() {
       req('settings:app', 'getAppSettings');
-      const s = await prisma.appSettings.findUnique({ where: { id: 1 } });
+      const s = await getAppSettingsSingleton();
       return (s ?? {}) as Record<string, unknown>;
     },
     async getSetting(key: string) {
@@ -402,7 +404,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           select: { id: true, tmdbId: true, mediaType: true, statusCategory: true },
         });
         const mediaByKey = new Map<string, { id: number; statusCategory: string }>();
-        for (const m of mediaRows) mediaByKey.set(`${m.mediaType}:${m.tmdbId}`, { id: m.id, statusCategory: m.statusCategory });
+        for (const m of mediaRows) mediaByKey.set(mediaKey(m), { id: m.id, statusCategory: m.statusCategory });
 
         const userRequestsByMediaId = new Map<number, string>();
         if (userId !== undefined && mediaRows.length > 0) {

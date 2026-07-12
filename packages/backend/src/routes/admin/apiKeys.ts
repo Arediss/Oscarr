@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { generatePlainKey, hashKey, plainPrefix } from '../../utils/userApiKey.js';
+import { parseId } from '../../utils/params.js';
 
 const MAX_NAME_LENGTH = 80;
 
@@ -12,7 +13,7 @@ const MAX_NAME_LENGTH = 80;
  */
 export async function apiKeysAdminRoutes(app: FastifyInstance) {
   app.get('/api-keys', async (request) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     return prisma.userApiKey.findMany({
       where: { userId: user.id, revokedAt: null },
       orderBy: { createdAt: 'desc' },
@@ -21,7 +22,7 @@ export async function apiKeysAdminRoutes(app: FastifyInstance) {
   });
 
   app.post<{ Body: { name?: string } }>('/api-keys', async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const name = (request.body?.name ?? '').trim();
     if (!name) return reply.status(400).send({ error: 'NAME_REQUIRED' });
     if (name.length > MAX_NAME_LENGTH) return reply.status(400).send({ error: 'NAME_TOO_LONG' });
@@ -41,9 +42,9 @@ export async function apiKeysAdminRoutes(app: FastifyInstance) {
   });
 
   app.delete<{ Params: { id: string } }>('/api-keys/:id', async (request, reply) => {
-    const user = request.user as { id: number };
-    const id = Number(request.params.id);
-    if (!Number.isInteger(id) || id < 1) return reply.status(400).send({ error: 'INVALID_ID' });
+    const user = request.user;
+    const id = parseId(request.params.id);
+    if (!id) return reply.status(400).send({ error: 'INVALID_ID' });
 
     const existing = await prisma.userApiKey.findFirst({
       where: { id, userId: user.id, revokedAt: null },

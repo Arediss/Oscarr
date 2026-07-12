@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings } from '../utils/appSettings.js';
 import { getArrClient, getServiceDefinition, arrIdFieldForService } from '../providers/index.js';
-import { promoteMediaToAvailable, findMediaByExternalId } from '../services/mediaService.js';
+import { promoteMediaToAvailable, findMediaByExternalId, cascadeRequestsForCategory } from '../services/mediaService.js';
 import { sendAvailabilityNotifications } from '../services/sync/helpers.js';
 import { logEvent } from '../utils/logEvent.js';
 
@@ -31,7 +32,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       return reply.status(401).send({ error: 'API key required' });
     }
 
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { apiKey: true } });
+    const settings = await getAppSettings();
     if (!settings?.apiKey) {
       return reply.status(403).send({ error: 'No API key configured' });
     }
@@ -83,15 +84,26 @@ export async function webhookRoutes(app: FastifyInstance) {
       const media = await findMediaByExternalId(mediaType, event.externalId);
       if (media && media.statusCategory !== 'AVAILABLE') {
         const arrIdField = arrIdFieldForService(serviceType);
-        await prisma.media.update({
-          where: { id: media.id },
-          data: {
-            statusCategory: 'PROCESSING',
-            ...(arrIdField && event.internalId !== undefined && event.internalId > 0 && (media as Record<string, unknown>)[arrIdField] == null
-              ? { [arrIdField]: event.internalId }
-              : {}),
-          },
-        }).catch((err) => logEvent('warn', 'Webhook', `grab → PROCESSING failed for media ${media.id}: ${String(err)}`));
+        const wasProcessing = media.statusCategory === 'PROCESSING';
+        try {
+          // Transactional update+cascade pair (same as mediaSync.applyUpdate): a failure between
+          // the two writes would strand requests at 'approved' behind the wasProcessing guard.
+          await prisma.$transaction(async (tx) => {
+            await tx.media.update({
+              where: { id: media.id },
+              data: {
+                statusCategory: 'PROCESSING',
+                ...(arrIdField && event.internalId !== undefined && event.internalId > 0 && (media as Record<string, unknown>)[arrIdField] == null
+                  ? { [arrIdField]: event.internalId }
+                  : {}),
+              },
+            });
+            // Grab means the *arr picked it up — flip approved/failed requests to processing too.
+            if (!wasProcessing) await cascadeRequestsForCategory(media.id, 'PROCESSING', tx);
+          });
+        } catch (err) {
+          logEvent('warn', 'Webhook', `grab → PROCESSING failed for media ${media.id}: ${String(err)}`);
+        }
       }
       logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" grabbed → processing`);
       return reply.send({ ok: true });

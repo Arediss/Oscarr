@@ -80,7 +80,7 @@ export async function servicesCrudRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'PASSWORD_REQUIRED' });
     }
 
-    const actor = request.user as { id: number };
+    const actor = request.user;
     const adminUser = await prisma.user.findUnique({ where: { id: actor.id }, select: { passwordHash: true } });
     if (!adminUser?.passwordHash) return reply.status(400).send({ error: 'ADMIN_HAS_NO_PASSWORD' });
     const passwordOk = await verifyPassword(password, adminUser.passwordHash);

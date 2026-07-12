@@ -295,6 +295,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     const results: Record<string, Availability> = {};
     const blacklistedKeys = await loadBlacklistedKeys(limited);
 
+    const userId = request.user?.id;
     const media = await prisma.media.findMany({
       where: {
         OR: limited.map((item) => ({
@@ -303,7 +304,9 @@ export async function mediaRoutes(app: FastifyInstance) {
         })),
       },
       include: {
+        // current user's own latest request (matches the detail page, not the latest global one)
         requests: {
+          where: userId ? { userId } : undefined,
           select: { id: true, status: true },
           orderBy: { createdAt: 'desc' },
           take: 1,

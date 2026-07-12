@@ -163,6 +163,9 @@ export interface ServiceDefinition {
    *  lidarr=['music']). Used by `getServiceTypeForMedia(mediaType)` without a hardcoded
    *  lookup. Services that don't participate in media routing (plex, tautulli) omit this. */
   handlesMediaTypes?: readonly string[];
+  /** Media DB column holding this service's *arr id (radarr→radarrId, sonarr→sonarrId). Lets the
+   *  core resolve the column from the module registry instead of hardcoding service ids. */
+  dbIdField?: 'radarrId' | 'sonarrId';
   /** True until this connector has been validated against a real instance by the maintainer.
    *  Surfaces an "Untested" pill in the picker and a feedback banner once selected, so users
    *  know to report back. Removed in the same commit that confirms the integration works. */

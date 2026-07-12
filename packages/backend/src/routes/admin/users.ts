@@ -45,7 +45,7 @@ export async function usersRoutes(app: FastifyInstance) {
     const body = (request.body || {}) as { providerIds?: string[] };
     const filter = body.providerIds && body.providerIds.length > 0 ? { providerIds: body.providerIds } : undefined;
 
-    const adminUser = request.user as { id: number };
+    const adminUser = request.user;
     try {
       const result = await authProvider.importUsers(adminUser.id, filter);
       return result;
@@ -76,7 +76,7 @@ export async function usersRoutes(app: FastifyInstance) {
     if (!authProvider?.syncUsers) {
       return reply.status(400).send({ error: `Provider "${providerId}" does not support user sync.` });
     }
-    const adminUser = request.user as { id: number };
+    const adminUser = request.user;
     try {
       return await authProvider.syncUsers(adminUser.id);
     } catch (err) {

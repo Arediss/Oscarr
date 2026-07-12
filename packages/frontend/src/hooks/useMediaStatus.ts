@@ -78,10 +78,15 @@ export function invalidateMediaStatus(tmdbId: number, mediaType: string) {
   delete globalCache[key];
 }
 
-/** Update cache for a specific media with a known status (avoids stale data on back navigation) */
-export function updateMediaStatusCache(tmdbId: number, mediaType: string, statusCategory: MediaStateCategory, requestStatus?: RequestStatus) {
+/** Update cache for a specific media with a known status (avoids stale data on back navigation).
+ *  requestStatus is tri-state: a value sets it, `null` clears it (caller KNOWS there is no active
+ *  request — e.g. it was declined), `undefined` keeps the cached one (caller doesn't know). The
+ *  keep-on-undefined default avoids blanking the badge, but callers that hold the fresh request
+ *  state must pass it explicitly or a decline keeps showing as "Requested" until the TTL expires. */
+export function updateMediaStatusCache(tmdbId: number, mediaType: string, statusCategory: MediaStateCategory, requestStatus?: RequestStatus | null) {
   const key = `${mediaType}:${tmdbId}`;
-  globalCache[key] = { statusCategory, requestStatus };
+  const next = requestStatus === undefined ? globalCache[key]?.requestStatus : requestStatus ?? undefined;
+  globalCache[key] = { statusCategory, requestStatus: next };
   cacheTimes[key] = Date.now();
   listeners.forEach((cb) => cb());
 }

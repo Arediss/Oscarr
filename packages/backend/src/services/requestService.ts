@@ -1,6 +1,8 @@
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings } from '../utils/appSettings.js';
 import { getArrClient, getArrClientForService, getServiceTypeForMedia } from '../providers/index.js';
 import { getMovieDetails, getTvDetails } from './tmdb.js';
+import { findTvPlaceholder, upgradeOrMergeTvPlaceholder } from './mediaService.js';
 import { matchFolderRule } from './folderRules.js';
 import { logEvent } from '../utils/logEvent.js';
 import { isQualityAllowedForRole } from '../utils/qualityAccess.js';
@@ -50,26 +52,20 @@ export async function findOrCreateMedia(tmdbId: number, mediaType: 'movie' | 'tv
   const releaseDate = 'release_date' in tmdbData ? tmdbData.release_date : tmdbData.first_air_date;
   const tvdbId = mediaType === 'tv' ? (tmdbData.external_ids?.tvdb_id ?? null) : null;
 
-  // TV: upgrade a sync-created placeholder (tmdbId<0) before creating a duplicate.
+  // TV: upgrade a placeholder (tmdbId<0) into the canonical row before creating a duplicate.
   if (mediaType === 'tv' && tvdbId) {
-    const placeholder = await prisma.media.findFirst({
-      where: { mediaType: 'tv', tvdbId, tmdbId: { lt: 0 } },
-    });
+    const placeholder = await findTvPlaceholder(tvdbId);
     if (placeholder) {
-      await prisma.media.update({
-        where: { id: placeholder.id },
-        data: {
-          tmdbId,
-          title: placeholder.title || title,
-          overview: placeholder.overview ?? (tmdbData.overview || null),
-          posterPath: placeholder.posterPath ?? tmdbData.poster_path,
-          backdropPath: placeholder.backdropPath ?? tmdbData.backdrop_path,
-          releaseDate: placeholder.releaseDate ?? (releaseDate || null),
-          voteAverage: placeholder.voteAverage ?? tmdbData.vote_average,
-          genres: placeholder.genres ?? (tmdbData.genres ? JSON.stringify(tmdbData.genres.map(g => g.name)) : null),
-        },
+      return upgradeOrMergeTvPlaceholder(placeholder, tmdbId, {
+        tvdbId,
+        title: placeholder.title || title,
+        overview: placeholder.overview ?? (tmdbData.overview || null),
+        posterPath: placeholder.posterPath ?? tmdbData.poster_path,
+        backdropPath: placeholder.backdropPath ?? tmdbData.backdrop_path,
+        releaseDate: placeholder.releaseDate ?? (releaseDate || null),
+        voteAverage: placeholder.voteAverage ?? tmdbData.vote_average,
+        genres: placeholder.genres ?? (tmdbData.genres ? JSON.stringify(tmdbData.genres.map((g) => g.name)) : null),
       });
-      return prisma.media.findUniqueOrThrow({ where: { id: placeholder.id } });
     }
   }
 
@@ -137,7 +133,7 @@ export async function resolveServiceContext(
   userId: number | null,
   qualityOptionId?: number,
 ): Promise<ServiceContext> {
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
   const defaultProfileId = settings?.defaultQualityProfile ?? null;
 
   const tmdbData = mediaType === 'movie'
@@ -197,7 +193,7 @@ async function sendToArrService(
   // User tagging is opt-in via AppSettings.arrUserTaggingEnabled. When off (default), no
   // tag is created or attached — the *arr UI stays free of Oscarr-internal username tags.
   // Read each call so the toggle takes effect without a server restart.
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { arrUserTaggingEnabled: true } });
+  const settings = await getAppSettings();
   const tags: number[] = settings?.arrUserTaggingEnabled ? [await client.getOrCreateTag(username)] : [];
 
   const externalId = mediaType === 'movie' ? media.tmdbId : media.tvdbId;
@@ -335,7 +331,7 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
 
   const media = await findOrCreateMedia(tmdbId, mediaType);
 
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
   let shouldAutoApprove = user.role === 'admin' || (settings?.autoApproveRequests ?? false);
   if (input.qualityOptionId != null) {
     const qualityOpt = await prisma.qualityOption.findUnique({ where: { id: input.qualityOptionId } });

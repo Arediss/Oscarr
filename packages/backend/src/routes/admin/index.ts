@@ -62,7 +62,7 @@ export async function adminRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { confirm } = request.body as { confirm: string };
     if (confirm !== 'RESTART') return reply.status(400).send({ error: 'RESTART_NOT_CONFIRMED' });
-    const actor = request.user as { id: number } | undefined;
+    const actor = request.user;
     logEvent('warn', 'Admin', `Server restart triggered by user ${actor?.id ?? 'unknown'}`);
     reply.send({ ok: true, message: 'Server restarting...' });
     setTimeout(() => process.exit(0), 500);

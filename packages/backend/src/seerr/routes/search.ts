@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { searchMulti } from '../../services/tmdb.js';
 import { buildSeerrMedia } from '../adapters/media.js';
+import { clampInt } from '../shared.js';
 
 interface TmdbResultLite {
   id: number;
@@ -33,6 +34,7 @@ export async function searchRoutes(app: FastifyInstance) {
         ? []
         : await prisma.media.findMany({
             where: { tmdbId: { in: [...tmdbIds] }, mediaType: { in: ['movie', 'tv'] } },
+            include: { seasons: { select: { statusCategory: true } } },
           });
       const mediaByKey = new Map(mediaRows.map((m) => [`${m.mediaType}:${m.tmdbId}`, m]));
 
@@ -49,10 +51,4 @@ export async function searchRoutes(app: FastifyInstance) {
       };
     },
   );
-}
-
-function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
 }

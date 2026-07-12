@@ -4,7 +4,7 @@ import { buildSeerrUser } from '../adapters/user.js';
 
 export async function authRoutes(app: FastifyInstance) {
   app.get('/auth/me', async (request, reply) => {
-    const authed = request.user as { id: number };
+    const authed = request.user;
     const user = await prisma.user.findUnique({
       where: { id: authed.id },
       include: { providers: true },

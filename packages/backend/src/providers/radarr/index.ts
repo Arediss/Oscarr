@@ -10,6 +10,7 @@ export const radarrProvider: Provider = {
     category: 'arr',
     requiredForInstall: true,
     handlesMediaTypes: ['movie'],
+    dbIdField: 'radarrId',
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:7878' },
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },

@@ -10,6 +10,7 @@ export const sonarrProvider: Provider = {
     category: 'arr',
     requiredForInstall: true,
     handlesMediaTypes: ['tv'],
+    dbIdField: 'sonarrId',
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:8989' },
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },

@@ -1,6 +1,6 @@
 import { notificationRegistry } from '../notifications/index.js';
 import { sendUserNotification as _sendUserNotification } from '../services/userNotifications.js';
-import { prisma } from './prisma.js';
+import { getAppSettings, parseInstanceLanguages } from './appSettings.js';
 import { pluginEventBus } from '../plugins/eventBus.js';
 import { logEvent } from './logEvent.js';
 import type { PluginUserNotificationCreatedV1, NotificationLocale } from '@oscarr/shared';
@@ -14,7 +14,7 @@ let _instanceLangFetched = false;
 /** Get the configured site URL (cached) */
 export async function getSiteUrl(): Promise<string | null> {
   if (_siteUrlFetched) return _siteUrl;
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { siteUrl: true } });
+  const settings = await getAppSettings();
   _siteUrl = settings?.siteUrl || process.env.FRONTEND_URL || null;
   _siteUrlFetched = true;
   return _siteUrl;
@@ -37,9 +37,8 @@ export async function buildSiteLink(path: string): Promise<string | undefined> {
 async function getInstanceLanguage(): Promise<string> {
   if (_instanceLangFetched && _instanceLang) return _instanceLang;
   try {
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { instanceLanguages: true } });
-    const arr = settings?.instanceLanguages ? JSON.parse(settings.instanceLanguages) as unknown : null;
-    _instanceLang = Array.isArray(arr) && typeof arr[0] === 'string' ? arr[0] : 'en';
+    const settings = await getAppSettings();
+    _instanceLang = parseInstanceLanguages(settings?.instanceLanguages)[0];
   } catch {
     _instanceLang = 'en';
   }

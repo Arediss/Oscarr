@@ -29,7 +29,7 @@ export async function blacklistRoutes(app: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const { tmdbId, mediaType, title, posterPath, reason } = request.body as { tmdbId: number; mediaType: string; title: string; posterPath?: string; reason?: string };
 
     const existing = await prisma.blacklistedMedia.findUnique({

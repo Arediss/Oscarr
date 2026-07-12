@@ -15,7 +15,7 @@ if (!process.env.TMDB_API_TOKEN) {
     'Get your own at https://www.themoviedb.org/settings/api to avoid shared rate limits.');
 }
 
-import { prisma } from '../utils/prisma.js';
+import { getAppSettings, parseInstanceLanguages } from '../utils/appSettings.js';
 
 const DEFAULT_LANG = 'en';
 
@@ -31,8 +31,8 @@ export function invalidateLanguageCache(): void {
 
 export async function getInstanceLanguages(): Promise<string[]> {
   if (_cachedLangs && Date.now() - _cachedAt < 300_000) return _cachedLangs;
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { instanceLanguages: true } });
-  const parsed: string[] = settings?.instanceLanguages ? JSON.parse(settings.instanceLanguages) : ['en'];
+  const settings = await getAppSettings();
+  const parsed = parseInstanceLanguages(settings?.instanceLanguages);
   _cachedLangs = parsed.includes('en') ? parsed : [...parsed, 'en'];
   _cachedAt = Date.now();
   return _cachedLangs;

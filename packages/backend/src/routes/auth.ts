@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings } from '../utils/appSettings.js';
 import { logEvent } from '../utils/logEvent.js';
 import { registerEmail, loginEmail } from '../providers/email/index.js';
 import { getAuthProviders, getAuthProvider, getAuthProviderConfigs } from '../providers/index.js';
@@ -19,7 +20,7 @@ function buildHelpers(app: FastifyInstance): AuthHelpers {
       if (!user) return reply.status(500).send({ error: 'User not found after auth' });
 
       if (user.disabled) {
-        const appSettings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+        const appSettings = await getAppSettings();
         const mode = appSettings?.disabledLoginMode ?? 'friendly';
         if (mode === 'friendly') {
           return reply.status(403).send({ error: 'ACCOUNT_DISABLED' });
@@ -258,7 +259,7 @@ export async function authRoutes(app: FastifyInstance) {
     },
 
   }, async (request, reply) => {
-    const currentUser = request.user as { id: number };
+    const currentUser = request.user;
     const { provider: providerId, pinId, username, password } = request.body as {
       provider: string; pinId?: number; username?: string; password?: string;
     };
@@ -290,7 +291,7 @@ export async function authRoutes(app: FastifyInstance) {
   // ─── Common ────────────────────────────────────────────────────────
 
   app.get('/me', async (request, reply) => {
-    const { id } = request.user as { id: number };
+    const { id } = request.user;
     const user = await prisma.user.findUnique({
       where: { id },
       select: {
@@ -329,7 +330,7 @@ export async function authRoutes(app: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const { id } = request.user as { id: number };
+    const { id } = request.user;
     const { source, config, avatar } = request.body as {
       source: string;
       config?: { style?: string; seed?: string; options?: Record<string, unknown> };

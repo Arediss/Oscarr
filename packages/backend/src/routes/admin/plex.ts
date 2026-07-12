@@ -1,7 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
+import { getAppSettings } from '../../utils/appSettings.js';
 import { logEvent } from '../../utils/logEvent.js';
 import { parseId } from '../../utils/params.js';
+import { getServiceConfig } from '../../utils/services.js';
 import { getPlexToken } from '../../providers/plex/index.js';
 import { getSharedServerUsers, removeSharedServer } from '../../providers/plex/client.js';
 
@@ -22,16 +24,11 @@ export async function plexAdminRoutes(app: FastifyInstance) {
     const token = await getPlexToken(request.user.id);
     if (!token) return reply.status(400).send({ error: 'No Plex admin token available' });
 
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     let machineId = settings?.plexMachineId;
     if (!machineId) {
-      const plexService = await prisma.service.findFirst({ where: { type: 'plex', enabled: true } });
-      if (plexService) {
-        try {
-          const cfg = JSON.parse(plexService.config) as Record<string, string>;
-          machineId = cfg.machineId || null;
-        } catch { /* ignore */ }
-      }
+      const cfg = await getServiceConfig('plex');
+      machineId = cfg?.machineId || null;
     }
     if (!machineId) return reply.status(400).send({ error: 'No Plex machine ID configured' });
 

@@ -1,6 +1,8 @@
 import { prisma } from '../../utils/prisma.js';
 import { getMovieDetails, getTvDetails, extractKeywords, extractContentRating, type TmdbMovie, type TmdbTv } from '../tmdb.js';
 import { logEvent } from '../../utils/logEvent.js';
+import { chunk } from '../../utils/batch.js';
+import { findTvPlaceholder, upgradeOrMergeTvPlaceholder } from '../mediaService.js';
 
 const BATCH_SIZE = 20;
 const BATCH_DELAY_MS = 1000;
@@ -50,10 +52,9 @@ export async function syncMissingKeywords(): Promise<{ synced: number; errors: n
 
   logEvent('debug', 'KeywordSync', `${mediasWithoutKeywords.length} media without keywords`);
 
-  for (let i = 0; i < mediasWithoutKeywords.length; i += BATCH_SIZE) {
-    const batch = mediasWithoutKeywords.slice(i, i + BATCH_SIZE);
-
-    for (const media of batch) {
+  const batches = chunk(mediasWithoutKeywords, BATCH_SIZE);
+  for (let b = 0; b < batches.length; b++) {
+    for (const media of batches[b]) {
       try {
         const details = media.mediaType === 'movie'
           ? await getMovieDetails(media.tmdbId)
@@ -81,7 +82,7 @@ export async function syncMissingKeywords(): Promise<{ synced: number; errors: n
       }
     }
 
-    if (i + BATCH_SIZE < mediasWithoutKeywords.length) {
+    if (b < batches.length - 1) {
       await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
     }
   }
@@ -120,24 +121,10 @@ export async function trackKeywordsFromDetails(
   // duplicate row, leaving the placeholder orphaned (no sonarrId on the new row, no tmdbId
   // match for batch-status on the old one).
   if (mediaType === 'tv' && tvdbId) {
-    const placeholder = await prisma.media.findFirst({
-      where: { mediaType: 'tv', tvdbId, tmdbId: { lt: 0 } },
-      select: { id: true },
-    });
+    const placeholder = await findTvPlaceholder(tvdbId);
     if (placeholder) {
-      // Pre-existing positive-tmdbId row would conflict on the unique (tmdbId, mediaType)
-      // index — leave both rows alone in that case (audit step will reconcile).
-      const conflict = await prisma.media.findFirst({
-        where: { mediaType: 'tv', tmdbId, NOT: { id: placeholder.id } },
-        select: { id: true },
-      });
-      if (!conflict) {
-        await prisma.media.update({
-          where: { id: placeholder.id },
-          data: { tmdbId, keywordIds, contentRating },
-        });
-        return;
-      }
+      await upgradeOrMergeTvPlaceholder(placeholder, tmdbId, { tvdbId, keywordIds, contentRating });
+      return;
     }
   }
 

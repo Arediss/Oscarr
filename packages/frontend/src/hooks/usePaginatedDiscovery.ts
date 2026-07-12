@@ -52,7 +52,10 @@ export function usePaginatedDiscovery({
   const filterParams = buildDiscoverParams(filters);
 
   const seenIds = useRef(new Set<number>());
+  // Separate controllers: loadMore must never abort the main (page-1) fetch — sharing one ref let
+  // an observer-triggered loadMore kill an in-flight filter transition and strand `transitioning`.
   const abortRef = useRef<AbortController | null>(null);
+  const loadMoreAbortRef = useRef<AbortController | null>(null);
   const prevRouteKeyRef = useRef(routeKey);
 
   // Keep refs in sync for use inside callbacks that close over stale state
@@ -74,8 +77,9 @@ export function usePaginatedDiscovery({
     const isRouteChange = prevRouteKeyRef.current !== routeKey;
     prevRouteKeyRef.current = routeKey;
 
-    // Cancel any in-flight request
+    // Cancel any in-flight request (incl. a stale loadMore from the previous filter/route)
     abortRef.current?.abort();
+    loadMoreAbortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -87,12 +91,15 @@ export function usePaginatedDiscovery({
       setTransitioning(true);
     }
     setPage(1);
+    setLoadingMore(false);
     setError(null);
     seenIds.current = new Set();
 
     api
       .get(buildUrl(1), { signal: controller.signal })
       .then(({ data }) => {
+        if (controller.signal.aborted) return; // aborted-but-resolved would write stale dupes
+
         const transform = mapResultRef.current;
         const mapped = transform
           ? data.results.map((r: TmdbMedia) => transform(r))
@@ -105,6 +112,9 @@ export function usePaginatedDiscovery({
         if (!controller.signal.aborted) {
           console.error('Failed to fetch page:', err);
           setError(err?.message ?? 'Unknown error');
+          // Disable infinite scroll until a successful fetch — with stale results still on screen,
+          // a loadMore here would append the NEW filter's page 2 under the OLD filter's results.
+          setTotalPages(0);
         }
       })
       .finally(() => {
@@ -114,17 +124,23 @@ export function usePaginatedDiscovery({
         }
       });
 
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      loadMoreAbortRef.current?.abort(); // also cancel an in-flight loadMore on unmount
+    };
   }, [routeKey, filterParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load next page
   const loadMore = useCallback(async () => {
-    if (loadingMore || page >= totalPages) return;
+    // loading/transitioning guard: a freshly re-attached observer fires immediately on a still-
+    // intersecting sentinel during a filter change — with stale totalPages, this would append the
+    // NEW filter's page 2 under the OLD filter's results.
+    if (loading || transitioning || loadingMore || page >= totalPages) return;
 
     // Cancel any in-flight loadMore request and create a new controller
-    abortRef.current?.abort();
+    loadMoreAbortRef.current?.abort();
     const controller = new AbortController();
-    abortRef.current = controller;
+    loadMoreAbortRef.current = controller;
 
     setLoadingMore(true);
     const nextPage = page + 1;
@@ -132,6 +148,7 @@ export function usePaginatedDiscovery({
       const { data } = await api.get(buildUrlRef.current(nextPage), {
         signal: controller.signal,
       });
+      if (controller.signal.aborted) return;
       const transform = mapResultRef.current;
       const mapped = transform
         ? data.results.map((r: TmdbMedia) => transform(r))
@@ -148,7 +165,7 @@ export function usePaginatedDiscovery({
         setLoadingMore(false);
       }
     }
-  }, [loadingMore, page, totalPages]);
+  }, [loading, transitioning, loadingMore, page, totalPages]);
 
   // Stable ref for loadMore so the observer effect doesn't re-subscribe every page
   const loadMoreRef = useRef(loadMore);
@@ -166,7 +183,10 @@ export function usePaginatedDiscovery({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [sentinelRef]);
+    // deps re-attach when the sentinel (re)mounts (absent during initial loading, remounted when a
+    // filter change resets page). `transitioning` re-fires the initial callback once the soft
+    // transition resolves so infinite scroll resumes; during it, loadMore's guard ignores the fire.
+  }, [sentinelRef, loading, transitioning, page, totalPages]);
 
   return { results, loading, loadingMore, transitioning, page, totalPages, error };
 }

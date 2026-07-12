@@ -1,6 +1,21 @@
 import type { Media } from '@prisma/client';
-import { mapMediaStatus } from './statusMap.js';
+import { mapMediaStatus, SEERR_MEDIA_STATUS } from './statusMap.js';
 import { arrIdForMedia } from '../../providers/index.js';
+
+/** Media row optionally carrying its seasons (for partial-availability detection). */
+type MediaWithSeasons = Media & { seasons?: { statusCategory: string }[] };
+
+/** Partial TV (some seasons available, media not AVAILABLE) → PARTIALLY_AVAILABLE(4). */
+function resolveSeerrMediaStatus(media: MediaWithSeasons): number {
+  if (
+    media.mediaType === 'tv' &&
+    media.statusCategory !== 'AVAILABLE' &&
+    media.seasons?.some((s) => s.statusCategory === 'AVAILABLE')
+  ) {
+    return SEERR_MEDIA_STATUS.PARTIALLY_AVAILABLE;
+  }
+  return mapMediaStatus(media.statusCategory);
+}
 
 /**
  * Subset of Overseerr's `Media` entity that Seerr clients actually read. We omit fields tied to
@@ -37,7 +52,7 @@ export interface SeerrMediaInfo {
   serviceUrl4k: string | null;
 }
 
-export function buildSeerrMedia(media: Media): SeerrMediaInfo {
+export function buildSeerrMedia(media: MediaWithSeasons): SeerrMediaInfo {
   // *arr internal id (Radarr movie.id / Sonarr series.id) — exposed as Overseerr's
   // externalServiceId so dashboards can deep-link into the *arr UI.
   const externalServiceId = arrIdForMedia(media);
@@ -48,7 +63,7 @@ export function buildSeerrMedia(media: Media): SeerrMediaInfo {
     tmdbId: media.tmdbId,
     tvdbId: media.tvdbId,
     imdbId: null,
-    status: mapMediaStatus(media.statusCategory),
+    status: resolveSeerrMediaStatus(media),
     // Oscarr doesn't track a separate 4k pipeline; report UNKNOWN so 4k-aware UIs hide that column.
     status4k: 1,
     createdAt: media.createdAt.toISOString(),

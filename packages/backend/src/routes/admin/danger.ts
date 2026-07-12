@@ -42,7 +42,7 @@ export async function dangerRoutes(app: FastifyInstance) {
     const userId = parseId(id);
     if (!userId) return reply.status(400).send({ error: 'Invalid ID' });
 
-    const currentUser = request.user as { id: number };
+    const currentUser = request.user;
     if (userId === currentUser.id) return reply.status(400).send({ error: 'Cannot delete your own account' });
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -56,7 +56,7 @@ export async function dangerRoutes(app: FastifyInstance) {
   // Purge all users except current admin
   app.delete('/danger/users', async (request, reply) => {
 
-    const currentUser = request.user as { id: number };
+    const currentUser = request.user;
     const { count } = await prisma.user.deleteMany({ where: { id: { not: currentUser.id } } });
     logEvent('warn', 'Admin', `Purge: ${count} users deleted`);
     return { ok: true, deleted: count };

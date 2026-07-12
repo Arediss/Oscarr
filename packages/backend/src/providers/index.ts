@@ -161,11 +161,9 @@ export function getServiceTypeForMedia(mediaType: string): string {
   return type;
 }
 
-/** Media DB column holding a service's *arr id (radarr → radarrId, sonarr → sonarrId). null = not an *arr service. */
+/** Media DB column holding a service's *arr id — resolved from the module registry (no hardcode). */
 export function arrIdFieldForService(serviceType: string): 'radarrId' | 'sonarrId' | null {
-  if (serviceType === 'radarr') return 'radarrId';
-  if (serviceType === 'sonarr') return 'sonarrId';
-  return null;
+  return getServiceDefinition(serviceType)?.dbIdField ?? null;
 }
 
 /** The *arr id stored on a media row, for the service that owns its media type. */

@@ -6,7 +6,7 @@ import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { MediaStateCategory } from '@oscarr/shared';
 import { getTvDetails } from './tmdb.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
-import type { Media } from '@prisma/client';
+import { Prisma, type Media } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Shared media lookup helpers — used by sync, webhooks, request flow.
@@ -37,6 +37,134 @@ export async function resolveTvdbId(tmdbId: number): Promise<number | null> {
     return data.external_ids?.tvdb_id ?? null;
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TV placeholder (-tvdbId) upgrade/merge — single owner for the sync, request and keyword paths.
+// A TV row known only by its tvdb id is stored as tmdbId = -tvdbId until its real tmdbId resolves.
+// ---------------------------------------------------------------------------
+
+/** Find the legacy -tvdbId placeholder row for a TV show, if any. */
+export function findTvPlaceholder(tvdbId: number): Promise<Media | null> {
+  return prisma.media.findFirst({ where: { mediaType: 'tv', tvdbId, tmdbId: { lt: 0 } } });
+}
+
+/** True iff the error is a P2002 unique-constraint violation on (tmdbId, mediaType). */
+export function isTmdbMediaTypeConflict(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: string; meta?: { target?: unknown } };
+  if (e.code !== 'P2002') return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return target.includes('tmdbId') && target.includes('mediaType');
+  return typeof target === 'string' && target.includes('tmdbId');
+}
+
+export interface PlaceholderMergeOpts {
+  /** Canonical seasons to (re)create on merge — used by the sync path which has Sonarr season data. */
+  seasons?: { seasonNumber: number; episodeCount: number; statusCategory?: string }[];
+  /** Cascade COMPLETABLE requests to 'available' after the write. */
+  becameAvailable?: boolean;
+}
+
+/** Request status advancement rank — higher = more progressed (kept on a per-user merge). */
+const REQUEST_STATUS_RANK: Record<string, number> = { declined: 0, failed: 1, pending: 2, approved: 3, processing: 4, available: 5 };
+const requestRank = (status: string): number => REQUEST_STATUS_RANK[status] ?? -1;
+
+/** *arr-state fields the placeholder tracked that a narrow mergeData must not silently discard. */
+const PLACEHOLDER_INHERITED_FIELDS = ['tvdbId', 'sonarrId', 'radarrId', 'qualityProfileId', 'availableAt', 'audioLanguages', 'subtitleLanguages', 'lastEpisodeInfo', 'contentRating', 'keywordIds'] as const;
+
+/** Merge a -tvdbId placeholder into the canonical positive-tmdbId row and delete the placeholder.
+ *  Per user, keeps the most-advanced request and drops the other so nobody ends up with two and no
+ *  user's better request is lost. Fields the caller doesn't set inherit the placeholder's *arr
+ *  state (sonarrId, statusCategory, seasons, …) when the canonical lacks it — the request/keyword
+ *  callers pass only metadata and must not lose the Sonarr linkage the sync-owned placeholder
+ *  tracked. Returns the surviving (canonical) row. */
+export async function mergeTvPlaceholderInto(
+  placeholder: Media,
+  canonicalId: number,
+  mergeData: Record<string, unknown>,
+  opts?: PlaceholderMergeOpts,
+): Promise<Media> {
+  const { tmdbId: _drop, ...data } = mergeData;
+  const merged = await prisma.$transaction(async (tx) => {
+    const existing = await tx.media.findUniqueOrThrow({ where: { id: canonicalId } });
+
+    // Reconcile per-user duplicate requests (re-parent before deleting the placeholder, whose FK
+    // cascades on delete): for a user present on both rows, keep the more-advanced request.
+    const [placeholderReqs, canonicalReqs] = await Promise.all([
+      tx.mediaRequest.findMany({ where: { mediaId: placeholder.id }, select: { id: true, userId: true, status: true } }),
+      tx.mediaRequest.findMany({ where: { mediaId: canonicalId }, select: { id: true, userId: true, status: true } }),
+    ]);
+    const canonicalByUser = new Map(canonicalReqs.map((r) => [r.userId, r]));
+    const toReparent: number[] = [];
+    const toDelete: number[] = [];
+    for (const p of placeholderReqs) {
+      const c = canonicalByUser.get(p.userId);
+      if (!c) toReparent.push(p.id);
+      else if (requestRank(p.status) > requestRank(c.status)) { toDelete.push(c.id); toReparent.push(p.id); }
+      else toDelete.push(p.id);
+    }
+    if (toDelete.length) await tx.mediaRequest.deleteMany({ where: { id: { in: toDelete } } });
+    if (toReparent.length) await tx.mediaRequest.updateMany({ where: { id: { in: toReparent } }, data: { mediaId: canonicalId } });
+
+    // Inherit *arr state the caller didn't set and the canonical lacks. statusCategory only ever
+    // advances from the default (never regress a canonical that already knows better).
+    const inherited: Record<string, unknown> = {};
+    for (const field of PLACEHOLDER_INHERITED_FIELDS) {
+      if (!(field in data) && existing[field] == null && placeholder[field] != null) inherited[field] = placeholder[field];
+    }
+    const adoptedCategory = !('statusCategory' in data) && existing.statusCategory === 'UNAVAILABLE' && placeholder.statusCategory !== 'UNAVAILABLE'
+      ? placeholder.statusCategory
+      : null;
+    if (adoptedCategory) {
+      inherited.statusCategory = adoptedCategory;
+      if (adoptedCategory === 'AVAILABLE' && !('availableAt' in data) && inherited.availableAt == null && !existing.availableAt) inherited.availableAt = new Date();
+    }
+
+    // Seasons: the sync path recreates them from opts; otherwise re-parent the placeholder's rows
+    // when the canonical has none — they carry per-season availability the canonical would lose.
+    const keepPlaceholderSeasons = !opts?.seasons?.length
+      && (await tx.season.count({ where: { mediaId: canonicalId } })) === 0;
+    if (keepPlaceholderSeasons) await tx.season.updateMany({ where: { mediaId: placeholder.id }, data: { mediaId: canonicalId } });
+    else await tx.season.deleteMany({ where: { mediaId: placeholder.id } });
+    await tx.media.delete({ where: { id: placeholder.id } });
+
+    const canonical = await tx.media.update({ where: { id: canonicalId }, data: { ...inherited, ...data } });
+    if (opts?.seasons?.length) {
+      await tx.season.deleteMany({ where: { mediaId: canonicalId } });
+      await tx.season.createMany({
+        data: opts.seasons.map((s) => ({ mediaId: canonicalId, seasonNumber: s.seasonNumber, episodeCount: s.episodeCount, ...(s.statusCategory ? { statusCategory: s.statusCategory } : {}) })),
+      });
+    }
+    if (opts?.becameAvailable || adoptedCategory === 'AVAILABLE') await cascadeRequestsForCategory(canonicalId, 'AVAILABLE', tx);
+    else if (adoptedCategory === 'PROCESSING') await cascadeRequestsForCategory(canonicalId, 'PROCESSING', tx);
+    return canonical;
+  });
+  logEvent('debug', 'Media', `merged placeholder TV row ${placeholder.id} into canonical ${canonicalId}`);
+  return merged;
+}
+
+/** Upgrade a placeholder to its real tmdbId, or merge into the existing canonical row on a unique
+ *  conflict. Returns the SURVIVING row — its id may differ from the placeholder's, so callers must
+ *  use the returned row, not assume an in-place upgrade. `mergeData` must not set tmdbId. */
+export async function upgradeOrMergeTvPlaceholder(
+  placeholder: Media,
+  realTmdbId: number,
+  mergeData: Record<string, unknown>,
+  opts?: PlaceholderMergeOpts,
+): Promise<Media> {
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const updated = await tx.media.update({ where: { id: placeholder.id }, data: { tmdbId: realTmdbId, ...mergeData } });
+      if (opts?.becameAvailable) await cascadeRequestsForCategory(placeholder.id, 'AVAILABLE', tx);
+      return updated;
+    });
+  } catch (err) {
+    if (!isTmdbMediaTypeConflict(err)) throw err;
+    const canonical = await prisma.media.findFirst({ where: { tmdbId: realTmdbId, mediaType: 'tv', NOT: { id: placeholder.id } } });
+    if (!canonical) throw err;
+    return mergeTvPlaceholderInto(placeholder, canonical.id, mergeData, opts);
   }
 }
 
@@ -134,13 +262,14 @@ export async function cacheLanguageData(
   await prisma.media.update({ where: { id: mediaId }, data: langUpdate });
 }
 
-/** Cascades a media's category onto its linked requests (guarded transition).
- *  AVAILABLE completes in-flight requests; PROCESSING marks approved/failed as downloading. */
-async function cascadeRequestsForCategory(mediaId: number, category: MediaStateCategory): Promise<void> {
+/** Cascades a media's category onto its linked requests (guarded transition). Pass `tx` to run
+ *  inside a transaction. AVAILABLE completes in-flight requests; PROCESSING marks approved/failed
+ *  as downloading. Single owner — sync, placeholder merge and the webhook grab all route here. */
+export async function cascadeRequestsForCategory(mediaId: number, category: MediaStateCategory, tx: Prisma.TransactionClient = prisma): Promise<void> {
   if (category === 'AVAILABLE') {
     await transitionRequestStatus(
       { requestId: undefined, from: undefined, to: 'available', why: 'cascade-media-available' },
-      () => prisma.mediaRequest.updateMany({
+      () => tx.mediaRequest.updateMany({
         where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
         data: { status: 'available' },
       }),
@@ -148,7 +277,7 @@ async function cascadeRequestsForCategory(mediaId: number, category: MediaStateC
   } else if (category === 'PROCESSING') {
     await transitionRequestStatus(
       { requestId: undefined, from: undefined, to: 'processing', why: 'cascade-media-processing' },
-      () => prisma.mediaRequest.updateMany({
+      () => tx.mediaRequest.updateMany({
         where: { mediaId, status: { in: ['approved', 'failed'] } },
         data: { status: 'processing' },
       }),

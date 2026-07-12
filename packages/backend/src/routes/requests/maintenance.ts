@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
+import { getAppSettings } from '../../utils/appSettings.js';
 import { getArrClient, getServiceTypeForMedia, arrIdForMedia } from '../../providers/index.js';
 import { logEvent } from '../../utils/logEvent.js';
 import { pluginEngine } from '../../plugins/engine.js';
@@ -24,7 +25,7 @@ export async function requestMaintenanceRoutes(app: FastifyInstance) {
       },
     },
   }, async (request, reply) => {
-    const user = request.user as { id: number; role: string };
+    const user = request.user;
     const { tmdbId, mediaType } = request.body as { tmdbId: number; mediaType: string };
 
     if (user.role !== 'admin') {
@@ -37,7 +38,7 @@ export async function requestMaintenanceRoutes(app: FastifyInstance) {
 
     // Cooldown — missing-episode search is expensive on the *arr side; throttle repeats so
     // impatient users can't hammer it.
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+    const settings = await getAppSettings();
     const cooldownMin = settings?.missingSearchCooldownMin ?? 60;
     if (media.lastMissingSearchAt) {
       const elapsed = Date.now() - new Date(media.lastMissingSearchAt).getTime();

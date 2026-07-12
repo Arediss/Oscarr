@@ -18,7 +18,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
 
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const { page, unreadOnly } = request.query as { page?: string; unreadOnly?: string };
     const pageNum = Math.max(1, Number.parseInt(page || '1', 10) || 1);
 
@@ -52,7 +52,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.get('/unread-count', {
 
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const count = await prisma.userNotification.count({
       where: { userId: user.id, read: false },
     });
@@ -70,7 +70,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
 
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const { id } = request.params as { id: string };
     const notifId = parseId(id);
     if (!notifId) return reply.status(400).send({ error: 'INVALID_ID' });
@@ -92,7 +92,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.put('/read-all', {
 
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     await prisma.userNotification.updateMany({
       where: { userId: user.id, read: false },
       data: { read: true },
@@ -111,7 +111,7 @@ export async function notificationRoutes(app: FastifyInstance) {
     },
 
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const { id } = request.params as { id: string };
     const notifId = parseId(id);
     if (!notifId) return reply.status(400).send({ error: 'INVALID_ID' });

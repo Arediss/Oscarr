@@ -16,7 +16,7 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
       body: { type: 'object', properties: { qualityOptionId: { type: 'number' } } },
     },
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const requestId = parseId((request.params as { id: string }).id);
     if (!requestId) return reply.status(400).send({ error: 'Invalid ID' });
     const { qualityOptionId: overrideQuality } = (request.body as { qualityOptionId?: number }) || {};
@@ -74,7 +74,7 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
   app.post('/:id/decline', {
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const requestId = parseId((request.params as { id: string }).id);
     if (!requestId) return reply.status(400).send({ error: 'Invalid ID' });
 
@@ -82,8 +82,10 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
       where: { id: requestId },
       select: { status: true },
     });
+    if (!current) return reply.status(404).send({ error: 'Request not found' });
+    if (current.status !== 'pending') return reply.status(400).send({ error: 'This request cannot be declined' });
     const updated = await transitionRequestStatus(
-      { requestId, from: current?.status as RequestStatusKind | undefined, to: 'declined', why: 'admin-decline' },
+      { requestId, from: current.status as RequestStatusKind, to: 'declined', why: 'admin-decline' },
       () => prisma.mediaRequest.update({
         where: { id: requestId },
         data: { status: 'declined', approvedById: user.id },
@@ -130,7 +132,7 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
   app.delete('/:id', {
     schema: { params: { type: 'object', required: ['id'], properties: { id: { type: 'string' } } } },
   }, async (request, reply) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const requestId = parseId((request.params as { id: string }).id);
     if (!requestId) return reply.status(400).send({ error: 'Invalid ID' });
 

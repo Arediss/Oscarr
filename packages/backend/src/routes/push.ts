@@ -7,7 +7,7 @@ export async function pushRoutes(app: FastifyInstance) {
   app.post('/subscribe', async (request, reply) => {
     if (!isPushConfigured()) return reply.status(503).send({ error: 'Push notifications not configured' });
 
-    const user = request.user as { id: number };
+    const user = request.user;
     const { endpoint, keys } = request.body as { endpoint: string; keys: { p256dh: string; auth: string } };
 
     if (!endpoint || !keys?.p256dh || !keys?.auth) {
@@ -25,7 +25,7 @@ export async function pushRoutes(app: FastifyInstance) {
 
   // DELETE /push/unsubscribe — remove subscription
   app.delete('/unsubscribe', async (request) => {
-    const user = request.user as { id: number };
+    const user = request.user;
     const { endpoint } = request.body as { endpoint: string };
 
     if (endpoint) {

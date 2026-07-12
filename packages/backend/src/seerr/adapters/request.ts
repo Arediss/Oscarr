@@ -33,7 +33,7 @@ export interface SeerrMediaRequest {
 
 interface AdaptInput {
   request: MediaRequest & {
-    media: Media;
+    media: Media & { seasons?: { statusCategory: string }[] };
     user: User & { providers: UserProvider[] };
     approvedBy: (User & { providers: UserProvider[] }) | null;
   };

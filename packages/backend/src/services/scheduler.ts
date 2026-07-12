@@ -1,5 +1,6 @@
 import cron, { type ScheduledTask } from 'node-cron';
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings } from '../utils/appSettings.js';
 import { runFullSync, runNewMediaSync } from './sync/index.js';
 import { cleanupOrphanedRequests } from './requestCleanup.js';
 import { retryFailedRequests } from './requestService.js';
@@ -152,7 +153,7 @@ function scheduleJob(key: string, cronExpression: string) {
 
 /** Check if a first full sync has been completed */
 async function hasCompletedFirstSync(): Promise<boolean> {
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
   return !!(settings?.lastRadarrSync || settings?.lastSonarrSync);
 }
 

@@ -125,7 +125,7 @@ const discordAuth: AuthProvider = {
           const fullUrl = request.url; // includes /api/auth/discord/authorize?action=link
           return reply.redirect(`/login?next=${encodeURIComponent(fullUrl)}`);
         }
-        userId = (request.user as { id: number }).id;
+        userId = request.user.id;
       }
 
       const state = randomUUID();

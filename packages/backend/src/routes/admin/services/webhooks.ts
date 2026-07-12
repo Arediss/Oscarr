@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../../utils/prisma.js';
+import { getAppSettings, patchAppSettings } from '../../../utils/appSettings.js';
 import { getServiceDefinition } from '../../../providers/index.js';
 import { logEvent } from '../../../utils/logEvent.js';
 import { parseId } from '../../../utils/params.js';
@@ -55,14 +56,10 @@ function swapLoopbackForLan(host: string): string {
 /** Mint a new webhook secret on first need. Stored in `AppSettings.apiKey` (legacy field
  *  kept alive for the /webhooks callback auth) and reused for every subsequent enable. */
 async function ensureWebhookSecret(): Promise<string> {
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { apiKey: true } });
+  const settings = await getAppSettings();
   if (settings?.apiKey) return settings.apiKey;
   const apiKey = crypto.randomBytes(32).toString('hex');
-  await prisma.appSettings.upsert({
-    where: { id: 1 },
-    update: { apiKey },
-    create: { id: 1, apiKey, updatedAt: new Date() },
-  });
+  await patchAppSettings({ apiKey });
   logEvent('info', 'Webhook', 'Generated webhook callback secret (AppSettings.apiKey)');
   return apiKey;
 }
@@ -89,7 +86,7 @@ export async function servicesWebhookRoutes(app: FastifyInstance) {
       client = def?.createClient?.(config) ?? null;
     } catch { /* createClient failed — service type doesn't support webhooks */ }
 
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { siteUrl: true } });
+    const settings = await getAppSettings();
     const protocol = request.headers['x-forwarded-proto'] || 'http';
     const host = swapLoopbackForLan(String(request.headers['x-forwarded-host'] || request.headers.host || ''));
     const baseUrl = settings?.siteUrl || `${protocol}://${host}`;
@@ -134,7 +131,7 @@ export async function servicesWebhookRoutes(app: FastifyInstance) {
     if (!client.registerWebhook) return reply.status(400).send({ error: 'Service does not support webhooks' });
 
     const apiKey = await ensureWebhookSecret();
-    const settings = await prisma.appSettings.findUnique({ where: { id: 1 }, select: { siteUrl: true } });
+    const settings = await getAppSettings();
 
     const protocol = request.headers['x-forwarded-proto'] || 'http';
     const host = swapLoopbackForLan(String(request.headers['x-forwarded-host'] || request.headers.host || ''));

@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { getAppSettings } from '../utils/appSettings.js';
 import type { TmdbMovie, TmdbTv } from './tmdb.js';
 import { logEvent } from '../utils/logEvent.js';
 
@@ -157,7 +158,7 @@ async function resolveDefaultFolder(
   mediaType: 'movie' | 'tv',
   seriesType: string | null,
 ): Promise<string> {
-  const settings = await prisma.appSettings.findUnique({ where: { id: 1 } });
+  const settings = await getAppSettings();
   if (seriesType === 'anime' && settings?.defaultAnimeFolder) return settings.defaultAnimeFolder;
   if (mediaType === 'tv' && settings?.defaultTvFolder) return settings.defaultTvFolder;
   if (mediaType === 'movie' && settings?.defaultMovieFolder) return settings.defaultMovieFolder;

@@ -152,8 +152,13 @@ export async function resolveServiceContext(
     const mapping = await prisma.qualityMapping.findFirst({
       where: {
         qualityOptionId,
+        // When a folder rule matched a service, look up the quality mapping on THAT service;
+        // otherwise (serviceId undefined = ignored) fall back to the first enabled service. The
+        // enabled/type filter stays on both branches so a matched-but-disabled service yields no
+        // mapping and falls back to the default profile, instead of applying a profile id that is
+        // only valid on another instance.
         serviceId: targetServiceId ?? undefined,
-        service: targetServiceId ? undefined : { type: serviceType, enabled: true },
+        service: { type: serviceType, enabled: true },
       },
       include: { service: true },
     });

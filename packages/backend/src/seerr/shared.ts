@@ -31,10 +31,19 @@ export async function countRequestsPerUser(userIds: number[]): Promise<Map<numbe
   return new Map(groups.map((g) => [g.userId, g._count._all]));
 }
 
+/** The only media include every Seerr media read needs: seasons' statusCategory for partial-TV
+ *  detection. Single source so a route can't silently forget it (which would report the wrong
+ *  status with no error). */
+export const SEERR_MEDIA_INCLUDE = { seasons: { select: { statusCategory: true } } } satisfies Prisma.MediaInclude;
+
+/** A Media row with exactly the fields SEERR_MEDIA_INCLUDE loads — seasons is REQUIRED, so a route
+ *  that forgets the include won't type-check against buildSeerrMedia. */
+export type SeerrMediaWithSeasons = Prisma.MediaGetPayload<{ include: typeof SEERR_MEDIA_INCLUDE }>;
+
 /** Include graph every Seerr request read needs so buildSeerrRequest sees a consistent shape
  *  (media+seasons for partial-TV status, user+providers, approvedBy+providers). */
 export const SEERR_REQUEST_INCLUDE = {
-  media: { include: { seasons: { select: { statusCategory: true } } } },
+  media: { include: SEERR_MEDIA_INCLUDE },
   user: { include: { providers: true } },
   approvedBy: { include: { providers: true } },
 } satisfies Prisma.MediaRequestInclude;

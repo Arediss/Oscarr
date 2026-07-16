@@ -563,6 +563,12 @@
   "admin.custom_links.position_right_short": "Right",
   "admin.custom_links.saved": "Links saved",
   "admin.custom_links.save_failed": "Save failed",
+  "admin.debug.title": "Debug",
+  "admin.debug.help": "Tools to dig into request flows when something misbehaves. Leave OFF in production.",
+  "admin.debug.toggle_failed": "Toggle failed",
+  "admin.debug.verbose_title": "Verbose request log",
+  "admin.debug.verbose_desc": "Persists every <1>/api/*</1> request to <3>Logs</3> with status, redirect target, IP and user-agent. Useful for tracing OAuth round-trips. Tokens and auth headers are scrubbed.",
+  "admin.debug.verbose_warning": "⚠ Enabled — disable as soon as you're done debugging to avoid filling the database.",
   "login.plex_returning": "Signing you in…",
   "genre.action_adventure": "Action & Adventure",
   "genre.kids": "Kids",
@@ -1101,6 +1107,5 @@
   "account.preferences.language.title": "Language (dev)",
   "account.preferences.language.help": "In production, language follows the instance setting.",
   "account.preferences.view_as.title": "View as role",
-  "account.preferences.view_as.help": "Preview the app with another role's permissions.",
-  "common.back": "Back"
+  "account.preferences.view_as.help": "Preview the app with another role's permissions."
 }

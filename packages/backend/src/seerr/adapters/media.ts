@@ -1,12 +1,9 @@
-import type { Media } from '@prisma/client';
 import { mapMediaStatus, SEERR_MEDIA_STATUS } from './statusMap.js';
 import { arrIdForMedia } from '../../providers/index.js';
-
-/** Media row optionally carrying its seasons (for partial-availability detection). */
-type MediaWithSeasons = Media & { seasons?: { statusCategory: string }[] };
+import type { SeerrMediaWithSeasons } from '../shared.js';
 
 /** Partial TV (some seasons available, media not AVAILABLE) → PARTIALLY_AVAILABLE(4). */
-function resolveSeerrMediaStatus(media: MediaWithSeasons): number {
+function resolveSeerrMediaStatus(media: SeerrMediaWithSeasons): number {
   if (
     media.mediaType === 'tv' &&
     media.statusCategory !== 'AVAILABLE' &&
@@ -52,7 +49,7 @@ export interface SeerrMediaInfo {
   serviceUrl4k: string | null;
 }
 
-export function buildSeerrMedia(media: MediaWithSeasons): SeerrMediaInfo {
+export function buildSeerrMedia(media: SeerrMediaWithSeasons): SeerrMediaInfo {
   // *arr internal id (Radarr movie.id / Sonarr series.id) — exposed as Overseerr's
   // externalServiceId so dashboards can deep-link into the *arr UI.
   const externalServiceId = arrIdForMedia(media);

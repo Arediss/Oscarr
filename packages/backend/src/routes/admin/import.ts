@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { execute, preview, type UserDecision } from '../../importers/runner.js';
 import {
   jellyseerrAdapter,
@@ -50,17 +50,25 @@ interface ExecuteBody extends CredsBody {
   decisions: UserDecision[];
 }
 
+/** Assert `url` is public; on an SSRF-guard block, send the 400 and return true so the caller bails.
+ *  Re-throws anything else. Single owner for the 4 import endpoints that probe a user-supplied URL. */
+async function ssrfBlocked(url: string, reply: FastifyReply): Promise<boolean> {
+  try {
+    await assertPublicUrl(url);
+    return false;
+  } catch (err) {
+    if (err instanceof SsrfBlockedError) {
+      await reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
+      return true;
+    }
+    throw err;
+  }
+}
+
 export async function importRoutes(app: FastifyInstance) {
   app.post('/import/preview', { schema: { body: credsSchema } }, async (request, reply) => {
     const { source, url, apiKey } = request.body as CredsBody;
-    try {
-      await assertPublicUrl(url);
-    } catch (err) {
-      if (err instanceof SsrfBlockedError) {
-        return reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
-      }
-      throw err;
-    }
+    if (await ssrfBlocked(url, reply)) return;
     try {
       const adapter = pickAdapter(source);
       const result = await preview(adapter, { url, apiKey });
@@ -97,14 +105,7 @@ export async function importRoutes(app: FastifyInstance) {
     },
   }, async (request, reply) => {
     const { source, url, apiKey, decisions } = request.body as ExecuteBody;
-    try {
-      await assertPublicUrl(url);
-    } catch (err) {
-      if (err instanceof SsrfBlockedError) {
-        return reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
-      }
-      throw err;
-    }
+    if (await ssrfBlocked(url, reply)) return;
     try {
       const adapter = pickAdapter(source);
       const result = await execute(adapter, { url, apiKey }, decisions);
@@ -131,14 +132,7 @@ export async function importRoutes(app: FastifyInstance) {
 
   app.post('/import/config-probe', { schema: { body: configCredsSchema } }, async (request, reply) => {
     const { url, apiKey } = request.body as { source: ImportSource; url: string; apiKey: string };
-    try {
-      await assertPublicUrl(url);
-    } catch (err) {
-      if (err instanceof SsrfBlockedError) {
-        return reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
-      }
-      throw err;
-    }
+    if (await ssrfBlocked(url, reply)) return;
     try {
       return await deriveConfigFromSeerr({ url, apiKey });
     } catch (err) {
@@ -151,14 +145,7 @@ export async function importRoutes(app: FastifyInstance) {
 
   app.post('/import/config-execute', { schema: { body: configCredsSchema } }, async (request, reply) => {
     const { url, apiKey } = request.body as { source: ImportSource; url: string; apiKey: string };
-    try {
-      await assertPublicUrl(url);
-    } catch (err) {
-      if (err instanceof SsrfBlockedError) {
-        return reply.status(400).send({ error: 'URL_BLOCKED_BY_SSRF_GUARD', detail: err.message });
-      }
-      throw err;
-    }
+    if (await ssrfBlocked(url, reply)) return;
     try {
       const derived = await deriveConfigFromSeerr({ url, apiKey });
       if (!derived.reachable) {

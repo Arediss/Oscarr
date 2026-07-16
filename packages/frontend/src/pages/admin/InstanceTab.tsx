@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import { clsx } from 'clsx';
 import {
   Loader2, CheckCircle, ArrowUpCircle, ExternalLink, Key, Copy, RefreshCw, Trash2, Eye, EyeOff, FileText, AlertTriangle,
@@ -217,9 +217,9 @@ export function InstanceTab() {
       </div>
 
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-ndp-text mb-2">Debug</h2>
+        <h2 className="text-lg font-semibold text-ndp-text mb-2">{t('admin.debug.title')}</h2>
         <p className="text-xs text-ndp-text-dim mb-4">
-          Tools to dig into request flows when something misbehaves. Leave OFF in production.
+          {t('admin.debug.help')}
         </p>
         <div className={clsx('card p-4', verboseLog && 'border border-amber-400/40 bg-amber-400/5')}>
           <div className="flex items-start gap-3">
@@ -231,7 +231,7 @@ export function InstanceTab() {
                   await api.put('/admin/verbose-request-log', { enabled: next });
                   setVerboseLog(next);
                 } catch {
-                  showToast('Toggle failed', 'error');
+                  showToast(t('admin.debug.toggle_failed'), 'error');
                 } finally {
                   setVerboseLogToggling(false);
                 }
@@ -245,13 +245,15 @@ export function InstanceTab() {
               </span>
             </button>
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-ndp-text">Verbose request log</p>
+              <p className="text-sm font-medium text-ndp-text">{t('admin.debug.verbose_title')}</p>
               <p className="text-xs text-ndp-text-dim mt-0.5">
-                Persists every <code className="text-ndp-text bg-black/30 px-1 rounded">/api/*</code> request to <strong>Logs</strong> with status, redirect target, IP and user-agent. Useful for tracing OAuth round-trips. Tokens and auth headers are scrubbed.
+                <Trans i18nKey="admin.debug.verbose_desc">
+                  Persists every <code className="text-ndp-text bg-black/30 px-1 rounded">/api/*</code> request to <strong>Logs</strong> with status, redirect target, IP and user-agent. Useful for tracing OAuth round-trips. Tokens and auth headers are scrubbed.
+                </Trans>
               </p>
               {verboseLog && (
                 <p className="text-xs text-amber-300 mt-2">
-                  ⚠ Enabled — disable as soon as you're done debugging to avoid filling the database.
+                  {t('admin.debug.verbose_warning')}
                 </p>
               )}
             </div>

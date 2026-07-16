@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { buildSeerrMedia } from '../adapters/media.js';
-import { clampInt, buildSeerrPageInfo } from '../shared.js';
+import { clampInt, buildSeerrPageInfo, SEERR_MEDIA_INCLUDE } from '../shared.js';
 
 const DEFAULT_TAKE = 10;
 const MAX_TAKE = 100;
@@ -26,7 +26,7 @@ export async function mediaRoutes(app: FastifyInstance) {
       const [results, totalResults] = await Promise.all([
         prisma.media.findMany({
           where, orderBy: { [sort]: 'desc' }, take, skip,
-          include: { seasons: { select: { statusCategory: true } } },
+          include: SEERR_MEDIA_INCLUDE,
         }),
         prisma.media.count({ where }),
       ]);
@@ -44,7 +44,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 
     const media = await prisma.media.findUnique({
       where: { id },
-      include: { seasons: { select: { statusCategory: true } } },
+      include: SEERR_MEDIA_INCLUDE,
     });
     if (!media) return reply.status(404).send({ error: 'NOT_FOUND' });
     return buildSeerrMedia(media);

@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { searchMulti } from '../../services/tmdb.js';
 import { buildSeerrMedia } from '../adapters/media.js';
-import { clampInt } from '../shared.js';
+import { clampInt, SEERR_MEDIA_INCLUDE } from '../shared.js';
 
 interface TmdbResultLite {
   id: number;
@@ -34,7 +34,7 @@ export async function searchRoutes(app: FastifyInstance) {
         ? []
         : await prisma.media.findMany({
             where: { tmdbId: { in: [...tmdbIds] }, mediaType: { in: ['movie', 'tv'] } },
-            include: { seasons: { select: { statusCategory: true } } },
+            include: SEERR_MEDIA_INCLUDE,
           });
       const mediaByKey = new Map(mediaRows.map((m) => [`${m.mediaType}:${m.tmdbId}`, m]));
 

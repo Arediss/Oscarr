@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { getMovieDetails, getTvDetails } from '../../services/tmdb.js';
 import { buildSeerrMedia } from '../adapters/media.js';
+import { SEERR_MEDIA_INCLUDE } from '../shared.js';
 
 /**
  * Overseerr's /movie/:tmdbId and /tv/:tmdbId endpoints proxy TMDB and stitch on a `mediaInfo`
@@ -22,7 +23,7 @@ export async function movieTvRoutes(app: FastifyInstance) {
 
       const [tmdb, oscarrMedia] = await Promise.all([
         safeFetch(() => getMovieDetails(tmdbId, request.query.language)),
-        prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType: 'movie' } } }),
+        prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType: 'movie' } }, include: SEERR_MEDIA_INCLUDE }),
       ]);
 
       if (!tmdb) return reply.status(404).send({ error: 'NOT_FOUND' });
@@ -40,7 +41,7 @@ export async function movieTvRoutes(app: FastifyInstance) {
 
       const [tmdb, oscarrMedia] = await Promise.all([
         safeFetch(() => getTvDetails(tmdbId, request.query.language)),
-        prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType: 'tv' } }, include: { seasons: { select: { statusCategory: true } } } }),
+        prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType: 'tv' } }, include: SEERR_MEDIA_INCLUDE }),
       ]);
 
       if (!tmdb) return reply.status(404).send({ error: 'NOT_FOUND' });

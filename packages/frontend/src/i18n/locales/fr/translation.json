@@ -562,6 +562,12 @@
   "admin.custom_links.position_right_short": "Droite",
   "admin.custom_links.saved": "Liens enregistrés",
   "admin.custom_links.save_failed": "Échec de la sauvegarde",
+  "admin.debug.title": "Débogage",
+  "admin.debug.help": "Outils pour investiguer les flux de requêtes en cas de souci. À laisser OFF en production.",
+  "admin.debug.toggle_failed": "Échec du basculement",
+  "admin.debug.verbose_title": "Journal détaillé des requêtes",
+  "admin.debug.verbose_desc": "Enregistre chaque requête <1>/api/*</1> dans les <3>Logs</3> avec statut, cible de redirection, IP et user-agent. Utile pour tracer les allers-retours OAuth. Les tokens et en-têtes d’auth sont masqués.",
+  "admin.debug.verbose_warning": "⚠ Activé — désactive dès que le débogage est terminé pour éviter de remplir la base.",
   "login.plex_returning": "Connexion en cours…",
   "genre.action_adventure": "Action & Aventure",
   "genre.kids": "Enfants",
@@ -1101,6 +1107,5 @@
   "account.preferences.language.title": "Langue (dev)",
   "account.preferences.language.help": "En production, la langue suit le réglage instance.",
   "account.preferences.view_as.title": "Voir comme rôle",
-  "account.preferences.view_as.help": "Prévisualisez l'app avec les permissions d'un autre rôle.",
-  "common.back": "Retour"
+  "account.preferences.view_as.help": "Prévisualisez l'app avec les permissions d'un autre rôle."
 }

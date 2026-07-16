@@ -3,7 +3,7 @@ import { getArrClient, getServiceTypeForMedia, arrIdForMedia } from '../provider
 import { normalizeLanguages } from '../utils/languages.js';
 import { logEvent } from '../utils/logEvent.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
-import type { MediaStateCategory } from '@oscarr/shared';
+import type { MediaStateCategory, RequestStatus } from '@oscarr/shared';
 import { getTvDetails } from './tmdb.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
 import { Prisma, type Media } from '@prisma/client';
@@ -68,8 +68,10 @@ export interface PlaceholderMergeOpts {
 }
 
 /** Request status advancement rank — higher = more progressed (kept on a per-user merge). */
-const REQUEST_STATUS_RANK: Record<string, number> = { declined: 0, failed: 1, pending: 2, approved: 3, processing: 4, available: 5 };
-const requestRank = (status: string): number => REQUEST_STATUS_RANK[status] ?? -1;
+// Keyed by the shared RequestStatus union so adding a status there is a compile error here (a new
+// status must get an explicit rank, or a placeholder merge could silently drop the wrong request).
+const REQUEST_STATUS_RANK: Record<RequestStatus, number> = { declined: 0, failed: 1, pending: 2, approved: 3, processing: 4, available: 5 };
+const requestRank = (status: string): number => REQUEST_STATUS_RANK[status as RequestStatus] ?? -1;
 
 /** *arr-state fields the placeholder tracked that a narrow mergeData must not silently discard. */
 const PLACEHOLDER_INHERITED_FIELDS = ['tvdbId', 'sonarrId', 'radarrId', 'qualityProfileId', 'availableAt', 'audioLanguages', 'subtitleLanguages', 'lastEpisodeInfo', 'contentRating', 'keywordIds'] as const;

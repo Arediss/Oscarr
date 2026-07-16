@@ -1,7 +1,8 @@
-import type { Media, MediaRequest, User, UserProvider } from '@prisma/client';
+import type { MediaRequest, User, UserProvider } from '@prisma/client';
 import { buildSeerrMedia, type SeerrMediaInfo } from './media.js';
 import { buildSeerrUser, type SeerrUser } from './user.js';
 import { mapRequestStatus } from './statusMap.js';
+import type { SeerrMediaWithSeasons } from '../shared.js';
 
 export interface SeerrSeasonRequest {
   id: number;
@@ -33,7 +34,7 @@ export interface SeerrMediaRequest {
 
 interface AdaptInput {
   request: MediaRequest & {
-    media: Media & { seasons?: { statusCategory: string }[] };
+    media: SeerrMediaWithSeasons;
     user: User & { providers: UserProvider[] };
     approvedBy: (User & { providers: UserProvider[] }) | null;
   };

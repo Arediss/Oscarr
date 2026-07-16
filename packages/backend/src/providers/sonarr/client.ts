@@ -8,7 +8,6 @@ import { ArrClientBase } from '../arrClientBase.js';
 export class SonarrClient extends ArrClientBase implements ArrClient {
   readonly mediaType = 'tv' as const;
   readonly serviceType = 'sonarr';
-  readonly dbIdField = 'sonarrId' as const;
   readonly defaultRootFolder = '/tv';
 
   constructor(url: string, apiKey: string) {

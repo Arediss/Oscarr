@@ -25,7 +25,8 @@ type T = (key: string) => string;
 export function mediaStateDisplay(category: MediaStateCategory, t: T): BadgeView {
   // Guards an unknown value: statusCategory is cast from a DB string upstream.
   const d = MEDIA_STATE_DISPLAY[category] ?? MEDIA_STATE_DISPLAY.UNAVAILABLE;
-  return { label: t(d.labelKey), Icon: ICONS[d.iconName] ?? HelpCircle, badgeClass: COLOR_TOKEN_CLASSES[d.colorToken] };
+  // ICONS is exhaustive over IconName, so d.iconName always resolves — no runtime fallback needed.
+  return { label: t(d.labelKey), Icon: ICONS[d.iconName], badgeClass: COLOR_TOKEN_CLASSES[d.colorToken] };
 }
 
 interface AvailabilityLike {

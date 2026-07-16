@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma.js';
-import { getArrClient, getServiceTypeForMedia, arrIdForMedia } from '../providers/index.js';
+import { getArrClient, getServiceTypeForMedia, arrIdForMedia, arrIdFieldForClient } from '../providers/index.js';
 import { normalizeLanguages } from '../utils/languages.js';
 import { logEvent } from '../utils/logEvent.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
@@ -331,7 +331,7 @@ export async function refreshMediaCategory(media: {
       where: { id: media.id },
       data: {
         statusCategory: cat,
-        [client.dbIdField]: serviceMediaId,
+        [arrIdFieldForClient(client)]: serviceMediaId,
         ...(becameAvailable && !media.availableAt ? { availableAt: new Date() } : {}),
       },
     });

@@ -8,7 +8,6 @@ import { ArrClientBase } from '../arrClientBase.js';
 export class RadarrClient extends ArrClientBase implements ArrClient {
   readonly mediaType = 'movie' as const;
   readonly serviceType = 'radarr';
-  readonly dbIdField = 'radarrId' as const;
   readonly defaultRootFolder = '/movies';
 
   constructor(url: string, apiKey: string) {

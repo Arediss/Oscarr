@@ -3,12 +3,8 @@ import type { Prisma } from '@prisma/client';
 
 // Shared scaffolding for the Seerr-compat routes (pagination, request-count, include graph).
 
-/** Clamp a query int to [min,max], falling back when missing/NaN. */
-export function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
+// clampInt is generic and lives in utils/params.ts; re-exported so seerr routes keep one import site.
+export { clampInt } from '../utils/params.js';
 
 /** Overseerr-style pageInfo envelope. MAX_TAKE stays per-route (deliberately 100 vs 200). */
 export function buildSeerrPageInfo(take: number, skip: number, totalResults: number) {

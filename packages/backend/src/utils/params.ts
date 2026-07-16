@@ -8,4 +8,11 @@ export function parsePage(value?: string): number {
   return page > 0 ? page : 1;
 }
 
+/** Clamp a query int to [min,max], falling back when missing/NaN. Generic — usable by any route. */
+export function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
+
 export const VALID_MEDIA_TYPES: readonly string[] = ['movie', 'tv'];

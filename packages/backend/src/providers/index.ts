@@ -166,6 +166,14 @@ export function arrIdFieldForService(serviceType: string): 'radarrId' | 'sonarrI
   return getServiceDefinition(serviceType)?.dbIdField ?? null;
 }
 
+/** Non-null variant for the *arr id column of a live ArrClient — every ArrClient's serviceType is a
+ *  registered *arr type, so the field is always defined (single source: the ServiceDefinition). */
+export function arrIdFieldForClient(client: { serviceType: string }): 'radarrId' | 'sonarrId' {
+  const field = arrIdFieldForService(client.serviceType);
+  if (!field) throw new Error(`No dbIdField for service type "${client.serviceType}"`);
+  return field;
+}
+
 /** The *arr id stored on a media row, for the service that owns its media type. */
 export function arrIdForMedia(media: { mediaType: string; radarrId: number | null; sonarrId: number | null }): number | null {
   const type = findServiceTypeForMedia(media.mediaType);

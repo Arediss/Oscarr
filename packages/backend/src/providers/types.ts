@@ -127,7 +127,8 @@ export interface ArrClient {
   // Metadata
   readonly mediaType: 'movie' | 'tv';
   readonly serviceType: string;
-  readonly dbIdField: 'radarrId' | 'sonarrId';
+  // dbIdField is NOT declared here — it lives once on the ServiceDefinition; read it via
+  // arrIdFieldForClient(client) so the client and the registry can't drift.
   readonly defaultRootFolder: string;
 }
 

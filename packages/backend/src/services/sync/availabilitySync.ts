@@ -1,5 +1,5 @@
 import { prisma } from '../../utils/prisma.js';
-import { getArrClient } from '../../providers/index.js';
+import { getArrClient, arrIdFieldForClient } from '../../providers/index.js';
 import { getServiceConfig } from '../../utils/services.js';
 import { logEvent } from '../../utils/logEvent.js';
 
@@ -40,7 +40,7 @@ async function syncServiceAvailability(serviceType: string, since: Date | null):
     }
 
     let updated = 0;
-    const idField = client.dbIdField;
+    const idField = arrIdFieldForClient(client);
     for (const [serviceMediaId, { date, extraData }] of latestByMediaId) {
       const result = await prisma.media.updateMany({
         where: {

@@ -1,6 +1,6 @@
 import { prisma } from '../../utils/prisma.js';
 import { patchAppSettings } from '../../utils/appSettings.js';
-import { getArrClient } from '../../providers/index.js';
+import { getArrClient, arrIdFieldForClient } from '../../providers/index.js';
 import type { ArrClient, ArrMediaItem } from '../../providers/types.js';
 import { getServiceConfig } from '../../utils/services.js';
 import { logEvent } from '../../utils/logEvent.js';
@@ -237,7 +237,7 @@ async function processSingleMedia(
   }
 
   const updateData: Record<string, unknown> = {
-    [client.dbIdField]: item.serviceMediaId,
+    [arrIdFieldForClient(client)]: item.serviceMediaId,
     statusCategory: item.statusCategory,
     qualityProfileId: item.qualityProfileId,
     title: existing.title || item.title,

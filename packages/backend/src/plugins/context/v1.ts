@@ -560,7 +560,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
       req('settings:app', 'listFolderRules');
       const rows = await prisma.folderRule.findMany({
         where: options?.enabled !== undefined ? { enabled: options.enabled } : undefined,
-        orderBy: { priority: 'asc' },
+        orderBy: [{ priority: 'asc' }, { id: 'asc' }], // deterministic on equal priority (M4)
       });
       return rows.map((r): PluginFolderRule => ({
         id: r.id,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, XCircle, Pencil, Copy, Power, GripVertical, AlertTriangle } from 'lucide-react';
+import { RULE_FIELDS, operatorsForField, isRuleField } from '@oscarr/shared';
 import api from '@/lib/api';
 import { Spinner } from './Spinner';
 import type { RootFolder } from '@/types';
@@ -9,22 +10,31 @@ interface FolderRule {
   id: number; name: string; priority: number; mediaType: string;
   conditions: string; folderPath: string; seriesType: string | null; serviceId: number | null;
   enabled: boolean;
+  serviceStatus?: string; // 'ok' | 'no-service' | 'missing' | 'disabled' | 'wrong-type' (from GET)
 }
 interface RuleCondition { field: string; operator: string; value: string; }
 interface UserOption { id: number; displayName: string | null; email: string; }
 interface RoleOption { id: number; name: string; }
 interface ServiceOption { id: number; name: string; type: string; config?: { url?: string }; }
 
-// Key → TMDB English name (used as stored value for matching)
-const GENRES: Record<string, string> = {
+// Key → TMDB English genre name (the stored value the backend matches against). TMDB uses different
+// genre sets for movies vs TV, so the picker must offer the set matching the rule's media type (H6).
+const MOVIE_GENRES: Record<string, string> = {
   action: 'Action', adventure: 'Adventure', animation: 'Animation',
   comedy: 'Comedy', crime: 'Crime', documentary: 'Documentary',
   drama: 'Drama', family: 'Family', fantasy: 'Fantasy', history: 'History',
   horror: 'Horror', music: 'Music', mystery: 'Mystery', romance: 'Romance',
   science_fiction: 'Science Fiction', thriller: 'Thriller', war: 'War', western: 'Western',
 };
+const TV_GENRES: Record<string, string> = {
+  action_adventure: 'Action & Adventure', animation: 'Animation', comedy: 'Comedy',
+  crime: 'Crime', documentary: 'Documentary', drama: 'Drama', family: 'Family',
+  kids: 'Kids', mystery: 'Mystery', news: 'News', reality: 'Reality',
+  scifi_fantasy: 'Sci-Fi & Fantasy', soap: 'Soap', talk: 'Talk',
+  war_politics: 'War & Politics', western: 'Western',
+};
 
-const CONDITION_FIELDS = ['genre', 'language', 'country', 'user', 'role', 'tag', 'quality'] as const;
+const BROKEN_SERVICE_STATUSES = new Set(['missing', 'disabled', 'wrong-type']);
 
 async function fetchRootFolders(arrServices: ServiceOption[]) {
   const folders: { path: string; label: string; serviceId: number | null }[] = [];
@@ -207,7 +217,7 @@ export function RoutingRulesTab() {
   const renderConditionRow = (cond: RuleCondition, i: number) => (
     <div key={`cond-${i}`} className="flex items-center gap-2">
       <select value={cond.field} onChange={(e) => updateConditionField(i, e.target.value)} className="input text-sm py-1.5 w-36">
-        {CONDITION_FIELDS.map(f => (
+        {RULE_FIELDS.map(f => (
           <option key={f} value={f}>{t(`admin.paths.${f}`)}</option>
         ))}
       </select>
@@ -268,6 +278,11 @@ export function RoutingRulesTab() {
                     <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{rule.mediaType === 'movie' ? t('common.movie') : rule.mediaType === 'tv' ? t('common.series') : t('common.all')}</span>
                     {rule.seriesType && <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded">{rule.seriesType}</span>}
                     {service && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">{service.name}{service.config?.url ? ` · ${service.config.url}` : ''}</span>}
+                    {rule.enabled && rule.serviceStatus && BROKEN_SERVICE_STATUSES.has(rule.serviceStatus) && (
+                      <span className="text-[10px] bg-ndp-danger/10 text-ndp-danger px-1.5 py-0.5 rounded inline-flex items-center gap-1" title={t(`admin.paths.rule_broken_reason.${rule.serviceStatus}`)}>
+                        <AlertTriangle className="w-3 h-3" /> {t('admin.paths.rule_broken')}
+                      </span>
+                    )}
                     {!rule.enabled && <span className="text-[10px] bg-ndp-text-dim/10 text-ndp-text-dim px-1.5 py-0.5 rounded">{t('admin.paths.disabled')}</span>}
                   </div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -380,7 +395,7 @@ export function RoutingRulesTab() {
         return (
           <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input text-sm py-1.5 flex-1">
             <option value="">{t('common.choose')}</option>
-            {Object.entries(GENRES).map(([key, tmdbName]) => <option key={key} value={tmdbName}>{t(`genre.${key}`)}</option>)}
+            {Object.entries(newMediaType === 'movie' ? MOVIE_GENRES : TV_GENRES).map(([key, tmdbName]) => <option key={key} value={tmdbName}>{t(`genre.${key}`)}</option>)}
           </select>
         );
       case 'user':
@@ -421,24 +436,15 @@ export function RoutingRulesTab() {
   }
 }
 
+// Operators come from the shared field×operator matrix (@oscarr/shared) — the same source the
+// backend matcher and validator use, so the UI can no longer offer a dead combo nor hide a valid
+// one (e.g. role/quality "in" are now selectable, matching the backend).
 function getDefaultOperator(field: string): string {
-  switch (field) {
-    case 'genre': case 'tag': return 'contains';
-    case 'user': case 'role': case 'language': case 'quality': return 'is';
-    case 'country': return 'in';
-    default: return 'contains';
-  }
+  return isRuleField(field) ? operatorsForField(field)[0] : 'contains';
 }
 
-function getOperatorsForField(field: string): string[] {
-  switch (field) {
-    case 'genre': case 'tag': return ['contains'];
-    case 'user': return ['is', 'in'];
-    case 'role': case 'quality': return ['is'];
-    case 'language': return ['is', 'in'];
-    case 'country': return ['contains', 'in'];
-    default: return ['contains', 'is', 'in'];
-  }
+function getOperatorsForField(field: string): readonly string[] {
+  return isRuleField(field) ? operatorsForField(field) : ['contains'];
 }
 
 function formatConditionLabel(

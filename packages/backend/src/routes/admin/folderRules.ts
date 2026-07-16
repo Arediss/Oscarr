@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { parseId } from '../../utils/params.js';
-import { checkRuleService } from '../../services/folderRules.js';
+import { classifyRuleService } from '../../services/folderRules.js';
 import { validateRulePayload } from '../../services/folderRuleValidation.js';
 
 export async function folderRulesRoutes(app: FastifyInstance) {
@@ -9,9 +9,12 @@ export async function folderRulesRoutes(app: FastifyInstance) {
 
   app.get('/folder-rules', async (request, reply) => {
     // Annotate each rule with its service health so the panel can flag non-functional rules (H1):
-    // 'missing' | 'disabled' | 'wrong-type' → "La règle ne fonctionnera pas."
-    const rules = await prisma.folderRule.findMany({ orderBy: { priority: 'asc' } });
-    return Promise.all(rules.map(async (r) => ({ ...r, serviceStatus: await checkRuleService(r.serviceId, r.mediaType) })));
+    // 'missing' | 'disabled' | 'wrong-type' → the rule won't route. One services fetch, then
+    // classify each rule in-memory (no per-rule N+1). Tie-break equal priority by id (M4).
+    const rules = await prisma.folderRule.findMany({ orderBy: [{ priority: 'asc' }, { id: 'asc' }] });
+    const services = await prisma.service.findMany({ select: { id: true, enabled: true, type: true } });
+    const byId = new Map(services.map((s) => [s.id, s]));
+    return rules.map((r) => ({ ...r, serviceStatus: classifyRuleService(r.serviceId != null ? byId.get(r.serviceId) : null, r.serviceId, r.mediaType) }));
   });
 
   app.post('/folder-rules', {

@@ -4,6 +4,7 @@ import type { TmdbMovie, TmdbTv } from './tmdb.js';
 import { logEvent } from '../utils/logEvent.js';
 import { isOperatorSupported, isRuleField, isRuleOperator, type RuleField, type RuleOperator } from '@oscarr/shared';
 import { findServiceTypeForMedia } from '../providers/index.js';
+import { extractKeywords } from './tmdb.js';
 
 export interface RuleCondition {
   field: RuleField;       // shared single source (@oscarr/shared)
@@ -45,18 +46,27 @@ function parseKeywordIds(raw: string, tmdbId: number): number[] {
   }
 }
 
-async function resolveKeywordTags(tmdbId: number | null, mediaType: 'movie' | 'tv'): Promise<string[]> {
-  if (!tmdbId) return [];
-
-  // Composite key: TMDB movie/tv id namespaces are independent, so a bare tmdbId could read the
-  // wrong media row's keywords (a movie's keywords for a tv rule, or vice versa).
-  const media = await prisma.media.findUnique({
-    where: { tmdbId_mediaType: { tmdbId, mediaType } },
-    select: { keywordIds: true },
-  });
-  if (!media?.keywordIds) return [];
-
-  const ids = parseKeywordIds(media.keywordIds, tmdbId);
+/** Admin-configured tags for a set of TMDB keyword ids (the Keyword.tag mapping is independent of
+ *  whether this media was synced yet). Prefers the keyword ids already in the freshly-fetched
+ *  tmdbData so `tag` rules fire on the FIRST dispatch (H5); falls back to the DB row's stored
+ *  keywordIds (which may be empty before the first keyword sync). */
+async function resolveKeywordTags(
+  tmdbId: number | null,
+  mediaType: 'movie' | 'tv',
+  tmdbKeywordIds: number[] = [],
+): Promise<string[]> {
+  let ids = tmdbKeywordIds;
+  if (ids.length === 0) {
+    if (!tmdbId) return [];
+    // Composite key: TMDB movie/tv id namespaces are independent, so a bare tmdbId could read the
+    // wrong media row's keywords (a movie's keywords for a tv rule, or vice versa).
+    const media = await prisma.media.findUnique({
+      where: { tmdbId_mediaType: { tmdbId, mediaType } },
+      select: { keywordIds: true },
+    });
+    if (!media?.keywordIds) return [];
+    ids = parseKeywordIds(media.keywordIds, tmdbId);
+  }
   if (ids.length === 0) return [];
 
   const keywords = await prisma.keyword.findMany({
@@ -82,9 +92,12 @@ async function buildContext(
   const originalLanguage = 'original_language' in tmdbData ? (tmdbData.original_language ?? '') : '';
 
   const tmdbId = 'id' in tmdbData ? tmdbData.id : null;
+  // Derive keyword ids from the freshly-fetched tmdbData so `tag` rules fire on the first dispatch
+  // (H5), before the media row's keywordIds are synced.
+  const tmdbKeywordIds = extractKeywords(tmdbData).map(k => k.id);
   const [userRole, keywordTags, qualityOption] = await Promise.all([
     resolveUserRole(userId),
-    resolveKeywordTags(tmdbId, mediaType),
+    resolveKeywordTags(tmdbId, mediaType, tmdbKeywordIds),
     qualityOptionId ? prisma.qualityOption.findUnique({ where: { id: qualityOptionId }, select: { label: true } }) : null,
   ]);
 
@@ -201,11 +214,23 @@ export type RuleServiceStatus = 'ok' | 'no-service' | 'missing' | 'disabled' | '
  *  routing and only overrides folder/seriesType, which is valid. missing/disabled/wrong-type make
  *  the rule non-functional: matchFolderRule skips it and the admin panel flags it. Single source
  *  consumed by the matcher, the write-time validator and GET /folder-rules. */
-export async function checkRuleService(serviceId: number | null, mediaType: string): Promise<RuleServiceStatus> {
+/** Pure classification (no DB) shared by the single-lookup checkRuleService and the batch GET
+ *  route, so both agree on what "broken" means. Pass the already-loaded service (or null/undefined
+ *  when it doesn't exist). */
+export function classifyRuleService(
+  service: { enabled: boolean; type: string } | null | undefined,
+  serviceId: number | null,
+  mediaType: string,
+): RuleServiceStatus {
   if (serviceId == null) return 'no-service';
-  const service = await prisma.service.findUnique({ where: { id: serviceId } });
   if (!service) return 'missing';
   if (!service.enabled) return 'disabled';
   if (service.type !== findServiceTypeForMedia(mediaType)) return 'wrong-type';
   return 'ok';
+}
+
+export async function checkRuleService(serviceId: number | null, mediaType: string): Promise<RuleServiceStatus> {
+  if (serviceId == null) return 'no-service';
+  const service = await prisma.service.findUnique({ where: { id: serviceId } });
+  return classifyRuleService(service, serviceId, mediaType);
 }

@@ -2,10 +2,12 @@ import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import type { TmdbMovie, TmdbTv } from './tmdb.js';
 import { logEvent } from '../utils/logEvent.js';
+import { isOperatorSupported, isRuleField, isRuleOperator, type RuleField, type RuleOperator } from '@oscarr/shared';
+import { findServiceTypeForMedia } from '../providers/index.js';
 
 export interface RuleCondition {
-  field: 'genre' | 'language' | 'country' | 'user' | 'role' | 'tag' | 'quality';
-  operator: 'contains' | 'is' | 'in';
+  field: RuleField;       // shared single source (@oscarr/shared)
+  operator: RuleOperator; // shared single source (@oscarr/shared)
   value: string; // Comma-separated for "in" operator
 }
 
@@ -43,11 +45,13 @@ function parseKeywordIds(raw: string, tmdbId: number): number[] {
   }
 }
 
-async function resolveKeywordTags(tmdbId: number | null): Promise<string[]> {
+async function resolveKeywordTags(tmdbId: number | null, mediaType: 'movie' | 'tv'): Promise<string[]> {
   if (!tmdbId) return [];
 
-  const media = await prisma.media.findFirst({
-    where: { tmdbId },
+  // Composite key: TMDB movie/tv id namespaces are independent, so a bare tmdbId could read the
+  // wrong media row's keywords (a movie's keywords for a tv rule, or vice versa).
+  const media = await prisma.media.findUnique({
+    where: { tmdbId_mediaType: { tmdbId, mediaType } },
     select: { keywordIds: true },
   });
   if (!media?.keywordIds) return [];
@@ -80,7 +84,7 @@ async function buildContext(
   const tmdbId = 'id' in tmdbData ? tmdbData.id : null;
   const [userRole, keywordTags, qualityOption] = await Promise.all([
     resolveUserRole(userId),
-    resolveKeywordTags(tmdbId),
+    resolveKeywordTags(tmdbId, mediaType),
     qualityOptionId ? prisma.qualityOption.findUnique({ where: { id: qualityOptionId }, select: { label: true } }) : null,
   ]);
 
@@ -95,53 +99,26 @@ async function buildContext(
 }
 
 function evaluateCondition(condition: RuleCondition, ctx: MediaContext): boolean {
-  const values = condition.value.split(',').map(v => v.trim().toLowerCase());
+  // Conditions come from stored JSON, so field/operator/value can be anything at runtime. Guard
+  // before the split (a non-string value used to throw and take out the whole matcher — H2), and
+  // gate the field/operator against the shared support matrix so a dead combo just returns false.
+  if (typeof condition.value !== 'string') return false;
+  if (!isRuleField(condition.field) || !isRuleOperator(condition.operator)) return false;
+  if (!isOperatorSupported(condition.field, condition.operator)) return false;
 
+  const values = condition.value.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+  if (values.length === 0) return false;
+
+  // Every supported operator is OR-membership; the field only decides which context axis to match.
   switch (condition.field) {
-    case 'genre':
-      if (condition.operator === 'contains') {
-        return values.some(v => ctx.genres.includes(v));
-      }
-      return false;
-
-    case 'language':
-      if (condition.operator === 'is' || condition.operator === 'in') {
-        return values.includes(ctx.originalLanguage.toLowerCase());
-      }
-      return false;
-
-    case 'country':
-      if (condition.operator === 'contains' || condition.operator === 'in') {
-        return values.some(v => ctx.originCountry.includes(v));
-      }
-      return false;
-
-    case 'user':
-      if (condition.operator === 'is' || condition.operator === 'in') {
-        return ctx.userId !== null && values.includes(ctx.userId.toString());
-      }
-      return false;
-
-    case 'role':
-      if (condition.operator === 'is') {
-        return ctx.userRole !== null && values.includes(ctx.userRole.toLowerCase());
-      }
-      return false;
-
-    case 'tag':
-      if (condition.operator === 'contains') {
-        return values.some(v => ctx.keywordTags.includes(v));
-      }
-      return false;
-
-    case 'quality':
-      if (condition.operator === 'is' || condition.operator === 'in') {
-        return ctx.qualityLabel !== null && values.includes(ctx.qualityLabel.toLowerCase());
-      }
-      return false;
-
-    default:
-      return false;
+    case 'genre': return values.some(v => ctx.genres.includes(v));
+    case 'language': return values.includes(ctx.originalLanguage.toLowerCase());
+    case 'country': return values.some(v => ctx.originCountry.includes(v));
+    case 'user': return ctx.userId !== null && values.includes(ctx.userId.toString());
+    case 'role': return ctx.userRole !== null && values.includes(ctx.userRole.toLowerCase());
+    case 'tag': return values.some(v => ctx.keywordTags.includes(v));
+    case 'quality': return ctx.qualityLabel !== null && values.includes(ctx.qualityLabel.toLowerCase());
+    default: return false;
   }
 }
 
@@ -173,7 +150,7 @@ export async function matchFolderRule(
 ): Promise<RuleMatch | null> {
   const rules = await prisma.folderRule.findMany({
     where: { mediaType, enabled: true },
-    orderBy: { priority: 'asc' },
+    orderBy: [{ priority: 'asc' }, { id: 'asc' }], // M4: deterministic winner on equal priority
   });
 
   if (rules.length === 0) return null;
@@ -184,8 +161,27 @@ export async function matchFolderRule(
     const conditions = parseRuleConditions(rule);
     if (!conditions) continue;
 
-    const allMatch = conditions.length > 0 && conditions.every(c => evaluateCondition(c, ctx));
+    let allMatch: boolean;
+    try {
+      allMatch = conditions.length > 0 && conditions.every(c => evaluateCondition(c, ctx));
+    } catch (err) {
+      // Belt-and-suspenders (evaluateCondition is already guarded): one poisoned rule must never
+      // take down routing for the whole mediaType.
+      logEvent('warn', 'FolderRules', `Rule id=${rule.id} "${rule.name}" threw during evaluation, skipping: ${String(err)}`);
+      continue;
+    }
     if (!allMatch) continue;
+
+    // H1: a matched rule whose target service is disabled/deleted/wrong-type must NOT silently route
+    // media to a fallback instance with this rule's folderPath. Treat it as non-functional and skip
+    // (routing falls through to the next rule or the default); the admin panel surfaces the warning.
+    if (rule.serviceId != null) {
+      const status = await checkRuleService(rule.serviceId, mediaType);
+      if (status !== 'ok') {
+        logEvent('warn', 'FolderRules', `Rule id=${rule.id} "${rule.name}" matched but its service is "${status}"; skipping (non-functional).`);
+        continue;
+      }
+    }
 
     const folderPath = rule.folderPath || await resolveDefaultFolder(mediaType, rule.seriesType);
     return {
@@ -197,4 +193,19 @@ export async function matchFolderRule(
   }
 
   return null;
+}
+
+export type RuleServiceStatus = 'ok' | 'no-service' | 'missing' | 'disabled' | 'wrong-type';
+
+/** Health of the service a rule targets. 'no-service' (serviceId null) = the rule uses default
+ *  routing and only overrides folder/seriesType, which is valid. missing/disabled/wrong-type make
+ *  the rule non-functional: matchFolderRule skips it and the admin panel flags it. Single source
+ *  consumed by the matcher, the write-time validator and GET /folder-rules. */
+export async function checkRuleService(serviceId: number | null, mediaType: string): Promise<RuleServiceStatus> {
+  if (serviceId == null) return 'no-service';
+  const service = await prisma.service.findUnique({ where: { id: serviceId } });
+  if (!service) return 'missing';
+  if (!service.enabled) return 'disabled';
+  if (service.type !== findServiceTypeForMedia(mediaType)) return 'wrong-type';
+  return 'ok';
 }

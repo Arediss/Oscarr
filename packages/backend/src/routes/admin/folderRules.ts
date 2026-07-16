@@ -1,13 +1,17 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { parseId } from '../../utils/params.js';
+import { checkRuleService } from '../../services/folderRules.js';
+import { validateRulePayload } from '../../services/folderRuleValidation.js';
 
 export async function folderRulesRoutes(app: FastifyInstance) {
   // === FOLDER RULES ===
 
   app.get('/folder-rules', async (request, reply) => {
-
-    return prisma.folderRule.findMany({ orderBy: { priority: 'asc' } });
+    // Annotate each rule with its service health so the panel can flag non-functional rules (H1):
+    // 'missing' | 'disabled' | 'wrong-type' → "La règle ne fonctionnera pas."
+    const rules = await prisma.folderRule.findMany({ orderBy: { priority: 'asc' } });
+    return Promise.all(rules.map(async (r) => ({ ...r, serviceStatus: await checkRuleService(r.serviceId, r.mediaType) })));
   });
 
   app.post('/folder-rules', {
@@ -34,6 +38,8 @@ export async function folderRulesRoutes(app: FastifyInstance) {
     if (!name || !mediaType || !conditions || !folderPath) {
       return reply.status(400).send({ error: 'All fields are required' });
     }
+    const validationError = await validateRulePayload({ mediaType, conditions, seriesType, serviceId });
+    if (validationError) return reply.status(400).send({ error: validationError });
     const rule = await prisma.folderRule.create({
       data: {
         name,
@@ -78,6 +84,31 @@ export async function folderRulesRoutes(app: FastifyInstance) {
     const { name, mediaType, conditions, folderPath, seriesType, priority, serviceId } = request.body as {
       name?: string; mediaType?: string; conditions?: unknown[]; folderPath?: string; seriesType?: string; priority?: number; serviceId?: number | null;
     };
+    // Validate the EFFECTIVE payload (provided fields merged over the stored rule), so a partial
+    // update can't leave a rule in a never-fires / wrong-service state.
+    const existing = await prisma.folderRule.findUnique({ where: { id: ruleId } });
+    if (!existing) return reply.status(404).send({ error: 'Rule not found' });
+    let effConditions: unknown = conditions;
+    if (effConditions === undefined) {
+      try { effConditions = JSON.parse(existing.conditions); } catch { effConditions = existing.conditions; }
+    }
+    // Only re-validate a cross-field concern when the field it depends on is actually changing (a
+    // mediaType change re-enables both). Otherwise an unrelated edit (rename, folderPath) can't be
+    // blocked by a pre-existing service/condition problem the admin may be trying to repair.
+    const mediaTypeChanged = mediaType !== undefined && mediaType !== existing.mediaType;
+    const validationError = await validateRulePayload(
+      {
+        mediaType: mediaType ?? existing.mediaType,
+        conditions: effConditions,
+        seriesType: seriesType !== undefined ? (seriesType || null) : existing.seriesType,
+        serviceId: serviceId !== undefined ? serviceId : existing.serviceId,
+      },
+      {
+        skipConditions: conditions === undefined && !mediaTypeChanged,
+        skipService: serviceId === undefined && !mediaTypeChanged,
+      },
+    );
+    if (validationError) return reply.status(400).send({ error: validationError });
     const rule = await prisma.folderRule.update({
       where: { id: ruleId },
       data: {

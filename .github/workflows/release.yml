@@ -282,7 +282,7 @@ jobs:
     name: SBOM + cosign sign
     needs: manifest
     permissions:
-      contents: read
+      contents: write      # attach SBOM as a release asset (upload-release-assets)
       packages: write
       id-token: write      # cosign keyless signing
       attestations: write  # attach SBOM as an attestation

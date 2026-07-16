@@ -23,6 +23,9 @@ export interface PlexPinFlowOptions {
   /** Endpoint to create the PIN — defaults to the public /auth/plex/pin used by login/link;
    *  admins configuring a service use `/admin/plex-pin`, install wizard uses `/setup/plex-pin`. */
   pinEndpoint?: string;
+  /** Body for the PIN-creation POST. Login passes `{ forward: true }` so Plex forwards the auth tab
+   *  back to Oscarr (#212); other flows omit it so they are NOT forwarded. */
+  pinPayload?: Record<string, unknown>;
   /** Response shape varies: login/link returns `{ pin: { id }, authUrl }`, setup/admin returns
    *  the same shape, but linkAccount checks `linkData.success` instead of a token. The caller
    *  tells us what "got a token" means via `extractToken` (return null to keep polling). */
@@ -48,6 +51,7 @@ export function startPlexPinFlow(opts: PlexPinFlowOptions): PlexPinFlowHandle {
     checkEndpoint,
     checkPayload = {},
     pinEndpoint = '/auth/plex/pin',
+    pinPayload,
     extractToken,
     onToken,
     onError,
@@ -65,11 +69,14 @@ export function startPlexPinFlow(opts: PlexPinFlowOptions): PlexPinFlowHandle {
     authWindow?.close();
   };
 
-  api.post(pinEndpoint)
+  api.post(pinEndpoint, pinPayload)
     .then(({ data }) => {
       if (cancelled) return;
       const pin = data?.pin;
       const authUrl = data?.authUrl;
+      // Session-binding token from /plex/pin (login flow). Echoed on every check POST so the
+      // callback can verify it against the HttpOnly cookie (CSRF / session-fixation guard).
+      const state = data?.state as string | undefined;
       if (!pin?.id || !authUrl) {
         cancel();
         onError();
@@ -86,7 +93,7 @@ export function startPlexPinFlow(opts: PlexPinFlowOptions): PlexPinFlowHandle {
           return;
         }
         try {
-          const res = await api.post(checkEndpoint, { pinId: pin.id, ...checkPayload });
+          const res = await api.post(checkEndpoint, { pinId: pin.id, ...(state ? { state } : {}), ...checkPayload });
           const token = extractToken(res.data);
           if (token) {
             cancel();

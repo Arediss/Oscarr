@@ -196,6 +196,9 @@ export default function LoginPage() {
       flowRef.current = startPlexPinFlow({
         authWindow,
         pinEndpoint: '/auth/plex/pin',
+        // Ask Plex to forward the auth tab back to /plex-return after sign-in — only the login
+        // flow does this (the shared link flow must not, or it would hijack the session). #212
+        pinPayload: { forward: true },
         // Login's /callback returns { user, token }, not { token }. The helper treats a non-null
         // return as "got a token" — we return the pinId encoded in the user object indirectly
         // by returning a sentinel string when `user` is set. Caller reads `lastResponse` below.

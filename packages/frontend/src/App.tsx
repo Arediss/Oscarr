@@ -8,6 +8,7 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
+import PlexReturnPage from '@/pages/PlexReturnPage';
 import InstallPage from '@/pages/InstallPage';
 import SearchPage from '@/pages/SearchPage';
 import MediaDetailPage from '@/pages/MediaDetailPage';
@@ -90,6 +91,7 @@ export default function App() {
     <SkipLink />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/plex-return" element={<PlexReturnPage />} />
       <Route
         path="/admin/*"
         element={

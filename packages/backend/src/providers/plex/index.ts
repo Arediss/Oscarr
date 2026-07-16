@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../../utils/prisma.js';
 import { getAppSettings } from '../../utils/appSettings.js';
 import { getPlexUser, createPlexPin, checkPlexPin, getSharedServerUsers } from './client.js';
@@ -7,14 +8,25 @@ import { parseServiceConfig } from '../../utils/services.js';
 import type { Provider, AuthProvider } from '../types.js';
 import { isProviderEnabled } from '../authSettings.js';
 import { refreshUserAvatar } from '../../utils/avatarSource.js';
+import { resolvePublicBaseUrl } from '../../utils/publicUrl.js';
 
 const PLEX_CLIENT_ID = 'oscarr-client';
 
 // ─── Exported utilities for setup routes ────────────────────────────
 
-export async function plexCreatePin() {
+export async function plexCreatePin(forwardUrlBase?: string, state?: string) {
   const pin = await createPlexPin(PLEX_CLIENT_ID);
-  const authUrl = `https://app.plex.tv/auth#?clientID=${PLEX_CLIENT_ID}&code=${pin.code}&context%5Bdevice%5D%5Bproduct%5D=Oscarr`;
+  let authUrl = `https://app.plex.tv/auth#?clientID=${PLEX_CLIENT_ID}&code=${pin.code}&context%5Bdevice%5D%5Bproduct%5D=Oscarr`;
+  if (forwardUrlBase) {
+    // Plex forwards the auth tab back here after sign-in instead of leaving the user on its static
+    // "you can now close this window" page — critical on mobile, where the original Oscarr tab is
+    // backgrounded/suspended and can't poll the PIN to close the auth tab itself (#212). `state`
+    // binds the returned pin to the session that started the login (CSRF / session-fixation guard).
+    const sep = forwardUrlBase.includes('?') ? '&' : '?';
+    let forwardUrl = `${forwardUrlBase}${sep}pinId=${pin.id}`;
+    if (state) forwardUrl += `&state=${encodeURIComponent(state)}`;
+    authUrl += `&forwardUrl=${encodeURIComponent(forwardUrl)}`;
+  }
   return { pin, authUrl };
 }
 
@@ -110,12 +122,32 @@ const plexAuth: AuthProvider = {
   async registerRoutes(app, helpers) {
     app.post('/plex/pin', {
       config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
-    }, async (_request, reply) => {
+    }, async (request, reply) => {
       if (!(await isProviderEnabled('plex'))) {
         return reply.status(403).send({ error: 'PROVIDER_DISABLED' });
       }
-      const result = await plexCreatePin();
-      return reply.send(result);
+      // forwardUrl lands the auth tab on the Oscarr /plex-return page (which finalizes the LOGIN
+      // session) after Plex sign-in — for the login flow ONLY (#212). This same endpoint is reused
+      // by the admin "link Plex account" flow (UsersTab), which must NOT forward there or it would
+      // run the login callback and hijack the admin's session — so forwarding is opt-in.
+      const forward = (request.body as { forward?: boolean } | undefined)?.forward === true;
+      // Bind the pin to THIS browser session so a crafted /plex-return?pinId=... can't log a victim
+      // into an attacker's account (login CSRF / session fixation). Both the desktop poll and the
+      // forwarded /plex-return echo `state`; the callback requires it to match this HttpOnly cookie.
+      let state: string | undefined;
+      if (forward) {
+        state = randomUUID();
+        reply.setCookie('oscarr_plex_state', state, {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.COOKIE_SECURE === 'true'
+            || (process.env.COOKIE_SECURE !== 'false' && request.protocol === 'https'),
+          sameSite: 'lax',
+          maxAge: 600, // 10 min — comfortably covers the 2-min PIN TTL
+        });
+      }
+      const result = await plexCreatePin(forward ? `${resolvePublicBaseUrl(request)}/plex-return` : undefined, state);
+      return reply.send({ ...result, state });
     });
 
     app.post('/plex/callback', {
@@ -126,9 +158,10 @@ const plexAuth: AuthProvider = {
       schema: {
         body: {
           type: 'object' as const,
-          required: ['pinId'],
+          required: ['pinId', 'state'],
           properties: {
             pinId: { type: 'number' as const, description: 'Plex PIN ID returned by /plex/pin' },
+            state: { type: 'string' as const, description: 'Session-binding token from /plex/pin' },
           },
         },
       },
@@ -136,9 +169,15 @@ const plexAuth: AuthProvider = {
       if (!(await isProviderEnabled('plex'))) {
         return reply.status(403).send({ error: 'PROVIDER_DISABLED' });
       }
-      const { pinId } = request.body as { pinId: unknown };
+      const { pinId, state } = request.body as { pinId: unknown; state: unknown };
       if (typeof pinId !== 'number' || !Number.isFinite(pinId) || pinId < 1) {
         return reply.status(400).send({ error: 'Invalid pinId' });
+      }
+      // Session-fixation guard: the pin must belong to the session that started THIS login. A
+      // crafted /plex-return?pinId=... with an attacker's pin has no matching cookie → rejected.
+      const stateCookie = request.cookies?.oscarr_plex_state;
+      if (typeof state !== 'string' || !state || !stateCookie || state !== stateCookie) {
+        return reply.status(403).send({ error: 'INVALID_STATE' });
       }
 
       const authToken = await checkPlexPin(pinId, PLEX_CLIENT_ID);
@@ -146,6 +185,11 @@ const plexAuth: AuthProvider = {
         logEvent('warn', 'Auth', `PIN validation failed (pinId: ${pinId})`);
         return reply.status(400).send({ error: 'PIN not validated. Try again.' });
       }
+      // The state cookie is intentionally NOT cleared here: on desktop the opener's poll and the
+      // forwarded popup both hit this endpoint, and clearing would 403 whichever loses the race —
+      // a spurious "login expired" despite a valid session. It's a random HttpOnly token an attacker
+      // can neither read nor set, and it self-expires via its 10-min maxAge, so leaving it keeps the
+      // double-submit idempotent without weakening the guard.
 
       const plexAccount = await getPlexUser(authToken);
       let result;

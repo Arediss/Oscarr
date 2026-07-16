@@ -562,6 +562,7 @@
   "admin.custom_links.position_right_short": "Droite",
   "admin.custom_links.saved": "Liens enregistrés",
   "admin.custom_links.save_failed": "Échec de la sauvegarde",
+  "login.plex_returning": "Connexion en cours…",
   "genre.action_adventure": "Action & Aventure",
   "genre.kids": "Enfants",
   "genre.news": "Info",

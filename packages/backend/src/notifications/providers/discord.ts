@@ -1,11 +1,13 @@
 import axios from 'axios';
+import { renderNotificationTemplate, notifMediaLabel } from '@oscarr/shared';
 import type { NotificationProvider, NotificationPayload } from '../types.js';
 import { assertPublicUrl } from '../../utils/ssrfGuard.js';
 
 function buildDescription(payload: NotificationPayload): string {
   if (payload.type === 'incident_banner') return payload.message || '';
-  const mediaLabel = payload.mediaType === 'movie' ? 'Film' : 'Series';
-  return `**${payload.title}** (${mediaLabel})${payload.username ? ` — ${payload.username}` : ''}`;
+  const mediaLabel = notifMediaLabel(payload.mediaType, payload.language ?? 'en');
+  const mediaSuffix = mediaLabel ? ` (${mediaLabel})` : '';
+  return `**${payload.title}**${mediaSuffix}${payload.username ? ` — ${payload.username}` : ''}`;
 }
 
 export const discordProvider: NotificationProvider = {
@@ -38,10 +40,15 @@ export const discordProvider: NotificationProvider = {
     });
   },
 
-  async testConnection(settings) {
+  async testConnection(settings, locale = 'en') {
     await assertPublicUrl(settings.webhookUrl);
     await axios.post(settings.webhookUrl, {
-      embeds: [{ title: 'Test', description: 'Notification Discord OK!', color: 0x10b981, footer: { text: 'Oscarr' } }],
+      embeds: [{
+        title: renderNotificationTemplate('notifications.test.title', locale),
+        description: renderNotificationTemplate('notifications.test.discord', locale),
+        color: 0x10b981,
+        footer: { text: 'Oscarr' },
+      }],
     });
   },
 };

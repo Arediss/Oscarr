@@ -13,14 +13,12 @@ import { Spinner } from './Spinner';
 import { AdminTabLayout } from './AdminTabLayout';
 import { FloatingSaveBar } from '@/components/FloatingSaveBar';
 
+// Only locales that actually ship a translation bundle (i18n/index.ts registers en + fr). Offering
+// de/es/it/pt/nl silently fell back to English for the whole UI — re-add a code here only once its
+// locales/<code>/translation.json exists and is registered.
 const AVAILABLE_LANGUAGES = [
-  { code: 'fr', label: 'Français' },
   { code: 'en', label: 'English' },
-  { code: 'de', label: 'Deutsch' },
-  { code: 'es', label: 'Español' },
-  { code: 'it', label: 'Italiano' },
-  { code: 'pt', label: 'Português' },
-  { code: 'nl', label: 'Nederlands' },
+  { code: 'fr', label: 'Français' },
 ];
 
 /**

@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma.js';
-import { getAppSettings } from '../utils/appSettings.js';
+import { getAppSettings, parseInstanceLanguages } from '../utils/appSettings.js';
 import { logEvent } from '../utils/logEvent.js';
+import { renderNotificationTemplate, toNotificationLocale } from '@oscarr/shared';
 import type { NotificationProvider, NotificationEventType, NotificationPayload } from './types.js';
 
 export class NotificationRegistry {
@@ -60,7 +61,6 @@ export class NotificationRegistry {
 
   async send(type: string, data: Omit<NotificationPayload, 'type'>): Promise<void> {
     const eventType = this.eventTypes.get(type);
-    const payload: NotificationPayload = { ...data, type, label: eventType?.label ?? type, color: eventType?.color };
 
     try {
       // Load all provider configs from DB
@@ -70,6 +70,20 @@ export class NotificationRegistry {
       // Load notification matrix from AppSettings
       const settings = await getAppSettings();
       if (!settings) return;
+
+      // Resolve the instance language ONCE. The event header/label is localized here (falling back
+      // to the hardcoded English label / raw type for plugin events not in the template table);
+      // providers render their remaining localizable pieces against payload.language.
+      const locale = toNotificationLocale(parseInstanceLanguages(settings.instanceLanguages)[0]);
+      const eventLabelKey = `notifications.event.${type}`;
+      const localizedLabel = renderNotificationTemplate(eventLabelKey, locale);
+      const payload: NotificationPayload = {
+        ...data,
+        type,
+        label: localizedLabel === eventLabelKey ? (eventType?.label ?? type) : localizedLabel,
+        color: eventType?.color,
+        language: locale,
+      };
 
       const matrix: Record<string, Record<string, boolean>> = settings.notificationMatrix
         ? JSON.parse(settings.notificationMatrix)
@@ -111,7 +125,9 @@ export class NotificationRegistry {
   async testProvider(providerId: string, settings: Record<string, string>): Promise<void> {
     const provider = this.providers.get(providerId);
     if (!provider) throw new Error(`Unknown provider: ${providerId}`);
-    await provider.testConnection(settings);
+    const appSettings = await getAppSettings();
+    const locale = toNotificationLocale(parseInstanceLanguages(appSettings?.instanceLanguages)[0]);
+    await provider.testConnection(settings, locale);
   }
 
   // ─── Serialization for API ─────────────────────────────

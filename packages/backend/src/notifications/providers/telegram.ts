@@ -1,11 +1,16 @@
 import axios from 'axios';
+import { renderNotificationTemplate, notifMediaLabel } from '@oscarr/shared';
 import type { NotificationProvider, NotificationPayload } from '../types.js';
 
 function buildText(payload: NotificationPayload): string {
-  if (payload.type === 'incident_banner') return `*Incident*\n${payload.message || ''}`;
-  const mediaLabel = payload.mediaType === 'movie' ? 'Film' : 'Series';
-  let text = `*${payload.label ?? payload.type}*\n${payload.title} (${mediaLabel})${payload.username ? ` — ${payload.username}` : ''}`;
-  if (payload.url) text += `\n[Voir dans Oscarr](${payload.url})`;
+  const locale = payload.language ?? 'en';
+  if (payload.type === 'incident_banner') {
+    return `*${renderNotificationTemplate('notifications.event.incident_banner', locale)}*\n${payload.message || ''}`;
+  }
+  const mediaLabel = notifMediaLabel(payload.mediaType, locale);
+  const mediaSuffix = mediaLabel ? ` (${mediaLabel})` : '';
+  let text = `*${payload.label ?? payload.type}*\n${payload.title}${mediaSuffix}${payload.username ? ` — ${payload.username}` : ''}`;
+  if (payload.url) text += `\n[${renderNotificationTemplate('notifications.link.view_in_oscarr', locale)}](${payload.url})`;
   return text;
 }
 
@@ -38,10 +43,10 @@ export const telegramProvider: NotificationProvider = {
     });
   },
 
-  async testConnection(settings) {
+  async testConnection(settings, locale = 'en') {
     await axios.post(`https://api.telegram.org/bot${settings.botToken}/sendMessage`, {
       chat_id: settings.chatId,
-      text: '*Test*\nNotification Telegram OK!',
+      text: `*${renderNotificationTemplate('notifications.test.title', locale)}*\n${renderNotificationTemplate('notifications.test.telegram', locale)}`,
       parse_mode: 'Markdown',
     });
   },

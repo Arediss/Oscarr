@@ -1,3 +1,5 @@
+import type { NotificationLocale } from '@oscarr/shared';
+
 /**
  * A field definition for a provider's configuration form.
  * The admin UI renders these dynamically.
@@ -15,7 +17,7 @@ export interface ProviderSettingField {
  */
 export interface NotificationPayload {
   type: string;
-  label?: string;
+  label?: string;          // resolved by the registry, already localized to the instance language
   title: string;
   mediaType?: 'movie' | 'tv';
   username?: string;
@@ -24,6 +26,7 @@ export interface NotificationPayload {
   message?: string;
   color?: number;
   url?: string;
+  language?: NotificationLocale; // instance language, resolved once in registry.send
 }
 
 /**
@@ -60,8 +63,9 @@ export interface NotificationProvider {
   send(settings: Record<string, string>, payload: NotificationPayload): Promise<void>;
 
   /**
-   * Test the connection with given credentials.
+   * Test the connection with given credentials. `locale` is the resolved instance language so the
+   * test message respects it (optional for backward-compat with plugin providers).
    * Throws on failure.
    */
-  testConnection(settings: Record<string, string>): Promise<void>;
+  testConnection(settings: Record<string, string>, locale?: NotificationLocale): Promise<void>;
 }

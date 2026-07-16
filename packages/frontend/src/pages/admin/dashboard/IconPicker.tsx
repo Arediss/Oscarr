@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { Ban, AlertTriangle } from 'lucide-react';
 import { DynamicIcon } from '@/plugins/DynamicIcon';
 import { DASHBOARD_ICONS } from './dashboardIcons';
@@ -16,13 +17,14 @@ interface Props {
   tabs?: TabId[];
 }
 
-const TAB_LABELS: Record<TabId, string> = {
-  lucide: 'Icônes',
-  brands: 'Marques',
-  url: 'URL',
+const TAB_LABEL_KEYS: Record<TabId, string> = {
+  lucide: 'admin.icon_picker.tab.lucide',
+  brands: 'admin.icon_picker.tab.brands',
+  url: 'admin.icon_picker.tab.url',
 };
 
 export function IconPicker({ value, onChange, trigger, tabs = ['lucide'] }: Readonly<Props>) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>(tabs[0]);
@@ -45,8 +47,8 @@ export function IconPicker({ value, onChange, trigger, tabs = ['lucide'] }: Read
   useEffect(() => {
     if (!open) return;
     const onDocClick = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (popRef.current?.contains(t) || triggerRef.current?.contains(t)) return;
+      const target = e.target as Node;
+      if (popRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
       setOpen(false);
     };
     const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
@@ -85,15 +87,15 @@ export function IconPicker({ value, onChange, trigger, tabs = ['lucide'] }: Read
         >
           {tabs.length > 1 && (
             <div className="flex items-center gap-1 p-1 border-b border-white/5">
-              {tabs.map((t) => (
+              {tabs.map((t_) => (
                 <button
-                  key={t}
-                  onClick={() => setActiveTab(t)}
+                  key={t_}
+                  onClick={() => setActiveTab(t_)}
                   className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition-colors ${
-                    activeTab === t ? 'bg-white/10 text-ndp-text' : 'text-ndp-text-dim hover:text-ndp-text hover:bg-white/5'
+                    activeTab === t_ ? 'bg-white/10 text-ndp-text' : 'text-ndp-text-dim hover:text-ndp-text hover:bg-white/5'
                   }`}
                 >
-                  {TAB_LABELS[t]}
+                  {t(TAB_LABEL_KEYS[t_])}
                 </button>
               ))}
             </div>
@@ -105,8 +107,8 @@ export function IconPicker({ value, onChange, trigger, tabs = ['lucide'] }: Read
                 <button
                   onClick={() => commit(undefined)}
                   className={`flex h-8 w-8 items-center justify-center rounded-md hover:bg-white/5 ${!value ? 'bg-ndp-accent/15 text-ndp-accent' : 'text-ndp-text-dim'}`}
-                  title="No icon"
-                  aria-label="No icon"
+                  title={t('admin.icon_picker.no_icon')}
+                  aria-label={t('admin.icon_picker.no_icon')}
                 >
                   <Ban className="h-3.5 w-3.5" />
                 </button>
@@ -146,7 +148,7 @@ export function IconPicker({ value, onChange, trigger, tabs = ['lucide'] }: Read
             {activeTab === 'url' && (
               <div className="space-y-2">
                 <label className="block text-[10px] uppercase tracking-wider font-semibold text-ndp-text-dim">
-                  URL HTTPS
+                  {t('admin.icon_picker.url_label')}
                 </label>
                 <input
                   type="url"
@@ -164,18 +166,18 @@ export function IconPicker({ value, onChange, trigger, tabs = ['lucide'] }: Read
                 {urlDraft && !urlValid && (
                   <p className="flex items-center gap-1.5 text-[11px] text-ndp-warning">
                     <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                    Doit commencer par https://
+                    {t('admin.icon_picker.https_warning')}
                   </p>
                 )}
                 <p className="text-[10px] text-ndp-text-dim">
-                  ⚠️ L'IP du visiteur sera exposée à l'hôte de l'image.
+                  {t('admin.icon_picker.ip_warning')}
                 </p>
                 <button
                   onClick={() => commit(urlDraft)}
                   disabled={!urlDraft || !urlValid}
                   className="w-full px-3 py-1.5 rounded-md text-xs font-medium bg-ndp-accent text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-ndp-accent/90 transition-colors"
                 >
-                  Utiliser cette URL
+                  {t('admin.icon_picker.use_url')}
                 </button>
               </div>
             )}

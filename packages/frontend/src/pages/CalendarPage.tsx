@@ -227,13 +227,14 @@ function ListView({ days, grouped, todayKey, t }: {
 // ─── Compact Card (grid view) ────────────────────────────────────────
 
 function CompactCard({ item }: { item: CalendarItem }) {
+  const { t } = useTranslation();
   const poster = extractPosterPath(item.poster);
   const link = item.tmdbId && item.tmdbId > 0
     ? item.type === 'movie' ? `/movie/${item.tmdbId}` : `/tv/${item.tmdbId}`
     : null;
   const isEpisode = item.type === 'episode';
   const epLabel = item.episodeCount && item.episodeCount > 1
-    ? `${item.episodeCount} ép.`
+    ? t('calendar.episode_count', { count: item.episodeCount })
     : isEpisode && item.season != null && item.episode != null
       ? `S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}`
       : null;
@@ -273,7 +274,7 @@ function PosterCard({ item }: { item: CalendarItem }) {
     : null;
   const isEpisode = item.type === 'episode';
   const epLabel = item.episodeCount && item.episodeCount > 1
-    ? `${item.episodeCount} ép.`
+    ? t('calendar.episode_count', { count: item.episodeCount })
     : isEpisode && item.season != null && item.episode != null
       ? `S${String(item.season).padStart(2, '0')}E${String(item.episode).padStart(2, '0')}`
       : null;

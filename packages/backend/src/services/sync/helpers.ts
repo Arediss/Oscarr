@@ -1,6 +1,6 @@
 import { prisma } from '../../utils/prisma.js';
-import { safeNotify, safeUserNotify } from '../../utils/safeNotify.js';
-import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
+import { safeNotify, safeUserNotify, getInstanceLocale } from '../../utils/safeNotify.js';
+import { COMPLETABLE_REQUEST_STATUSES, renderNotificationTemplate } from '@oscarr/shared';
 import type { PluginMediaAvailableV1 } from '@oscarr/shared';
 import { sendPushToUsers } from '../pushService.js';
 import { pluginEventBus } from '../../plugins/eventBus.js';
@@ -25,7 +25,7 @@ export function sendAvailabilityNotifications(
   prisma.mediaRequest.findMany({
     where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
     select: { userId: true },
-  }).then(requests => {
+  }).then(async requests => {
     if (requests.length === 0) return;
 
     safeNotify('media_available', { title, mediaType, posterPath });
@@ -56,9 +56,12 @@ export function sendAvailabilityNotifications(
 
     const icon = posterPath ? `https://image.tmdb.org/t/p/w200${posterPath}` : undefined;
     const url = tmdbId > 0 ? `/${mediaType}/${tmdbId}` : '/requests';
+    // Web push is rendered by the backend (no per-user language stored), so use the instance
+    // language via the shared templates — same source as the channel providers.
+    const locale = await getInstanceLocale();
     sendPushToUsers(userIds, {
-      title: `${title} is available!`,
-      body: 'Your requested media is now ready to watch.',
+      title: renderNotificationTemplate('notifications.push.media_available.title', locale, { title }),
+      body: renderNotificationTemplate('notifications.push.media_available.body', locale),
       icon,
       url,
     }).catch((err) => {

@@ -4,7 +4,7 @@ import { getAppSettings, parseInstanceLanguages } from './appSettings.js';
 import { pluginEventBus } from '../plugins/eventBus.js';
 import { logEvent } from './logEvent.js';
 import type { PluginUserNotificationCreatedV1, NotificationLocale } from '@oscarr/shared';
-import { renderNotificationTemplate } from '@oscarr/shared';
+import { renderNotificationTemplate, toNotificationLocale } from '@oscarr/shared';
 
 let _siteUrl: string | null = null;
 let _siteUrlFetched = false;
@@ -46,11 +46,16 @@ async function getInstanceLanguage(): Promise<string> {
   return _instanceLang;
 }
 
+/** Instance language as a notification locale — the single entry point backend senders (push
+ *  fan-out, channel registry) use to resolve the broadcast language. */
+export async function getInstanceLocale(): Promise<NotificationLocale> {
+  return toNotificationLocale(await getInstanceLanguage());
+}
+
 /** Render `notifications.*` keys via the shared template table; pass through literals. */
 function translateNotif(value: string, lang: string, params: Record<string, unknown>): string {
   if (!value.startsWith('notifications.')) return value;
-  const locale: NotificationLocale = lang === 'fr' ? 'fr' : 'en';
-  return renderNotificationTemplate(value, locale, params);
+  return renderNotificationTemplate(value, toNotificationLocale(lang), params);
 }
 
 /** Fire-and-forget notification — logs errors without crashing */

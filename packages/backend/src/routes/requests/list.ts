@@ -63,7 +63,7 @@ export async function requestListRoutes(app: FastifyInstance) {
               posterPath: true,
               backdropPath: true,
               releaseDate: true,
-              status: true,
+              statusCategory: true,
               availableAt: true,
             },
           },

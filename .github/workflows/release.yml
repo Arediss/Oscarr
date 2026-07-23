@@ -40,6 +40,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The runner service runs outside a GUI login session, so docker-credential-osxkeychain
+      # can't unlock the keychain (errSecInteractionNotAllowed / -25308) and `docker login` fails
+      # with "error storing credentials". Strip credsStore/credHelpers so login writes a base64
+      # token into config.json instead of the keychain. Idempotent; leaves the docker context
+      # (currentContext) untouched. No-op on Linux runners (no such config).
+      - name: Drop macOS keychain cred store (headless self-hosted runner)
+        run: |
+          cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+          [ -f "$cfg" ] || exit 0
+          /usr/bin/python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d.pop('credsStore',None); d.pop('credHelpers',None); json.dump(d,open(p,'w'),indent=2)" "$cfg"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3
         with:
@@ -87,6 +98,13 @@ jobs:
       packages: read
     runs-on: [self-hosted, macOS, ARM64]
     steps:
+      # See the build job: strip the macOS keychain cred store so headless `docker login` works.
+      - name: Drop macOS keychain cred store (headless self-hosted runner)
+        run: |
+          cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
+          [ -f "$cfg" ] || exit 0
+          /usr/bin/python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d.pop('credsStore',None); d.pop('credHelpers',None); json.dump(d,open(p,'w'),indent=2)" "$cfg"
+
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:

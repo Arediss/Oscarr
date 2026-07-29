@@ -1,5 +1,5 @@
 import { prisma } from '../utils/prisma.js';
-import { getArrClient, getServiceTypeForMedia, arrIdForMedia, arrIdFieldForClient } from '../providers/index.js';
+import { getArrClientForMedia, getServiceTypeForMedia, arrIdForMedia, arrIdFieldForClient } from '../providers/index.js';
 import { normalizeLanguages } from '../utils/languages.js';
 import { logEvent } from '../utils/logEvent.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
@@ -74,7 +74,8 @@ const REQUEST_STATUS_RANK: Record<RequestStatus, number> = { declined: 0, failed
 const requestRank = (status: string): number => REQUEST_STATUS_RANK[status as RequestStatus] ?? -1;
 
 /** *arr-state fields the placeholder tracked that a narrow mergeData must not silently discard. */
-const PLACEHOLDER_INHERITED_FIELDS = ['tvdbId', 'sonarrId', 'radarrId', 'qualityProfileId', 'availableAt', 'audioLanguages', 'subtitleLanguages', 'lastEpisodeInfo', 'contentRating', 'keywordIds'] as const;
+// serviceId travels with sonarrId/radarrId — an *arr id without its instance is meaningless.
+const PLACEHOLDER_INHERITED_FIELDS = ['tvdbId', 'sonarrId', 'radarrId', 'serviceId', 'qualityProfileId', 'availableAt', 'audioLanguages', 'subtitleLanguages', 'lastEpisodeInfo', 'contentRating', 'keywordIds'] as const;
 
 /** Merge a -tvdbId placeholder into the canonical positive-tmdbId row and delete the placeholder.
  *  Per user, keeps the most-advanced request and drops the other so nobody ends up with two and no
@@ -201,11 +202,12 @@ export async function performLiveCheck(
   tmdbId: number,
   tvdbId: number | null,
   hasCachedAudio: boolean,
+  serviceId: number | null = null,
 ): Promise<LiveCheckResult> {
   const result: LiveCheckResult = { liveAvailable: false, sonarrSeasonStats: null, audioLanguages: null, subtitleLanguages: null };
   try {
     const serviceType = getServiceTypeForMedia(mediaType);
-    const client = await getArrClient(serviceType);
+    const client = await getArrClientForMedia(serviceType, serviceId);
 
     let externalId: number | null = mediaType === 'movie' ? tmdbId : tvdbId;
     if (!externalId && mediaType === 'tv') {
@@ -234,11 +236,12 @@ export async function performLiveCheckWithTimeout(
   tmdbId: number,
   tvdbId: number | null,
   hasCachedAudio: boolean,
+  serviceId: number | null = null,
 ): Promise<LiveCheckResult> {
   let timeoutHandle: ReturnType<typeof setTimeout>;
   const timedOutResult: LiveCheckResult = { liveAvailable: false, sonarrSeasonStats: null, audioLanguages: null, subtitleLanguages: null, timedOut: true };
   return Promise.race([
-    performLiveCheck(mediaType, tmdbId, tvdbId, hasCachedAudio).finally(() => clearTimeout(timeoutHandle)),
+    performLiveCheck(mediaType, tmdbId, tvdbId, hasCachedAudio, serviceId).finally(() => clearTimeout(timeoutHandle)),
     new Promise<LiveCheckResult>((resolve) => {
       timeoutHandle = setTimeout(() => resolve(timedOutResult), LIVE_CHECK_TIMEOUT);
     }),
@@ -308,10 +311,12 @@ export async function refreshMediaCategory(media: {
   statusCategory: string;
   radarrId: number | null;
   sonarrId: number | null;
+  serviceId: number | null;
   availableAt: Date | null;
 }): Promise<MediaStateCategory | null> {
   try {
-    const client = await getArrClient(getServiceTypeForMedia(media.mediaType));
+    const serviceType = getServiceTypeForMedia(media.mediaType);
+    const client = await getArrClientForMedia(serviceType, media.serviceId);
     const currentArrId = arrIdForMedia(media);
     let serviceMediaId = currentArrId;
     if (!serviceMediaId) {

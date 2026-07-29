@@ -14,7 +14,7 @@ import { tautulliProvider } from './tautulli/index.js';
 import { emailProvider } from './email/index.js';
 import { discordProvider } from './discord/index.js';
 import type { Provider, ServiceDefinition, AuthProvider, ArrClient } from './types.js';
-import { getServiceConfig } from '../utils/services.js';
+import { getServiceById, getServiceConfig } from '../utils/services.js';
 import { getProviderSettings, listAllProviderSettings } from './authSettings.js';
 
 // ─── Provider Registry ──────────────────────────────────────────────
@@ -133,6 +133,21 @@ export function getArrClientForService(serviceId: number, serviceType: string, c
   const instance = def.createClient(config);
   _serviceCache.set(serviceId, { instance, configKey });
   return instance;
+}
+
+/** `radarrId`/`sonarrId` are instance-local, so reading one against the wrong instance returns a
+ *  different title. Falls back to the default instance when serviceId is null or unresolvable. */
+export async function getArrClientForMedia(
+  serviceType: string,
+  serviceId: number | null | undefined,
+): Promise<ArrClient> {
+  if (serviceId != null) {
+    const service = await getServiceById(serviceId);
+    if (service && service.type === serviceType) {
+      return getArrClientForService(service.id, serviceType, service.config);
+    }
+  }
+  return getArrClient(serviceType);
 }
 
 export function createArrClient(type: string, config: Record<string, string>): ArrClient {

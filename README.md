@@ -15,11 +15,6 @@
   <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square" alt="PRs Welcome" />
   <a href="https://discord.gg/vB25SNTqCS"><img src="https://img.shields.io/badge/Discord-join-5865F2?style=flat-square&amp;logo=discord&amp;logoColor=white" alt="Discord" /></a>
-  <br />
-  <a href="https://sonarcloud.io/summary/overall?id=arediss_Oscarr"><img src="https://sonarcloud.io/api/project_badges/measure?project=arediss_Oscarr&amp;metric=alert_status" alt="Quality Gate" /></a>
-  <a href="https://sonarcloud.io/summary/overall?id=arediss_Oscarr"><img src="https://sonarcloud.io/api/project_badges/measure?project=arediss_Oscarr&amp;metric=security_rating" alt="Security Rating" /></a>
-  <a href="https://sonarcloud.io/summary/overall?id=arediss_Oscarr"><img src="https://sonarcloud.io/api/project_badges/measure?project=arediss_Oscarr&amp;metric=reliability_rating" alt="Reliability Rating" /></a>
-  <a href="https://sonarcloud.io/summary/overall?id=arediss_Oscarr"><img src="https://sonarcloud.io/api/project_badges/measure?project=arediss_Oscarr&amp;metric=sqale_rating" alt="Maintainability Rating" /></a>
 </p>
 
 <p align="center">
@@ -99,10 +94,13 @@ Each external app gets its own revokable API key from *Admin → Access → API 
 
 ### Quick Start with Docker
 
-Generate a secret key (32-byte hex) — keep it safe, lose it = stored credentials unrecoverable:
+Generate the three secrets. Oscarr refuses to start on a placeholder or a too-short value.
+Keep `OSCARR_SECRET_KEY` safe — losing it makes stored credentials unrecoverable.
 
 ```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+echo "OSCARR_SECRET_KEY=$(openssl rand -hex 32)"
+echo "JWT_SECRET=$(openssl rand -base64 32)"
+echo "SETUP_SECRET=$(openssl rand -base64 32)"
 ```
 
 ```yaml
@@ -115,8 +113,10 @@ services:
     volumes:
       - oscarr-data:/data
     environment:
-      - JWT_SECRET=your_random_jwt_secret
-      - OSCARR_SECRET_KEY=your_64_hex_chars_key
+      # Paste the values generated above — placeholders are rejected at boot.
+      - OSCARR_SECRET_KEY=
+      - JWT_SECRET=
+      - SETUP_SECRET=
 
 volumes:
   oscarr-data:

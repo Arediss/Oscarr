@@ -100,6 +100,10 @@ model Media {
   statusCategory      String    @default("UNAVAILABLE")
   radarrId            Int?
   sonarrId            Int?
+  // Which *arr instance radarrId/sonarrId belong to — those ids are instance-local. Null =
+  // unknown, callers fall back to the default instance. Loose reference, not a relation: SQLite
+  // can't add a FK without rebuilding the table, and a stale id is already handled.
+  serviceId           Int?
   qualityProfileId    Int?      // Quality profile ID from Radarr/Sonarr
   availableAt         DateTime? // Set when statusCategory becomes AVAILABLE
   lastMissingSearchAt DateTime? // Last time a missing episode search was triggered
@@ -117,6 +121,7 @@ model Media {
   @@index([availableAt])
   @@index([radarrId])
   @@index([sonarrId])
+  @@index([serviceId])
   @@index([contentRating])
   @@index([statusCategory])
   @@index([statusCategory, availableAt])

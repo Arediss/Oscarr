@@ -122,7 +122,8 @@ jobs:
           docker run -d --name oscarr-smoke \
             -p 127.0.0.1:3456:3456 \
             -v "$DATADIR:/data" \
-            -e JWT_SECRET=ci-smoke-test-secret \
+            -e JWT_SECRET=ci-smoke-boot-probe-0123456789abcdef \
+            -e SETUP_SECRET=ci-smoke-boot-probe-fedcba9876543210 \
             -e OSCARR_SECRET_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-linux-arm64
 

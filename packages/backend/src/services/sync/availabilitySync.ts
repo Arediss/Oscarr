@@ -1,6 +1,7 @@
 import { prisma } from '../../utils/prisma.js';
-import { getArrClient, arrIdFieldForClient } from '../../providers/index.js';
-import { getServiceConfig } from '../../utils/services.js';
+import { getArrClientForService, arrIdFieldForClient } from '../../providers/index.js';
+import type { ArrClient } from '../../providers/types.js';
+import { getAllServices } from '../../utils/services.js';
 import { logEvent } from '../../utils/logEvent.js';
 
 export async function syncAvailabilityDates(since?: Date | null): Promise<{ radarrUpdated: number; sonarrUpdated: number }> {
@@ -23,11 +24,29 @@ export async function syncAvailabilityDates(since?: Date | null): Promise<{ rada
 }
 
 async function syncServiceAvailability(serviceType: string, since: Date | null): Promise<number> {
-  const config = await getServiceConfig(serviceType);
-  if (!config) return 0;
+  const services = await getAllServices(serviceType);
+  if (services.length === 0) return 0;
 
+  let total = 0;
+  for (const service of services) {
+    total += await syncOneServiceAvailability(
+      getArrClientForService(service.id, serviceType, service.config),
+      service.id,
+      serviceType,
+      since,
+    );
+  }
+  return total;
+}
+
+/** Scoped by serviceId: two instances can hold the same radarrId for different titles. */
+async function syncOneServiceAvailability(
+  client: ArrClient,
+  serviceId: number,
+  serviceType: string,
+  since: Date | null,
+): Promise<number> {
   try {
-    const client = await getArrClient(serviceType);
     const entries = await client.getHistoryEntries(since);
 
     // Deduplicate: keep latest date per serviceMediaId
@@ -45,9 +64,10 @@ async function syncServiceAvailability(serviceType: string, since: Date | null):
       const result = await prisma.media.updateMany({
         where: {
           [idField]: serviceMediaId,
-          OR: [
-            { availableAt: null },
-            { availableAt: { lt: date } },
+          // Sibling OR keys would overwrite each other — AND them explicitly.
+          AND: [
+            { OR: [{ serviceId }, { serviceId: null }] },
+            { OR: [{ availableAt: null }, { availableAt: { lt: date } }] },
           ],
         },
         data: {

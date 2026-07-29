@@ -170,8 +170,7 @@ const ROUTE_PERMISSIONS: Record<string, RouteRule> = {
 const PREFIX_DEFAULTS: [string, RouteRule][] = [
   ['/api/admin',    { permission: 'admin.*' }],
   // Plugin custom routes fall through here (registered dynamically by plugins at /api/plugins/:pluginId/*).
-  // Any authenticated user can access. Plugins that need admin-only routes should use
-  // ctx.registerRoutePermission() to override specific routes.
+  // Reads only — undeclared writes are upgraded to admin.plugins (resolveUndeclaredPluginWrite).
   ['/api/tmdb',     { permission: AUTH }],    // All TMDB endpoints — any authenticated user
   ['/api/plugins',  { permission: AUTH }],
   ['/api/setup',    { permission: PUBLIC }],  // setup has its own secret-based guards
@@ -274,13 +273,54 @@ export function registerPluginPermission(pluginId: string, permission: string, d
  */
 export function unregisterPluginRbac(pluginId: string): void {
   const owned = pluginOverrideOwners.get(pluginId);
+  const rules: Record<string, RouteRule> = {};
   if (owned) {
-    for (const key of owned) delete pluginOverrides[key];
+    for (const key of owned) {
+      rules[key] = pluginOverrides[key];
+      delete pluginOverrides[key];
+    }
     pluginOverrideOwners.delete(pluginId);
   }
+
+  const perms: { key: string; description?: string }[] = [];
   for (let i = pluginPermissions.length - 1; i >= 0; i--) {
-    if (pluginPermissions[i].pluginId === pluginId) pluginPermissions.splice(i, 1);
+    if (pluginPermissions[i].pluginId === pluginId) {
+      perms.unshift({ key: pluginPermissions[i].key, description: pluginPermissions[i].description });
+      pluginPermissions.splice(i, 1);
+    }
   }
+
+  // Parked, not dropped: declarations come from the plugin's register(), which the engine only
+  // runs at load/install. Dropping them would leave a disable→enable cycle with no rules at all.
+  // Only overwrite when this call actually parked something — a second disable finds nothing left
+  // and would otherwise replace the real parking with an empty one.
+  if (Object.keys(rules).length > 0 || perms.length > 0) {
+    dormantPluginRbac.set(pluginId, { rules, perms });
+  }
+}
+
+const dormantPluginRbac = new Map<string, {
+  rules: Record<string, RouteRule>;
+  perms: { key: string; description?: string }[];
+}>();
+
+/** Re-arm what a previous disable parked. No-op if there is nothing parked. */
+export function restorePluginRbac(pluginId: string): void {
+  const dormant = dormantPluginRbac.get(pluginId);
+  if (!dormant) return;
+  dormantPluginRbac.delete(pluginId);
+  for (const [key, rule] of Object.entries(dormant.rules)) {
+    registerRoutePermission(pluginId, key, rule);
+  }
+  for (const p of dormant.perms) {
+    registerPluginPermission(pluginId, p.key, p.description);
+  }
+}
+
+/** Uninstall: drop parked declarations too, so a same-id reinstall doesn't inherit them. */
+export function forgetPluginRbac(pluginId: string): void {
+  unregisterPluginRbac(pluginId);
+  dormantPluginRbac.delete(pluginId);
 }
 
 /**
@@ -358,6 +398,50 @@ function resolveRule(method: string, url: string): RouteRule | null {
   return null;
 }
 
+const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** Shared with PluginEngine.mountDispatcher so the two can't diverge. */
+export const PLUGIN_DISPATCHER_URL = '/api/plugins/:pluginId/*';
+
+/** Rule applied to a plugin write route that never declared a permission of its own. */
+const UNDECLARED_PLUGIN_WRITE: RouteRule = { permission: 'admin.plugins' };
+
+/** True when the route key matches a real rule (plugin override or core table) instead of
+ *  falling through to a prefix default. */
+function hasExplicitRule(method: string, url: string): boolean {
+  const key = `${method}:${url}`;
+  if (pluginOverrides[key] || ROUTE_PERMISSIONS[key]) return true;
+  const alt = url.endsWith('/') ? `${method}:${url.slice(0, -1)}` : `${method}:${url}/`;
+  return Boolean(pluginOverrides[alt] || ROUTE_PERMISSIONS[alt]);
+}
+
+/**
+ * The `/api/plugins` prefix default is AUTH — fine for reads, wrong for writes: a route that
+ * forgot registerRoutePermission would be open to any account. Undeclared writes get
+ * admin.plugins instead. Null = not concerned, caller falls through to resolveRule.
+ */
+function resolveUndeclaredPluginWrite(method: string, url: string): RouteRule | null {
+  if (!url.startsWith('/api/plugins')) return null;
+  if (!MUTATING_METHODS.has(method)) return null;
+  // The global hook only sees route patterns, so sub-routes arrive as the catch-all; judging it
+  // here would deny the whole plugin surface. The dispatcher re-checks them by real URL.
+  if (url === PLUGIN_DISPATCHER_URL) return null;
+  return hasExplicitRule(method, url) ? null : UNDECLARED_PLUGIN_WRITE;
+}
+
+/** Write routes falling back to admin.plugins — logged by the engine so the omission is visible
+ *  at load instead of surfacing as a 403 in production. */
+export function findUndeclaredWriteRoutes(
+  pluginId: string,
+  routes: Array<{ method: string; pattern: string }>
+): string[] {
+  return routes
+    .filter((r) => MUTATING_METHODS.has(r.method))
+    .map((r) => ({ ...r, url: `/api/plugins/${pluginId}${r.pattern}` }))
+    .filter((r) => !hasExplicitRule(r.method, r.url))
+    .map((r) => `${r.method} ${r.url}`);
+}
+
 /**
  * Enforce the RBAC rule for a plugin sub-route that has been resolved by the dispatcher.
  *
@@ -377,7 +461,7 @@ export async function enforcePluginRoutePermission(
   method: string,
   url: string
 ): Promise<boolean> {
-  const rule = resolveRule(method, url);
+  const rule = resolveUndeclaredPluginWrite(method, url) ?? resolveRule(method, url);
   if (!rule || rule.permission === PUBLIC || rule.permission === AUTH) return true;
 
   const jwtUser = request.user as { id: number; role: string } | undefined;
@@ -439,7 +523,7 @@ export function rbacPlugin(app: FastifyInstance): void {
     // Skip non-API routes (SPA fallback, static files)
     if (!url?.startsWith('/api/')) return;
 
-    const rule = resolveRule(method, url);
+    const rule = resolveUndeclaredPluginWrite(method, url) ?? resolveRule(method, url);
 
     if (!rule) {
       // Fail-closed: no rule -> deny

@@ -1,13 +1,15 @@
 import './env.js';
 import { loadMasterKeyOrExit } from './utils/secrets.js';
+import { assertJwtSecretOrExit, assertSetupSecretOrExit } from './utils/envSecret.js';
 loadMasterKeyOrExit();
+assertJwtSecretOrExit();
 import Fastify from 'fastify';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { prisma } from './utils/prisma.js';
 import { BACKEND_ROOT } from './utils/paths.js';
-import { loadInstallState } from './utils/install.js';
+import { isInstalled, loadInstallState } from './utils/install.js';
 import { logEvent } from './utils/logEvent.js';
 import { registerSecurity } from './bootstrap/security.js';
 import { registerDocs } from './bootstrap/docs.js';
@@ -75,6 +77,7 @@ async function ensureMigrated() {
 
 async function start() {
   loadInstallState();
+  assertSetupSecretOrExit(isInstalled());
   // Export legacy SupportTicket/TicketMessage rows before the drop migration removes them.
   runLegacySupportExport();
   await ensureMigrated();

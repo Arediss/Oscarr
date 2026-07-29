@@ -70,7 +70,7 @@ Oscarr's test suite is nascent (see audit M15). If you're touching a pure functi
 
 ## Getting your PR merged
 
-- CI must be green (typecheck + Trivy + CodeQL + SonarCloud where applicable).
+- CI must be green (typecheck + Trivy + CodeQL where applicable).
 - Reviewer feedback addressed or discussed.
 - No force-push after review starts unless explicitly agreed.
 - Squash-merge is the default — keep the first commit's message clean because it becomes the squash message.

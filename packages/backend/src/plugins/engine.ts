@@ -10,7 +10,7 @@ import { checkCompat, type CompatResult } from './compat.js';
 import { cancelPluginJobs, updateJobSchedule } from '../services/scheduler.js';
 import { createContext, clearLogRateCounter, type ContextFactoryDeps } from './context/index.js';
 import { PluginRouter } from './router.js';
-import { enforcePluginRoutePermission, unregisterPluginRbac } from '../middleware/rbac.js';
+import { PLUGIN_DISPATCHER_URL, enforcePluginRoutePermission, findUndeclaredWriteRoutes, forgetPluginRbac, restorePluginRbac, unregisterPluginRbac } from '../middleware/rbac.js';
 import { pluginEventBus } from './eventBus.js';
 import { closePluginStorage, rmPluginDataDir } from './storage/index.js';
 import type {
@@ -141,6 +141,12 @@ export class PluginEngine {
       await registerRoutes(router, ctx);
       this.routers.set(manifest.id, router);
       this.log('info', `Mounted ${router.listRoutes().length} route(s) for "${manifest.id}"`);
+
+      const undeclared = findUndeclaredWriteRoutes(manifest.id, router.listRoutes());
+      if (undeclared.length > 0) {
+        this.log('warn', `Plugin "${manifest.id}": ${undeclared.length} write route(s) without a declared ` +
+          `permission, falling back to admin.plugins — ${undeclared.join(', ')}`);
+      }
     } catch (err) {
       this.log('error', `Route registration failed for "${manifest.id}": ${err}`);
       plugin.error = `Route registration failed: ${err}`;
@@ -166,7 +172,7 @@ export class PluginEngine {
       app.route({
         method,
         // '*' is Fastify's wildcard that exposes the unmatched remainder as request.params['*'].
-        url: '/api/plugins/:pluginId/*',
+        url: PLUGIN_DISPATCHER_URL,
         handler: async (request, reply) => {
           const { pluginId } = request.params as { pluginId: string };
           const rest = (request.params as Record<string, string>)['*'] ?? '';
@@ -412,7 +418,7 @@ export class PluginEngine {
 
     // Drop routes first so no in-flight request can still hit a handler whose module is about to die.
     this.routers.delete(id);
-    unregisterPluginRbac(id);
+    forgetPluginRbac(id);
     pluginEventBus.removeAllForPlugin(id);
     notificationRegistry.removeAllForPlugin(id);
 
@@ -478,9 +484,9 @@ export class PluginEngine {
     // Enable → mount (or re-mount) the plugin router; disable → drop it so requests 404.
     if (plugin.registration.registerRoutes) {
       if (enabled) {
-        // Re-register from scratch. _registerRoutes rebuilds the ctx which re-runs
-        // registerRoutePermission / registerPluginPermission calls, so the RBAC clear on
-        // disable is rebuilt on enable without losing anything.
+        // _registerRoutes does NOT rebuild these: they come from register(), which only runs
+        // at load and install.
+        restorePluginRbac(id);
         await this._registerRoutes(plugin);
       } else {
         this.routers.delete(id);

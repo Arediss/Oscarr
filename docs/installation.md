@@ -19,18 +19,20 @@ npm install --legacy-peer-deps
 
 ## Configuration
 
-Create a `.env` file at `app/.env`. `JWT_SECRET` and `OSCARR_SECRET_KEY` are required:
+Create a `.env` file at `app/.env`. `OSCARR_SECRET_KEY`, `JWT_SECRET` and `SETUP_SECRET` are
+required — Oscarr refuses to start on a placeholder or a value under 16 characters. Generate them
+with `openssl rand -hex 32` for the first and `openssl rand -base64 32` for the other two:
 
 ```env
-JWT_SECRET=your_random_jwt_secret
-OSCARR_SECRET_KEY=your_64_hex_chars_key
+OSCARR_SECRET_KEY=
+JWT_SECRET=
+SETUP_SECRET=
 DATABASE_URL=file:./dev.db
 PORT=3456
 FRONTEND_URL=http://localhost:5173
 
 # Optional
 # TMDB_API_TOKEN=your_own_key
-# SETUP_SECRET=your_install_secret
 # OSCARR_BLOCK_PRIVATE_SERVICES=true
 # OSCARR_PLUGINS_DIR=/custom/plugins
 # FORCE_HTTPS=true

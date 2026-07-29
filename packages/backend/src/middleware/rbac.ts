@@ -292,7 +292,11 @@ export function unregisterPluginRbac(pluginId: string): void {
 
   // Parked, not dropped: declarations come from the plugin's register(), which the engine only
   // runs at load/install. Dropping them would leave a disable→enable cycle with no rules at all.
-  dormantPluginRbac.set(pluginId, { rules, perms });
+  // Only overwrite when this call actually parked something — a second disable finds nothing left
+  // and would otherwise replace the real parking with an empty one.
+  if (Object.keys(rules).length > 0 || perms.length > 0) {
+    dormantPluginRbac.set(pluginId, { rules, perms });
+  }
 }
 
 const dormantPluginRbac = new Map<string, {

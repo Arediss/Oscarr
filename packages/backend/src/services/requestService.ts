@@ -1,6 +1,6 @@
 import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
-import { getArrClient, getArrClientForService, getServiceTypeForMedia } from '../providers/index.js';
+import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService } from '../providers/index.js';
 import { getMovieDetails, getTvDetails } from './tmdb.js';
 import { findTvPlaceholder, upgradeOrMergeTvPlaceholder } from './mediaService.js';
 import { matchFolderRule } from './folderRules.js';
@@ -186,7 +186,7 @@ async function sendToArrService(
   ctx: ServiceContext,
   seasons?: number[],
   rootFolderOverride?: string | null,
-) {
+): Promise<number | null> {
   const serviceType = getServiceTypeForMedia(mediaType);
   const client = ctx.targetService
     ? getArrClientForService(ctx.targetService.id, serviceType, ctx.targetService.config)
@@ -208,7 +208,7 @@ async function sendToArrService(
   const existing = await client.findByExternalId(externalId);
   if (existing) {
     await client.searchMedia(existing.id);
-    return;
+    return existing.id;
   }
 
   const profileId = ctx.targetProfileId ?? ctx.defaultProfileId
@@ -223,6 +223,8 @@ async function sendToArrService(
     seasons,
     seriesType: ctx.ruleMatch?.seriesType as string | undefined,
   });
+  // addMedia returns void, so the new id is unknown here — the caller nulls the stale one.
+  return null;
 }
 
 export async function sendToService(
@@ -259,13 +261,17 @@ export async function sendToService(
       }
     }
 
-    await sendToArrService(resolvedMedia, mediaType, username, ctx, seasons, rootFolderOverride);
+    const arrMediaId = await sendToArrService(resolvedMedia, mediaType, username, ctx, seasons, rootFolderOverride);
 
-    // Claim the row now; otherwise ownership only lands at the next sync pass.
-    if (ctx.targetService) {
+    // Claim the row now; otherwise ownership only lands at the next sync pass. serviceId and the
+    // *arr id must move together — a serviceId pointing at B next to an id issued by A resolves to
+    // a different title. When the id is unknown, null it so refreshMediaCategory re-resolves it
+    // against the right instance.
+    const arrIdField = arrIdFieldForService(getServiceTypeForMedia(mediaType));
+    if (ctx.targetService && arrIdField) {
       await prisma.media.updateMany({
         where: { tmdbId: media.tmdbId, mediaType },
-        data: { serviceId: ctx.targetService.id },
+        data: { serviceId: ctx.targetService.id, [arrIdField]: arrMediaId },
       }).catch((err) => logEvent('debug', 'Request', `Failed to stamp serviceId on "${media.title}": ${err}`));
     }
     return true;

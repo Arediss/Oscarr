@@ -260,6 +260,14 @@ export async function sendToService(
     }
 
     await sendToArrService(resolvedMedia, mediaType, username, ctx, seasons, rootFolderOverride);
+
+    // Claim the row now; otherwise ownership only lands at the next sync pass.
+    if (ctx.targetService) {
+      await prisma.media.updateMany({
+        where: { tmdbId: media.tmdbId, mediaType },
+        data: { serviceId: ctx.targetService.id },
+      }).catch((err) => logEvent('debug', 'Request', `Failed to stamp serviceId on "${media.title}": ${err}`));
+    }
     return true;
   } catch (err) {
     logEvent('debug', 'Request', `Failed to send ${mediaType} "${media.title}" to service: ${err}`);

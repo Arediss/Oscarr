@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../utils/prisma.js';
-import { getArrClient } from '../providers/index.js';
+import { getArrClientForMedia } from '../providers/index.js';
 import { parseId, parsePage, VALID_MEDIA_TYPES } from '../utils/params.js';
 import { isMatureRating } from '../services/tmdb.js';
 import { normalizeLanguages } from '../utils/languages.js';
@@ -154,7 +154,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     const liveCheck = skipLive
       ? { liveAvailable: true, sonarrSeasonStats: null, audioLanguages: null, subtitleLanguages: null, timedOut: false }
       : await performLiveCheckWithTimeout(
-          mediaType, tmdbIdNum, media?.tvdbId ?? null, !!cachedAudio,
+          mediaType, tmdbIdNum, media?.tvdbId ?? null, !!cachedAudio, media?.serviceId ?? null,
         );
     const { liveAvailable, sonarrSeasonStats, audioLanguages, subtitleLanguages } = liveCheck;
 
@@ -351,7 +351,7 @@ export async function mediaRoutes(app: FastifyInstance) {
     }
 
     try {
-      const client = await getArrClient('sonarr');
+      const client = await getArrClientForMedia('sonarr', media.serviceId);
       if (!client.getEpisodesNormalized) return reply.status(400).send({ error: 'This service does not support episodes' });
       return await client.getEpisodesNormalized(media.sonarrId, seasonNum);
     } catch {

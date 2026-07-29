@@ -1,26 +1,60 @@
 import { prisma } from '../../utils/prisma.js';
 import { patchAppSettings } from '../../utils/appSettings.js';
-import { getArrClient, arrIdFieldForClient } from '../../providers/index.js';
+import { getArrClientForService, arrIdFieldForClient } from '../../providers/index.js';
 import type { ArrClient, ArrMediaItem } from '../../providers/types.js';
-import { getServiceConfig } from '../../utils/services.js';
+import { getAllServices } from '../../utils/services.js';
 import { logEvent } from '../../utils/logEvent.js';
 import type { SyncResult } from './helpers.js';
 import { sendAvailabilityNotifications } from './helpers.js';
 import { isTmdbMediaTypeConflict, mergeTvPlaceholderInto, cascadeRequestsForCategory } from '../mediaService.js';
 import type { Media } from '@prisma/client';
 
+/** Every enabled instance, not just the default: requests are dispatched to any of them.
+ *  Sequential — SQLite takes a single writer and a full scan is our heaviest job. */
 export async function syncArrService(serviceType: string, since?: Date | null): Promise<SyncResult> {
   const start = Date.now();
-  let added = 0, updated = 0, errors = 0;
-
-  const config = await getServiceConfig(serviceType);
-  if (!config) {
+  const services = await getAllServices(serviceType);
+  if (services.length === 0) {
     logEvent('debug', 'Sync', `${serviceType}: no service configured, skipping`);
     return { added: 0, updated: 0, errors: 0, duration: 0 };
   }
 
+  const total: SyncResult = { added: 0, updated: 0, errors: 0, duration: 0 };
+  let mediaType: ArrClient['mediaType'] | null = null;
+  let allReached = true;
+
+  for (const service of services) {
+    const client = getArrClientForService(service.id, serviceType, service.config);
+    mediaType = client.mediaType;
+    const label = services.length > 1 ? `${serviceType}[${service.name}]` : serviceType;
+    const result = await syncOneInstance(client, service.id, label, since);
+    total.added += result.added;
+    total.updated += result.updated;
+    total.errors += result.errors;
+    if (!result.reached) allReached = false;
+  }
+
+  // One timestamp for the whole type, and only if every instance answered — moving the window
+  // past a library we never read would drop whatever it added during the outage.
+  if (mediaType && allReached) {
+    await patchAppSettings({ [mediaType === 'movie' ? 'lastRadarrSync' : 'lastSonarrSync']: new Date() });
+  }
+
+  total.duration = Date.now() - start;
+  return total;
+}
+
+/** One pass over a single instance. Stamps `serviceId` on every row it touches. */
+async function syncOneInstance(
+  client: ArrClient,
+  serviceId: number,
+  serviceType: string,
+  since?: Date | null,
+): Promise<SyncResult & { reached: boolean }> {
+  const start = Date.now();
+  let added = 0, updated = 0, errors = 0, reached = true;
+
   try {
-    const client = await getArrClient(serviceType);
     const allMedia = await client.getAllMedia();
 
     let filtered = allMedia;
@@ -33,7 +67,12 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
       const inProgressItems = allMedia.filter(m => m.statusCategory === 'PROCESSING');
 
       const notAvailableInDb = await prisma.media.findMany({
-        where: { mediaType: client.mediaType, statusCategory: { in: ['UNAVAILABLE', 'UPCOMING', 'SEARCHING', 'PROCESSING'] } },
+        where: {
+          mediaType: client.mediaType,
+          statusCategory: { in: ['UNAVAILABLE', 'UPCOMING', 'SEARCHING', 'PROCESSING'] },
+          // Rows owned by another instance are its job — pulling them in here caused flapping.
+          OR: [{ serviceId }, { serviceId: null }],
+        },
         select: { tmdbId: true, tvdbId: true },
       });
 
@@ -70,7 +109,7 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
     for (const item of filtered) {
       try {
         const existing = existingByExternalId.get(item.externalId);
-        const result = await processSingleMedia(item, client, existing);
+        const result = await processSingleMedia(item, client, serviceId, existing);
         if (result === 'added') added++;
         else if (result === 'updated' || result === 'merged') updated++;
         // Queue seasons for the update path only — creates already batched via createMany,
@@ -106,19 +145,17 @@ export async function syncArrService(serviceType: string, since?: Date | null): 
       logEvent('debug', 'Sync', `${serviceType}: bulk-synced seasons for ${mediaIds.length} TV items (${rows.length} season rows)`);
     }
 
-    // Update last sync timestamp
-    const syncField = client.mediaType === 'movie' ? 'lastRadarrSync' : 'lastSonarrSync';
-    await patchAppSettings({ [syncField]: new Date() });
   } catch (err) {
     logEvent('error', 'Sync', `${serviceType} sync failed: ${err}`);
     errors++;
+    reached = false;
   }
 
   const duration = Date.now() - start;
   if (added > 0 || updated > 0) {
     logEvent('info', 'Sync', `${serviceType}: +${added} added, ~${updated} updated (${duration}ms)`);
   }
-  return { added, updated, errors, duration };
+  return { added, updated, errors, duration, reached };
 }
 
 /** Single bulk query replaces one findUnique/findFirst per item. Returns a Map keyed by the
@@ -154,7 +191,7 @@ async function bulkFetchExisting(
   return map;
 }
 
-async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void> {
+async function createMedia(item: ArrMediaItem, client: ArrClient, serviceId: number): Promise<void> {
   if (client.mediaType === 'movie') {
     await prisma.media.create({
       data: {
@@ -165,6 +202,7 @@ async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void>
         backdropPath: item.backdropPath,
         statusCategory: item.statusCategory,
         radarrId: item.serviceMediaId,
+        serviceId,
         qualityProfileId: item.qualityProfileId,
         ...(item.statusCategory === 'AVAILABLE' ? { availableAt: new Date() } : {}),
       },
@@ -183,6 +221,7 @@ async function createMedia(item: ArrMediaItem, client: ArrClient): Promise<void>
       backdropPath: item.backdropPath,
       statusCategory: item.statusCategory,
       sonarrId: item.serviceMediaId,
+      serviceId,
       qualityProfileId: item.qualityProfileId,
       ...(item.statusCategory === 'AVAILABLE' ? { availableAt: new Date() } : {}),
     },
@@ -212,17 +251,40 @@ async function applyUpdate(
   });
 }
 
+/** How much a state is worth when two instances claim the same row. AVAILABLE on top: a copy that
+ *  exists beats one that is still searching, whichever instance holds it. BLACKLISTED sits low so
+ *  a blocked copy on one instance can't mask a real one on another. */
+const STATE_RANK: Record<string, number> = {
+  UNAVAILABLE: 0,
+  BLACKLISTED: 1,
+  UPCOMING: 2,
+  SEARCHING: 3,
+  PROCESSING: 4,
+  AVAILABLE: 5,
+};
+
+/** Unowned, already ours, or we hold a strictly better copy than the current owner. */
+function canClaimMedia(existing: Media, serviceId: number, incomingState: string): boolean {
+  if (existing.serviceId == null || existing.serviceId === serviceId) return true;
+  return (STATE_RANK[incomingState] ?? 0) > (STATE_RANK[existing.statusCategory] ?? 0);
+}
+
 async function processSingleMedia(
   item: ArrMediaItem,
   client: ArrClient,
+  serviceId: number,
   existing: Media | undefined,
 ): Promise<'added' | 'updated' | 'skipped' | 'merged'> {
   if (client.mediaType === 'tv' && !item.externalId) return 'skipped';
 
   if (!existing) {
-    await createMedia(item, client);
+    await createMedia(item, client, serviceId);
     return 'added';
   }
+
+  // One Media row per (tmdbId, mediaType), so two instances holding the same title both match it.
+  // Without an owner the last one walked wins every pass and the category flips every 15 min.
+  if (!canClaimMedia(existing, serviceId, item.statusCategory)) return 'skipped';
 
   const becameAvailable = item.statusCategory === 'AVAILABLE' && existing.statusCategory !== 'AVAILABLE';
   if (becameAvailable) {
@@ -238,6 +300,7 @@ async function processSingleMedia(
 
   const updateData: Record<string, unknown> = {
     [arrIdFieldForClient(client)]: item.serviceMediaId,
+    serviceId,
     statusCategory: item.statusCategory,
     qualityProfileId: item.qualityProfileId,
     title: existing.title || item.title,

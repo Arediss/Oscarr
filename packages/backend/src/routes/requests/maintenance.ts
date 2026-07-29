@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { getAppSettings } from '../../utils/appSettings.js';
-import { getArrClient, getServiceTypeForMedia, arrIdForMedia } from '../../providers/index.js';
+import { getArrClientForMedia, getServiceTypeForMedia, arrIdForMedia } from '../../providers/index.js';
 import { logEvent } from '../../utils/logEvent.js';
 import { pluginEngine } from '../../plugins/engine.js';
 
@@ -49,13 +49,13 @@ export async function requestMaintenanceRoutes(app: FastifyInstance) {
     }
 
     try {
-      const serviceId = arrIdForMedia(media);
-      if (!serviceId) {
+      const arrMediaId = arrIdForMedia(media);
+      if (!arrMediaId) {
         return reply.status(400).send({ error: 'This media is not yet in the service' });
       }
       const serviceType = getServiceTypeForMedia(mediaType);
-      const client = await getArrClient(serviceType);
-      await client.searchMedia(serviceId);
+      const client = await getArrClientForMedia(serviceType, media.serviceId);
+      await client.searchMedia(arrMediaId);
 
       await prisma.media.update({ where: { id: media.id }, data: { lastMissingSearchAt: new Date() } });
       logEvent('info', 'Request', `Missing episodes search started for "${media.title}"`);
@@ -93,16 +93,17 @@ export async function requestMaintenanceRoutes(app: FastifyInstance) {
       if (action === 'remove_with_service') {
         const requests = await prisma.mediaRequest.findMany({
           where: { status },
-          include: { media: { select: { radarrId: true, sonarrId: true, mediaType: true } } },
+          include: { media: { select: { radarrId: true, sonarrId: true, serviceId: true, mediaType: true } } },
         });
 
         for (const req of requests) {
           try {
             const serviceType = getServiceTypeForMedia(req.media.mediaType);
-            const serviceId = arrIdForMedia(req.media);
-            if (serviceId) {
-              const client = await getArrClient(serviceType);
-              await client.deleteMedia(serviceId, true);
+            // Deletes files on disk — must hit the instance that owns the id.
+            const arrMediaId = arrIdForMedia(req.media);
+            if (arrMediaId) {
+              const client = await getArrClientForMedia(serviceType, req.media.serviceId);
+              await client.deleteMedia(arrMediaId, true);
               deletedFromService++;
             }
           } catch (err) {

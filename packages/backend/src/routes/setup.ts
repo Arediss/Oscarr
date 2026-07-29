@@ -9,12 +9,11 @@ import { isInstalled, markInstalled } from '../utils/install.js';
 import { classifyTestError } from '../utils/serviceTestError.js';
 import { assertPublicUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 
+// Strength is checked once at boot by assertSetupSecretOrExit (utils/envSecret.ts), which refuses
+// to start a not-yet-installed instance on a weak value. The old warning here fired before that
+// check, claimed the setup routes were "unprotected" (they answer 500, and aren't even mounted
+// once installed), and used a threshold half the real one.
 const SETUP_SECRET = process.env.SETUP_SECRET || '';
-if (!SETUP_SECRET) {
-  console.error('[Setup] SETUP_SECRET is not set — setup routes will be unprotected!');
-} else if (SETUP_SECRET.length < 8) {
-  console.warn('[Setup] SETUP_SECRET is too short — minimum 8 characters recommended.');
-}
 
 async function requireNotInstalled(_request: FastifyRequest, reply: FastifyReply) {
   if (isInstalled()) {

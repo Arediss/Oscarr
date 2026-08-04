@@ -8,6 +8,8 @@ dist/
 overrserr/
 api
 docs/plans/
+# Internal audit reports map security weaknesses by file:line — not for a public repo.
+docs/audit/
 issues/
 data/
 .claude/

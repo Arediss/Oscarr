@@ -87,13 +87,13 @@ export function usePluginsTab() {
       await fetchPlugins();
       invalidatePluginUICache();
       refreshPluginUpdatesCount();
+      setTimeout(() => setInstallMessage(null), 6000);
       return true;
     } catch (err) {
       setInstallMessage({ kind: 'error', text: extractApiError(err, String((err as Error).message)) });
       return false;
     } finally {
       setUpdating(null);
-      setTimeout(() => setInstallMessage(null), 6000);
     }
   }, [fetchPlugins]);
 
@@ -121,13 +121,15 @@ export function usePluginsTab() {
       // populates the Installed tab in the background before the admin flips to it.
       fetchPlugins();
       refreshPluginUpdatesCount();
+      // Only the success banner self-dismisses. A failure stays until the admin dismisses the
+      // dialog — install errors are long and actionable, and 6s is not enough to read one.
+      setTimeout(() => setInstallMessage(null), 6000);
       return true;
     } catch (err) {
       setInstallMessage({ kind: 'error', text: extractApiError(err, String((err as Error).message)) });
       return false;
     } finally {
       setInstalling(null);
-      setTimeout(() => setInstallMessage(null), 6000);
     }
   }, [fetchPlugins]);
 

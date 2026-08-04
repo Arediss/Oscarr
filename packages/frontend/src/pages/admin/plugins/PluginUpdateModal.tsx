@@ -11,13 +11,16 @@ interface Props {
   plugin: PluginInfo | null;
   open: boolean;
   busy: boolean;
+  /** Failure of the apply itself. Rendered inside the dialog — a banner behind the overlay
+   *  can't be read or acted on. Distinct from the modal's own preflight `error` state. */
+  applyError?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
 
 /** Update modal — fetches preflight on open, shows compat + permission diff, blocks apply
  *  when the new release is incompatible with the running Oscarr version. */
-export function PluginUpdateModal({ plugin, open, busy, onCancel, onConfirm }: Readonly<Props>) {
+export function PluginUpdateModal({ plugin, open, busy, applyError, onCancel, onConfirm }: Readonly<Props>) {
   const { t } = useTranslation();
   const { dialogRef, titleId } = useModal({ open: open && plugin !== null, onClose: onCancel });
   const [preflight, setPreflight] = useState<PluginUpdatePreflight | null>(null);
@@ -178,13 +181,22 @@ export function PluginUpdateModal({ plugin, open, busy, onCancel, onConfirm }: R
           )}
         </div>
 
+        {applyError && (
+          <div
+            role="alert"
+            className="mx-6 mt-4 rounded-lg border border-ndp-danger/30 bg-ndp-danger/10 px-3 py-2.5 flex-shrink-0"
+          >
+            <p className="text-sm text-ndp-danger break-words">{applyError}</p>
+          </div>
+        )}
+
         <div className="flex gap-2 px-6 pt-4 pb-6 flex-shrink-0">
           <button
             onClick={() => !busy && onCancel()}
             disabled={busy}
             className="btn-secondary text-sm flex-1 disabled:opacity-50"
           >
-            {t('common.cancel')}
+            {applyError ? t('common.close') : t('common.cancel')}
           </button>
           <button
             onClick={onConfirm}

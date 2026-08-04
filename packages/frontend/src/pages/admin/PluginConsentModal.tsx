@@ -20,6 +20,9 @@ interface Props {
   busy?: boolean;
   /** What the primary action is — changes title + button copy. */
   mode: 'install' | 'enable';
+  /** Rendered inside the dialog. A failure banner behind the overlay is unreadable — the admin
+   *  can neither see it nor keep it on screen long enough to act on it. */
+  error?: string | null;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -46,7 +49,7 @@ const RISK_LABEL: Record<'low' | 'medium' | 'high', string> = {
   high:   'High risk — grants sensitive access',
 };
 
-export function PluginConsentModal({ plugin, open, busy, mode, onCancel, onConfirm }: Readonly<Props>) {
+export function PluginConsentModal({ plugin, open, busy, mode, error, onCancel, onConfirm }: Readonly<Props>) {
   const { t } = useTranslation();
   const { dialogRef, titleId } = useModal({ open: open && plugin !== null, onClose: onCancel });
   if (!open || !plugin) return null;
@@ -150,20 +153,29 @@ export function PluginConsentModal({ plugin, open, busy, mode, onCancel, onConfi
           )}
         </div>
 
+        {error && (
+          <div
+            role="alert"
+            className="mx-6 mt-4 rounded-lg border border-ndp-danger/30 bg-ndp-danger/10 px-3 py-2.5 flex-shrink-0"
+          >
+            <p className="text-sm text-ndp-danger break-words">{error}</p>
+          </div>
+        )}
+
         <div className="flex gap-2 px-6 pt-4 pb-6 flex-shrink-0">
           <button
             onClick={() => !busy && onCancel()}
             disabled={busy}
             className="btn-secondary text-sm flex-1 disabled:opacity-50"
           >
-            Cancel
+            {error ? 'Close' : 'Cancel'}
           </button>
           <button
             onClick={onConfirm}
             disabled={busy}
             className="btn-primary text-sm flex-1 disabled:opacity-50"
           >
-            {busy ? busyLabel : primaryLabel}
+            {busy ? busyLabel : error ? 'Retry' : primaryLabel}
           </button>
         </div>
       </div>

@@ -217,7 +217,8 @@ export function PluginsTab() {
         open={!!installConsent}
         busy={installConsent ? installing === installConsent.id : false}
         mode="install"
-        onCancel={() => setInstallConsent(null)}
+        error={installMessage?.kind === 'error' ? installMessage.text : null}
+        onCancel={() => { setInstallMessage(null); setInstallConsent(null); }}
         onConfirm={() => installConsent && doInstall(installConsent)}
       />
 
@@ -225,7 +226,8 @@ export function PluginsTab() {
         plugin={updateTarget}
         open={!!updateTarget}
         busy={updateTarget ? updating === updateTarget.id : false}
-        onCancel={() => setUpdateTarget(null)}
+        applyError={installMessage?.kind === 'error' ? installMessage.text : null}
+        onCancel={() => { setInstallMessage(null); setUpdateTarget(null); }}
         onConfirm={handleUpdateConfirm}
       />
 

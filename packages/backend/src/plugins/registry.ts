@@ -39,6 +39,16 @@ export interface UpdateCheckBatch {
   results: Map<string, UpdateCheckResult>;
 }
 
+/** Distinguishes "GitHub is throttling us" from "this repo has no release", which the caller
+ *  must not confuse: the first is transient and must not be cached or silently fallen back on. */
+export class RateLimitError extends Error {}
+
+function isRateLimited(res: Response): boolean {
+  if (res.status !== 403 && res.status !== 429) return false;
+  return res.headers.get('x-ratelimit-remaining') === '0'
+    || res.headers.get('retry-after') !== null;
+}
+
 let registryCache: { data: RegistryDoc; timestamp: number } | null = null;
 const releaseCache = new Map<string, { rel: GitHubRelease | null; timestamp: number }>();
 let inflightUpdateCheck: Promise<UpdateCheckBatch> | null = null;
@@ -79,6 +89,14 @@ export async function fetchLatestRelease(repository: string, force = false): Pro
     const rel = await latest.json() as GitHubRelease;
     releaseCache.set(repository, { rel, timestamp: now });
     return rel;
+  }
+  // A throttled API is not "this repo has no release". Caching null here would keep every
+  // caller on the source-tarball fallback for the full hour, long after the quota resets.
+  if (isRateLimited(latest)) {
+    throw new RateLimitError(
+      'GitHub API rate limit reached (60 requests/hour for unauthenticated servers). '
+      + 'Set GITHUB_TOKEN in Oscarr\'s environment to raise it, or retry in a few minutes.',
+    );
   }
   if (latest.status === 404) {
     const list = await fetch(`https://api.github.com/repos/${repository}/releases?per_page=30`, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
@@ -163,7 +181,9 @@ export async function resolveInstallUrl(repository: string): Promise<string> {
   if (!REPO_PATTERN.test(repository)) {
     throw new Error(`Invalid repository identifier: ${repository}`);
   }
-  const rel = await fetchLatestRelease(repository).catch(() => null);
+  // Rate-limit errors propagate: falling back to the source tarball would install a plugin
+  // without its built `dist/`, which fails later with an opaque "Cannot find module".
+  const rel = await fetchLatestRelease(repository);
   if (rel) return pickTarballUrl(rel, repository);
   return `https://api.github.com/repos/${repository}/tarball/HEAD`;
 }

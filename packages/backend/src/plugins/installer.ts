@@ -207,6 +207,18 @@ export async function installPluginFromUrl(url: string): Promise<InstalledPlugin
     const data = JSON.parse(raw);
     const manifest = parseManifest(data, manifestRoot) as PluginManifest;
 
+    // Refuse an archive whose declared entry point isn't in it. Catches the classic case of a
+    // GitHub source tarball being installed instead of a release asset: plugins gitignore their
+    // built `dist/`, so the install "succeeds" and only fails at import time with an opaque
+    // "Cannot find module". Better to reject here with something the admin can act on.
+    if (!existsSync(join(manifestRoot, manifest.entry))) {
+      throw new Error(
+        `Archive is missing its entry point "${manifest.entry}". This usually means a source `
+        + 'archive was downloaded instead of a built release asset — check that the plugin\'s '
+        + 'latest GitHub release has a .tar.gz asset attached.',
+      );
+    }
+
     const targetDir = join(getPluginsDir(), manifest.id);
     if (existsSync(targetDir)) {
       throw new Error(

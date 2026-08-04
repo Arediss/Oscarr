@@ -10,6 +10,12 @@ If you're just looking for the list of people who've worked on Oscarr, see [CONT
 - **Check existing patterns.** Oscarr leans heavily on a few conventions (provider registry, plugin capability system, `ALL_PROVIDERS` registry, `useModal` hook, `toastApiError`…). Follow the pattern already in the code for the area you touch — don't invent a new one.
 - **Respect the plugin / core split.** Core stays generic. Provider-specific logic (Plex, Jellyfin, Emby, Discord…) lives under `packages/backend/src/providers/<id>/`. Plugins are self-contained under `packages/plugins/<id>/`. If you catch yourself adding a provider-specific method to `PluginContext`, stop and rework.
 
+## Using AI
+
+Allowed, and no disclosure ceremony required — but you must understand what you're proposing,
+have actually run it, and be willing to maintain it. Review here is one maintainer reading a
+diff; it won't verify that your code works. Full details: [`AI_POLICY.md`](./AI_POLICY.md).
+
 ## Dev setup
 
 ```bash
@@ -61,7 +67,7 @@ npm run dev
 
 ## Testing
 
-Oscarr's test suite is nascent (see audit M15). If you're touching a pure function — capability gates, SSRF guards, request-status transitions — land a unit test with the change. Integration tests against the running app are appreciated for any flow that touches the DB.
+Oscarr's test suite is nascent. If you're touching a pure function — capability gates, SSRF guards, request-status transitions — land a unit test with the change. Integration tests against the running app are appreciated for any flow that touches the DB.
 
 ## Migrations
 

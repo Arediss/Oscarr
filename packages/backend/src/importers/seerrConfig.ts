@@ -55,7 +55,11 @@ export interface DerivedConfig {
 }
 
 function trim(url: string): string {
-  return url.replace(/\/+$/, '');
+  // Backwards scan rather than /\/+$/: the regex backtracks polynomially on a long run of
+  // trailing slashes, which an admin-supplied URL can contain.
+  let end = url.length;
+  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
+  return url.slice(0, end);
 }
 
 async function getJson<T>(creds: SourceCreds, path: string): Promise<T | null> {

@@ -58,8 +58,11 @@ interface PageEnvelope<T> {
 const PAGE_SIZE = 100;
 
 function buildUrl(base: string, path: string): string {
-  const trimmed = base.replace(/\/+$/, '');
-  return `${trimmed}${path}`;
+  // Same polynomial backtracking as seerrConfig.trim — reached via /import/preview and
+  // /import/execute, so it has to be fixed here too.
+  let end = base.length;
+  while (end > 0 && base.charCodeAt(end - 1) === 47) end--;
+  return `${base.slice(0, end)}${path}`;
 }
 
 async function seerrFetch<T>(creds: AdapterCredentials, path: string): Promise<T> {

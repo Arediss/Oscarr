@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import rateLimit from '@fastify/rate-limit';
 import { userApiKeyAuthHook } from '../middleware/userApiKeyAuth.js';
 import { statusRoutes } from './routes/status.js';
 import { authRoutes } from './routes/auth.js';
@@ -20,6 +21,15 @@ import { userRoutes } from './routes/user.js';
  * degrade gracefully instead of timing out.
  */
 export async function seerrRoutes(app: FastifyInstance) {
+  // This prefix is PUBLIC to RBAC, so an unauthenticated caller reaches userApiKeyAuthHook and
+  // costs a SHA-256 plus an indexed UserApiKey lookup on every request — including the ones that
+  // end in 401. Cap the whole scope in onRequest, which runs before preHandler, so a flood never
+  // reaches the database. Scope-wide rather than per-route so the 501 catch-all is covered too.
+  // Registered inside this encapsulated scope so it applies to every /api/v1 route, including
+  // the 501 catch-all, without annotating each one. The root registration uses `global: false`,
+  // which only opts routes out there — a scoped re-register turns it on for this subtree.
+  await app.register(rateLimit, { max: 120, timeWindow: '1 minute' });
+
   app.addHook('preHandler', userApiKeyAuthHook);
 
   await statusRoutes(app);

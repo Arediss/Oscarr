@@ -37,7 +37,6 @@ await build({
     // so they must stay as real files in node_modules.
     'bcrypt',
     'bare-fs',
-    'bare-os',
     'bare-url',
     'bare-path',
     // better-sqlite3 backs the plugin storage API (ctx.db). `bindings` looks for the .node

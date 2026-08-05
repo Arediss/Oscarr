@@ -13,7 +13,8 @@
     "db:migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
     "db:push": "dotenv -e ../../.env -- prisma db push",
     "db:studio": "dotenv -e ../../.env -- prisma studio",
-    "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts"
+    "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
+    "lock:prod": "cd \"$(mktemp -d)\" && cp \"$OLDPWD/package.prod.json\" package.json && npm install --package-lock-only --omit=dev --no-audit --no-fund && cp package-lock.json \"$OLDPWD/package.prod-lock.json\""
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

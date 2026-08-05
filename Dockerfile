@@ -64,9 +64,15 @@ WORKDIR /app
 # Everything else (fastify, axios, archiver, swagger, zod, …) is inlined in dist/server.js.
 # Then strip npm itself: ensureMigrated() calls node_modules/.bin/prisma directly, so npm is
 # not needed at runtime — and its transitive deps regularly ship vulns the scanner picks up.
+# `npm ci` against a committed lockfile, not `npm install`: the latter re-resolves every range
+# on each build, so a version published minutes earlier — compromised or simply broken — can walk
+# straight into the image. ci installs the exact tree that was reviewed, and refuses outright if
+# the manifest and the lockfile drift apart.
+# Regenerate with: npm run lock:prod --workspace=packages/backend
 COPY --chown=oscarr:oscarr packages/backend/package.prod.json packages/backend/package.json
+COPY --chown=oscarr:oscarr packages/backend/package.prod-lock.json packages/backend/package-lock.json
 RUN cd packages/backend \
- && npm install --omit=dev --no-audit --no-fund \
+ && npm ci --omit=dev --no-audit --no-fund \
  && npm install-scripts approve --allow-scripts-pin prisma @prisma/client @prisma/engines better-sqlite3 bcrypt \
  && npm rebuild \
  && cd /app \

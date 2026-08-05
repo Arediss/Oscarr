@@ -3,7 +3,7 @@ import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import archiver from 'archiver';
+import { ZipArchive } from 'archiver';
 import { prisma } from '../utils/prisma.js';
 import { logEvent } from '../utils/logEvent.js';
 import { BACKEND_PRISMA_DIR, PROJECT_PACKAGE_JSON } from '../utils/paths.js';
@@ -123,7 +123,7 @@ export async function createBackupZip(
 
   await new Promise<void>((resolvePromise, reject) => {
     const output = createWriteStream(outputPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     output.on('close', () => resolvePromise());
     archive.on('error', (err) => reject(err));
     archive.pipe(output);

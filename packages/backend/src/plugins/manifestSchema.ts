@@ -54,7 +54,7 @@ const accountSectionPropsSchema = z.object({
 
 const uiContribution = z.object({
   hookPoint: z.string().min(1),
-  props: z.record(z.unknown()),
+  props: z.record(z.string(), z.unknown()),
   order: z.number().optional(),
 }).strict().superRefine((data, ctx) => {
   // Per-hook props validation so a malformed contribution is rejected at plugin load
@@ -86,7 +86,7 @@ const hooks = z.object({
   routes: routesDef.optional(),
   jobs: z.array(jobDef).optional(),
   ui: z.array(uiContribution).optional(),
-  features: z.record(z.boolean()).optional(),
+  features: z.record(z.string(), z.boolean()).optional(),
 }).strict();
 
 const capabilityEnum = z.enum(ALL_CAPABILITIES as unknown as [string, ...string[]]);
@@ -121,7 +121,7 @@ const pluginManifestSchema = z.object({
   }).strict().optional(),
   services: z.array(z.string().min(1)).optional(),
   capabilities: z.array(capabilityEnum).optional(),
-  capabilityReasons: z.record(capabilityEnum, z.string()).optional(),
+  capabilityReasons: z.partialRecord(capabilityEnum, z.string()).optional(),
   settings: z.array(settingDef).optional(),
   hooks: hooks.optional(),
 }).strict();

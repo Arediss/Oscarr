@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Responsive, WidthProvider, type Layout } from 'react-grid-layout';
+import { Responsive, WidthProvider, type Layout } from 'react-grid-layout/legacy';
 import { Pencil, Plus, RotateCcw, Save, X } from 'lucide-react';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
@@ -112,7 +112,9 @@ export function DashboardGrid() {
     });
   };
 
-  const onLayoutChange = (next: Layout[]) => {
+  // v2 renamed the types: `Layout` is the array, `LayoutItem` the element (v1 had it the
+  // other way round). The local LayoutItem here is Oscarr's own, not RGL's.
+  const onLayoutChange = (next: Layout) => {
     if (!editMode || !draft || !activeTab) return;
     const byI = new Map(activeTab.items.map((it) => [it.i, it]));
     const items: LayoutItem[] = next.map((l) => {

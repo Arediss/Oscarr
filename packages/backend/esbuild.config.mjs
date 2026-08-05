@@ -40,6 +40,9 @@ await build({
     'bare-os',
     'bare-url',
     'bare-path',
+    // better-sqlite3 backs the plugin storage API (ctx.db). `bindings` looks for the .node
+    // relative to the package directory, so bundling it makes the lookup fail at runtime.
+    'better-sqlite3',
   ],
   define: {
     __BUNDLED__: 'true',

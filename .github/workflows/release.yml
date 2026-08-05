@@ -38,7 +38,7 @@ jobs:
         platform: [linux/amd64, linux/arm64]
     runs-on: [self-hosted, macOS, ARM64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The runner service runs outside a GUI login session, so docker-credential-osxkeychain
       # can't unlock the keychain (errSecInteractionNotAllowed / -25308) and `docker login` fails
@@ -179,7 +179,7 @@ jobs:
       security-events: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -203,7 +203,7 @@ jobs:
           limit-severities-for-sarif: true
 
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
@@ -220,7 +220,7 @@ jobs:
       digest: ${{ steps.manifest.outputs.digest }}
       first_tag: ${{ steps.manifest.outputs.first_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -307,7 +307,7 @@ jobs:
       attestations: write  # attach SBOM as an attestation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -338,7 +338,7 @@ jobs:
           cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${REF}"
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: sbom-spdx
           path: sbom.spdx.json

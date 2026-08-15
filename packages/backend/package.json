@@ -14,7 +14,9 @@
     "db:push": "dotenv -e ../../.env -- prisma db push",
     "db:studio": "dotenv -e ../../.env -- prisma studio",
     "db:seed": "dotenv -e ../../.env -- tsx prisma/seed.ts",
-    "lock:prod": "cd \"$(mktemp -d)\" && cp \"$OLDPWD/package.prod.json\" package.json && npm install --package-lock-only --omit=dev --no-audit --no-fund && cp package-lock.json \"$OLDPWD/package.prod-lock.json\""
+    "lock:prod": "cd \"$(mktemp -d)\" && cp \"$OLDPWD/package.prod.json\" package.json && npm install --package-lock-only --omit=dev --no-audit --no-fund && cp package-lock.json \"$OLDPWD/package.prod-lock.json\"",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
@@ -35,6 +37,7 @@
     "dotenv": "^17.4.1",
     "fastify": "^5.8.5",
     "node-cron": "^4.2.1",
+    "nodemailer": "^9.0.5",
     "prisma": "^6.19.3",
     "resend": "^6.10.0",
     "semver": "^7.6.0",
@@ -47,10 +50,12 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.13.10",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.1",
     "@types/semver": "^7.7.1",
     "dotenv-cli": "^11.0.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.19.3",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.10"
   }
 }

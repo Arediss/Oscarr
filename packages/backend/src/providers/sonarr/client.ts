@@ -212,53 +212,48 @@ export class SonarrClient extends ArrClientBase implements ArrClient {
     }
 
     const stats = series.statistics;
-    const available = stats ? stats.percentOfEpisodes >= 100 : false;
-
     const seasonStats = series.seasons
-      .filter(s => s.seasonNumber > 0)
-      .map(s => ({
+      .filter((s) => s.seasonNumber > 0)
+      .map((s) => ({
         seasonNumber: s.seasonNumber,
         episodeFileCount: s.statistics?.episodeFileCount ?? 0,
         episodeCount: s.statistics?.episodeCount ?? 0,
         totalEpisodeCount: s.statistics?.totalEpisodeCount ?? 0,
       }));
 
-    let audioLanguages: string[] | null = null;
-    let subtitleLanguages: string[] | null = null;
+    // No files means nothing to read languages from, and the extra request would always come back
+    // empty.
+    const languages = stats?.episodeFileCount
+      ? await this.episodeLanguages(series.id)
+      : { audioLanguages: null, subtitleLanguages: null };
 
-    if (stats?.episodeFileCount && stats.episodeFileCount > 0) {
-      try {
-        const files = await this.getEpisodeFiles(series.id);
-        const audioCounts = new Map<string, number>();
-        const subCounts = new Map<string, number>();
-        for (const f of files) {
-          if (f.mediaInfo?.audioLanguages) {
-            const seen = new Set<string>();
-            for (const l of f.mediaInfo.audioLanguages.split('/')) {
-              const t = l.trim();
-              if (t && !seen.has(t)) { seen.add(t); audioCounts.set(t, (audioCounts.get(t) || 0) + 1); }
-            }
-          }
-          if (f.mediaInfo?.subtitles) {
-            const seen = new Set<string>();
-            for (const l of f.mediaInfo.subtitles.split('/')) {
-              const t = l.trim();
-              if (t && !seen.has(t)) { seen.add(t); subCounts.set(t, (subCounts.get(t) || 0) + 1); }
-            }
-          }
-        }
-        const threshold = Math.max(1, Math.floor(files.length * 0.5));
-        const filteredAudio = [...audioCounts.entries()].filter(([, c]) => c >= threshold).map(([l]) => l);
-        const filteredSubs = [...subCounts.entries()].filter(([, c]) => c >= threshold).map(([l]) => l);
-        if (filteredAudio.length > 0) audioLanguages = filteredAudio;
-        if (filteredSubs.length > 0) subtitleLanguages = filteredSubs;
-      } catch (err) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        logEvent('debug', 'Sonarr', `Failed to fetch episode files for series ${series.id} (HTTP ${status || 'unknown'}), skipping language data`);
+    return {
+      available: stats ? stats.percentOfEpisodes >= 100 : false,
+      ...languages,
+      seasonStats,
+    };
+  }
+
+  /** Languages carried by most of the series' episode files. Failure is not fatal: language data
+   *  is a nicety, and losing it must never make an available series look unavailable. */
+  private async episodeLanguages(seriesId: number): Promise<{ audioLanguages: string[] | null; subtitleLanguages: string[] | null }> {
+    try {
+      const files = await this.getEpisodeFiles(seriesId);
+      const audio = new Map<string, number>();
+      const subs = new Map<string, number>();
+      for (const file of files) {
+        tallyLanguages(file.mediaInfo?.audioLanguages, audio);
+        tallyLanguages(file.mediaInfo?.subtitles, subs);
       }
+      return {
+        audioLanguages: dominantLanguages(audio, files.length),
+        subtitleLanguages: dominantLanguages(subs, files.length),
+      };
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      logEvent('debug', 'Sonarr', `Failed to fetch episode files for series ${seriesId} (HTTP ${status || 'unknown'}), skipping language data`);
+      return { audioLanguages: null, subtitleLanguages: null };
     }
-
-    return { available, audioLanguages, subtitleLanguages, seasonStats };
   }
 
   async findByExternalId(tvdbId: number): Promise<{ id: number } | null> {
@@ -355,4 +350,25 @@ export class SonarrClient extends ArrClientBase implements ArrClient {
       episodeNumber: ep?.episodeNumber,
     };
   }
+}
+
+/** Counts each language once per file — a file listing "fre/fre" must not weigh double. */
+function tallyLanguages(raw: string | undefined, counts: Map<string, number>): void {
+  if (!raw) return;
+  const seen = new Set<string>();
+  for (const part of raw.split('/')) {
+    const lang = part.trim();
+    if (!lang || seen.has(lang)) continue;
+    seen.add(lang);
+    counts.set(lang, (counts.get(lang) ?? 0) + 1);
+  }
+}
+
+/** Kept only when present in at least half the files: one oddly-encoded episode must not make a
+ *  whole series look multilingual. Null rather than an empty array, so callers can tell "no data"
+ *  from "nothing dominant". */
+function dominantLanguages(counts: Map<string, number>, fileCount: number): string[] | null {
+  const threshold = Math.max(1, Math.floor(fileCount * 0.5));
+  const kept = [...counts.entries()].filter(([, c]) => c >= threshold).map(([lang]) => lang);
+  return kept.length > 0 ? kept : null;
 }

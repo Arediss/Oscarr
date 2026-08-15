@@ -9,6 +9,7 @@ import type { AuthHelpers } from '../providers/types.js';
 import { getPermissionsForRole } from '../middleware/rbac.js';
 import { refreshUserAvatar } from '../utils/avatarSource.js';
 import { setAuthCookie } from '../utils/authCookie.js';
+import { requestReset, consumeReset, isResetEnabled } from '../services/passwordReset.js';
 
 function buildHelpers(app: FastifyInstance): AuthHelpers {
   return {
@@ -377,5 +378,43 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/logout', async (_request, reply) => {
     reply.clearCookie('token', { path: '/' }).send({ ok: true });
+  });
+
+  // ── Password reset (local accounts only) ──
+
+  /** Always 200 with the same body. Anything else — unknown address, provider-only account,
+   *  mail transport down — would turn this into an account-existence oracle. */
+  app.post('/password/forgot', {
+    config: { rateLimit: { max: 5, timeWindow: '15 minutes' } },
+    schema: {
+      body: {
+        type: 'object' as const,
+        required: ['email'],
+        properties: { email: { type: 'string' } },
+      },
+    },
+  }, async (request, reply) => {
+    const { email } = request.body as { email: string };
+    // No request-derived origin: the link's host comes from AppSettings.siteUrl only. See
+    // isResetEnabled — deriving it from the Host header would make this endpoint a way to send a
+    // genuine Oscarr email carrying an attacker-controlled reset link.
+    await requestReset(email);
+    return reply.send({ ok: true });
+  });
+
+  app.post('/password/reset', {
+    config: { rateLimit: { max: 10, timeWindow: '15 minutes' } },
+    schema: {
+      body: {
+        type: 'object' as const,
+        required: ['token', 'password'],
+        properties: { token: { type: 'string' }, password: { type: 'string' } },
+      },
+    },
+  }, async (request, reply) => {
+    const { token, password } = request.body as { token: string; password: string };
+    const error = await consumeReset(token, password);
+    if (error) return reply.status(error === 'DISABLED' ? 403 : 400).send({ error });
+    return reply.send({ ok: true });
   });
 }

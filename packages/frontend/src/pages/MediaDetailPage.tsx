@@ -33,6 +33,9 @@ import type { TmdbCast, TmdbCrew } from '@/types';
 import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
 import { resolveButtonState } from '@/utils/resolveButtonState';
 import ActionButton from '@/components/ActionButton';
+import { SeasonsPicker } from '@/components/media/SeasonsPicker';
+import { EpisodeDetailsModal } from '@/components/media/EpisodeDetailsModal';
+import { LanguageTags } from '@/components/media/LanguageTags';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -321,111 +324,19 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
               </div>
             )}
 
-            {/* Audio & subtitle languages */}
-            {(audioLanguages.length > 0 || subtitleLanguages.length > 0) && (
-              <div className="mt-6 flex flex-wrap gap-6">
-                {audioLanguages.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-ndp-text-muted uppercase tracking-wider mb-3">{t('media.audio_languages')}</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {audioLanguages.map((lang) => (
-                        <span key={lang} className="px-3 py-1.5 bg-white/5 rounded-xl text-sm font-medium text-ndp-text border border-white/5">
-                          {lang}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {subtitleLanguages.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-ndp-text-muted uppercase tracking-wider mb-3">{t('media.subtitle_languages')}</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {subtitleLanguages.map((lang) => (
-                        <span key={lang} className="px-3 py-1.5 bg-white/5 rounded-xl text-sm font-medium text-ndp-text border border-white/5">
-                          {lang}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} />
+
 
             {/* Seasons */}
             {type === 'tv' && media.seasons && media.seasons.length > 0 && (
-              <div className="mt-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <h3 className="text-sm font-semibold text-ndp-text-muted uppercase tracking-wider">
-                    {sonarrSeasons.length > 0 ? t('media.seasons') : t('media.seasons_to_request')}
-                  </h3>
-                  {sonarrSeasons.length > 0 && (
-                    <button
-                      onClick={openEpisodeModal}
-                      className="text-xs text-ndp-accent hover:text-ndp-accent/80 transition-colors"
-                    >
-                      {t('media.more_details')}
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {/* All seasons button (only if can request) */}
-                  {!isAvailable && !userHasRequest && (
-                    <button
-                      onClick={() => {
-                        const allNums = media.seasons!.filter(s => s.season_number > 0).map(s => s.season_number);
-                        setSelectedSeasons(prev =>
-                          prev.length === allNums.length ? [] : allNums
-                        );
-                      }}
-                      className={clsx(
-                        'px-4 py-2 rounded-xl text-sm font-semibold transition-all',
-                        selectedSeasons.length === media.seasons.filter(s => s.season_number > 0).length
-                          ? 'bg-ndp-accent text-white'
-                          : 'bg-white/5 text-ndp-text-muted hover:bg-white/10 border border-dashed border-white/10'
-                      )}
-                    >
-                      {t('media.all_seasons')}
-                    </button>
-                  )}
-                  {media.seasons
-                    .filter((s) => s.season_number > 0)
-                    .map((season) => {
-                      const sonarrSeason = sonarrSeasons.find((ss) => ss.seasonNumber === season.season_number);
-                      const hasStats = !!sonarrSeason;
-                      const fileCount = sonarrSeason?.episodeFileCount ?? 0;
-                      const totalCount = sonarrSeason?.totalEpisodeCount ?? season.episode_count;
-                      const isFull = hasStats && fileCount >= totalCount && totalCount > 0;
-                      const isPartial = hasStats && fileCount > 0 && fileCount < totalCount;
-                      const canSelect = !isFull && !userHasRequest;
-
-                      return (
-                        <button
-                          key={season.season_number}
-                          onClick={() => canSelect && setSelectedSeasons((prev) =>
-                            prev.includes(season.season_number)
-                              ? prev.filter((s) => s !== season.season_number)
-                              : [...prev, season.season_number]
-                          )}
-                          className={clsx(
-                            'px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2',
-                            selectedSeasons.includes(season.season_number)
-                              ? 'bg-ndp-accent text-white'
-                              : isFull
-                                ? 'bg-ndp-success/10 text-ndp-success border border-ndp-success/20 cursor-default'
-                                : isPartial
-                                  ? 'bg-ndp-warning/10 text-ndp-warning border border-ndp-warning/20 hover:bg-ndp-warning/20'
-                                  : 'bg-white/5 text-ndp-text-muted hover:bg-white/10'
-                          )}
-                        >
-                          S{String(season.season_number).padStart(2, '0')}
-                          <span className="text-xs opacity-60">
-                            {hasStats ? `${fileCount}/${totalCount}` : `${season.episode_count} ${t('media.episodes_short')}`}
-                          </span>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
+              <SeasonsPicker
+                seasons={media.seasons}
+                sonarrSeasons={sonarrSeasons}
+                selectedSeasons={selectedSeasons}
+                setSelectedSeasons={setSelectedSeasons}
+                canSelect={!isAvailable && !userHasRequest}
+                onOpenDetails={openEpisodeModal}
+              />
             )}
 
           </div>
@@ -452,150 +363,16 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
       {/* Episode details modal */}
       {episodeModalOpen && media && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md animate-fade-in" onClick={closeEpisodeModal}>
-          <div className="bg-ndp-bg rounded-2xl w-full max-w-2xl max-h-[85vh] mx-4 shadow-2xl shadow-black/60 overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
-            {/* Hero header with backdrop */}
-            <div className="relative flex-shrink-0">
-              {media.backdrop_path && (
-                <img src={backdropUrl(media.backdrop_path, 'w780')} alt="" className={clsx('w-full h-36 object-cover', nsfw && 'blur-3xl scale-110')} />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-ndp-bg via-ndp-bg/60 to-transparent" />
-              {/* Close button -- top right */}
-              <button onClick={closeEpisodeModal} aria-label={t('common.close')} className="absolute top-3 right-3 p-2 text-white/60 hover:text-white rounded-xl hover:bg-black/20 backdrop-blur-sm transition-colors">
-                <X className="w-5 h-5" />
-              </button>
-              {/* Title + availability */}
-              <div className="absolute bottom-0 left-0 right-0 px-6 pb-4">
-                <h2 className="text-lg font-bold text-white drop-shadow-lg">{media.title || media.name}</h2>
-                <div className="flex items-center gap-3 mt-1">
-                  <p className="text-xs text-white/60">{t('media.episodes_overview')}</p>
-                  {(() => {
-                    const totalFiles = sonarrSeasons.reduce((sum, s) => sum + s.episodeFileCount, 0);
-                    const totalEps = sonarrSeasons.reduce((sum, s) => sum + s.totalEpisodeCount, 0);
-                    if (totalEps === 0) return null;
-                    const pct = Math.round((totalFiles / totalEps) * 100);
-                    return (
-                      <span className={clsx(
-                        'text-xs font-semibold px-2 py-0.5 rounded-full',
-                        pct === 100 ? 'bg-ndp-success/20 text-ndp-success' :
-                        pct > 0 ? 'bg-ndp-warning/20 text-ndp-warning' :
-                        'bg-white/10 text-white/50'
-                      )}>
-                        {pct}% {t('media.available_short')}
-                      </span>
-                    );
-                  })()}
-                </div>
-              </div>
-            </div>
-
-            {/* Seasons -- collapsible, lazy loaded */}
-            <div className="overflow-y-auto flex-1">
-              {(media.seasons || []).filter(s => s.season_number > 0).map((season) => {
-                const sonarrSeason = sonarrSeasons.find(ss => ss.seasonNumber === season.season_number);
-                const isExpanded = expandedSeason === season.season_number;
-                const isLoading = loadingSeason === season.season_number;
-                const episodes = episodeCache[season.season_number];
-                const dlCount = sonarrSeason?.episodeFileCount ?? 0;
-                const totalCount = sonarrSeason?.totalEpisodeCount ?? season.episode_count;
-                const isFull = dlCount === totalCount && totalCount > 0;
-
-                return (
-                  <div key={season.season_number} className={clsx(isExpanded && 'bg-white/[0.02]')}>
-                    <button
-                      onClick={() => toggleSeason(season.season_number)}
-                      className="w-full flex items-center justify-between px-6 py-3 hover:bg-white/[0.03] transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-semibold text-ndp-text">
-                          {t('media.season_label', { number: season.season_number })}
-                        </span>
-                        <span className={clsx(
-                          'text-[10px] px-2 py-0.5 rounded-full font-medium',
-                          isFull ? 'bg-ndp-success/10 text-ndp-success' :
-                          dlCount > 0 ? 'bg-ndp-warning/10 text-ndp-warning' :
-                          'bg-white/5 text-ndp-text-dim'
-                        )}>
-                          {dlCount}/{totalCount}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {isLoading && <Loader2 className="w-3.5 h-3.5 text-ndp-accent animate-spin" />}
-                        <svg className={clsx('w-4 h-4 text-ndp-text-dim transition-transform duration-200', isExpanded && 'rotate-180')} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </div>
-                    </button>
-
-                    <div className={clsx(
-                      'ml-8 mr-3 border-l-2 border-white/10 transition-all duration-200 ease-out overflow-hidden',
-                      isExpanded ? 'max-h-[5000px] opacity-100 mb-2' : 'max-h-0 opacity-0 mb-0'
-                    )}>
-                    {isExpanded && (
-                      <div>
-                        {isLoading && !episodes ? (
-                          <div className="flex justify-center py-6">
-                            <Loader2 className="w-5 h-5 text-ndp-accent animate-spin" />
-                          </div>
-                        ) : episodes?.length === 0 ? (
-                          <p className="text-sm text-ndp-text-dim text-center py-4">{t('media.no_episodes')}</p>
-                        ) : episodes ? (
-                          <div className="py-1">
-                            {episodes.map((ep) => {
-                              const aired = ep.airDateUtc ? new Date(ep.airDateUtc) <= new Date() : false;
-                              return (
-                                <div key={ep.episodeNumber} className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-white/[0.03] transition-colors">
-                                  <span className={clsx(
-                                    'w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0',
-                                    ep.hasFile ? 'bg-ndp-success/10 text-ndp-success' :
-                                    !aired ? 'bg-white/5 text-ndp-text-dim' :
-                                    'bg-ndp-danger/10 text-ndp-danger'
-                                  )}>
-                                    {ep.episodeNumber}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className={clsx('text-sm truncate', ep.hasFile ? 'text-ndp-text' : 'text-ndp-text-muted')}>
-                                      {ep.title}
-                                    </p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {ep.airDateUtc && (
-                                        <span className="text-[10px] text-ndp-text-dim">
-                                          {new Date(ep.airDateUtc).toLocaleDateString()}
-                                        </span>
-                                      )}
-                                      {ep.quality && (
-                                        <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">
-                                          {ep.quality}
-                                        </span>
-                                      )}
-                                      {ep.size && (
-                                        <span className="text-[10px] text-ndp-text-dim">
-                                          {(ep.size / 1073741824).toFixed(1)} GB
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  {ep.hasFile ? (
-                                    <Check className="w-4 h-4 text-ndp-success flex-shrink-0" />
-                                  ) : !aired ? (
-                                    <Calendar className="w-4 h-4 text-ndp-text-dim flex-shrink-0" />
-                                  ) : (
-                                    <X className="w-4 h-4 text-ndp-danger flex-shrink-0" />
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
+        <EpisodeDetailsModal
+          media={media}
+          sonarrSeasons={sonarrSeasons}
+          expandedSeason={expandedSeason}
+          loadingSeason={loadingSeason}
+          episodeCache={episodeCache}
+          nsfw={nsfw}
+          onToggleSeason={toggleSeason}
+          onClose={closeEpisodeModal}
+        />
       )}
 
       {/* NSFW reveal modal */}

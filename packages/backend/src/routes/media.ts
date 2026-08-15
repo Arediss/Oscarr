@@ -7,7 +7,7 @@ import { normalizeLanguages } from '../utils/languages.js';
 import { performLiveCheckWithTimeout, cacheLanguageData, refreshMediaCategory, canSkipLiveCheck } from '../services/mediaService.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { Availability } from '@oscarr/shared';
-import { buildAvailability, loadBlacklistedKeys } from '../services/availability.js';
+import { buildAvailability, loadBlacklistedKeys, loadLibraryGate, gateCategory, recentLibraryFilter } from '../services/availability.js';
 import { mediaKey } from '../utils/mediaKey.js';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
@@ -127,90 +127,25 @@ export async function mediaRoutes(app: FastifyInstance) {
     if (!tmdbIdNum) return reply.status(400).send({ error: 'Invalid tmdbId' });
     if (!VALID_MEDIA_TYPES.includes(mediaType)) return reply.status(400).send({ error: 'Invalid mediaType' });
 
-    const media = await prisma.media.findUnique({
-      where: {
-        tmdbId_mediaType: {
-          tmdbId: tmdbIdNum,
-          mediaType,
-        },
-      },
-      include: {
-        requests: {
-          include: {
-            user: { select: { id: true, displayName: true, avatar: true } },
-          },
-        },
-        seasons: { orderBy: { seasonNumber: 'asc' } },
-      },
-    });
+    const media = await loadDetailMedia(tmdbIdNum, mediaType);
 
     // ── Phase 1: DB data (fast, local) ────────────────────────────────
-    const cachedAudio: string[] | null = media?.audioLanguages ? JSON.parse(media.audioLanguages) : null;
-    const cachedSubs: string[] | null = media?.subtitleLanguages ? JSON.parse(media.subtitleLanguages) : null;
+    const cachedAudio = parseLanguages(media?.audioLanguages);
+    const cachedSubs = parseLanguages(media?.subtitleLanguages);
 
     // ── Phase 2: Live check Radarr/Sonarr (with timeout) ────────────
     // Skipped when DB state is fresh — pending/processing still hit to catch transitions fast.
-    const skipLive = canSkipLiveCheck(media?.statusCategory, media?.availableAt ?? null);
-    const liveCheck = skipLive
+    const live = canSkipLiveCheck(media?.statusCategory, media?.availableAt ?? null)
       ? { liveAvailable: true, sonarrSeasonStats: null, audioLanguages: null, subtitleLanguages: null, timedOut: false }
       : await performLiveCheckWithTimeout(
           mediaType, tmdbIdNum, media?.tvdbId ?? null, !!cachedAudio, media?.serviceId ?? null,
         );
-    const { liveAvailable, sonarrSeasonStats, audioLanguages, subtitleLanguages } = liveCheck;
 
     // ── Phase 3: Assemble response ──────────────────────────────────
-    if (!media) {
-      const result: Record<string, unknown> = { exists: false };
-      if (liveAvailable) result.statusCategory = 'AVAILABLE';
-      if (sonarrSeasonStats) result.sonarrSeasons = sonarrSeasonStats;
-      if (liveAvailable) result.inLibrary = true;
-      if (audioLanguages) result.audioLanguages = normalizeLanguages(audioLanguages);
-      if (subtitleLanguages) result.subtitleLanguages = normalizeLanguages(subtitleLanguages);
-      return result;
-    }
+    if (!media) return buildUntrackedResponse(live);
 
-    // Apply live check side-effects only when we got a real response
-    let finalAudio = cachedAudio;
-    let finalSubs = cachedSubs;
-    if (!liveCheck.timedOut) {
-      if ((audioLanguages || subtitleLanguages) && !cachedAudio) {
-        await cacheLanguageData(media.id, audioLanguages, subtitleLanguages);
-      }
-      finalAudio = (audioLanguages ? normalizeLanguages(audioLanguages) : null) || cachedAudio;
-      finalSubs = (subtitleLanguages ? normalizeLanguages(subtitleLanguages) : null) || cachedSubs;
-
-      const refreshedCat = await refreshMediaCategory(media);
-      if (refreshedCat && refreshedCat !== media.statusCategory) {
-        media.statusCategory = refreshedCat;
-        if (refreshedCat === 'AVAILABLE') {
-          media.requests = media.requests.map((r) =>
-            (COMPLETABLE_REQUEST_STATUSES as readonly string[]).includes(r.status) ? { ...r, status: 'available' } : r
-          );
-        } else if (refreshedCat === 'PROCESSING') {
-          media.requests = media.requests.map((r) =>
-            ['approved', 'failed'].includes(r.status) ? { ...r, status: 'processing' } : r
-          );
-        }
-      }
-    }
-
-    const activeQualityOptionIds: number[] = [];
-    if ((media.statusCategory === 'AVAILABLE' || liveAvailable) && media.qualityProfileId) {
-      const mappings = await prisma.qualityMapping.findMany({
-        where: { qualityProfileId: media.qualityProfileId },
-        select: { qualityOptionId: true },
-      });
-      activeQualityOptionIds.push(...[...new Set(mappings.map(m => m.qualityOptionId))]);
-    }
-
-    const result: Record<string, unknown> = { ...media };
-    if (sonarrSeasonStats) result.sonarrSeasons = sonarrSeasonStats;
-    if (liveAvailable) result.inLibrary = true;
-    if (activeQualityOptionIds.length > 0) result.activeQualityOptionIds = activeQualityOptionIds;
-    if (finalAudio) result.audioLanguages = finalAudio;
-    if (finalSubs) result.subtitleLanguages = finalSubs;
-    if (media.contentRating && isMatureRating(media.contentRating)) result.nsfw = true;
-    return result;
+    const languages = await applyLiveCheckSideEffects(media, live, cachedAudio, cachedSubs);
+    return assembleDetailResponse(media, live, languages, await resolveActiveQualityOptions(media, live.liveAvailable));
   });
 
   // Recently added media (from Radarr/Sonarr sync)
@@ -233,6 +168,9 @@ export async function mediaRoutes(app: FastifyInstance) {
         tmdbId: { gt: 0 },
         statusCategory: 'AVAILABLE',
         availableAt: { not: null },
+        // When the admin requires library confirmation, an unconfirmed title is not "recently
+        // added" from the user's point of view — their player cannot open it.
+        ...(await recentLibraryFilter()),
         OR: [
           { radarrId: { not: null } },
           { sonarrId: { not: null } },
@@ -314,9 +252,11 @@ export async function mediaRoutes(app: FastifyInstance) {
       },
     });
 
+    // Resolved once per batch rather than per row — it is the same setting for every media here.
+    const gate = await loadLibraryGate();
     for (const m of media) {
       const key = mediaKey(m);
-      results[key] = buildAvailability(m, m.requests[0] ?? null, blacklistedKeys);
+      results[key] = buildAvailability(m, m.requests[0] ?? null, blacklistedKeys, gate);
     }
 
     return results;
@@ -410,4 +350,104 @@ function setNsfwIdsCache(data: number[]): void {
 
 export function invalidateNsfwIdsCache(): void {
   nsfwIdsCache = null;
+}
+
+// ─── Detail route helpers ───────────────────────────────────────────
+
+function loadDetailMedia(tmdbId: number, mediaType: string) {
+  return prisma.media.findUnique({
+    where: { tmdbId_mediaType: { tmdbId, mediaType } },
+    include: {
+      requests: { include: { user: { select: { id: true, displayName: true, avatar: true } } } },
+      seasons: { orderBy: { seasonNumber: 'asc' } },
+    },
+  });
+}
+
+type DetailMedia = NonNullable<Awaited<ReturnType<typeof loadDetailMedia>>>;
+type LiveCheck = Awaited<ReturnType<typeof performLiveCheckWithTimeout>>;
+
+function parseLanguages(raw: string | null | undefined): string[] | null {
+  return raw ? JSON.parse(raw) as string[] : null;
+}
+
+/** Media Oscarr has never tracked: the *arr may still hold it, so report what the live check saw. */
+function buildUntrackedResponse(live: LiveCheck): Record<string, unknown> {
+  const result: Record<string, unknown> = { exists: false };
+  if (live.liveAvailable) {
+    result.statusCategory = 'AVAILABLE';
+    result.inLibrary = true;
+  }
+  if (live.sonarrSeasonStats) result.sonarrSeasons = live.sonarrSeasonStats;
+  if (live.audioLanguages) result.audioLanguages = normalizeLanguages(live.audioLanguages);
+  if (live.subtitleLanguages) result.subtitleLanguages = normalizeLanguages(live.subtitleLanguages);
+  return result;
+}
+
+/** A category change has to carry its requests with it, or the page shows an available title
+ *  above a request still labelled "approved". */
+function syncRequestStatuses(media: DetailMedia, category: string): void {
+  if (category === 'AVAILABLE') {
+    media.requests = media.requests.map((r) =>
+      (COMPLETABLE_REQUEST_STATUSES as readonly string[]).includes(r.status) ? { ...r, status: 'available' } : r
+    );
+  } else if (category === 'PROCESSING') {
+    media.requests = media.requests.map((r) =>
+      ['approved', 'failed'].includes(r.status) ? { ...r, status: 'processing' } : r
+    );
+  }
+}
+
+/** Applied only when the *arr actually answered: a timeout must not be read as "nothing there". */
+async function applyLiveCheckSideEffects(
+  media: DetailMedia,
+  live: LiveCheck,
+  cachedAudio: string[] | null,
+  cachedSubs: string[] | null,
+): Promise<{ audio: string[] | null; subs: string[] | null }> {
+  if (live.timedOut) return { audio: cachedAudio, subs: cachedSubs };
+
+  if ((live.audioLanguages || live.subtitleLanguages) && !cachedAudio) {
+    await cacheLanguageData(media.id, live.audioLanguages, live.subtitleLanguages);
+  }
+
+  const refreshedCat = await refreshMediaCategory(media);
+  if (refreshedCat && refreshedCat !== media.statusCategory) {
+    media.statusCategory = refreshedCat;
+    syncRequestStatuses(media, refreshedCat);
+  }
+
+  return {
+    audio: (live.audioLanguages ? normalizeLanguages(live.audioLanguages) : null) || cachedAudio,
+    subs: (live.subtitleLanguages ? normalizeLanguages(live.subtitleLanguages) : null) || cachedSubs,
+  };
+}
+
+/** Which request-time quality options this media's *arr profile satisfies. */
+async function resolveActiveQualityOptions(media: DetailMedia, liveAvailable: boolean): Promise<number[]> {
+  if ((media.statusCategory !== 'AVAILABLE' && !liveAvailable) || !media.qualityProfileId) return [];
+  const mappings = await prisma.qualityMapping.findMany({
+    where: { qualityProfileId: media.qualityProfileId },
+    select: { qualityOptionId: true },
+  });
+  return [...new Set(mappings.map((m) => m.qualityOptionId))];
+}
+
+async function assembleDetailResponse(
+  media: DetailMedia,
+  live: LiveCheck,
+  languages: { audio: string[] | null; subs: string[] | null },
+  activeQualityOptionIds: number[],
+): Promise<Record<string, unknown>> {
+  const result: Record<string, unknown> = { ...media };
+  // Same threshold as the batch endpoint — a detail page saying "Available" while the grid says
+  // otherwise would be worse than either answer on its own.
+  result.statusCategory = gateCategory(media.statusCategory, media.mediaType, media.libraryConfirmedAt, await loadLibraryGate());
+  if (live.sonarrSeasonStats) result.sonarrSeasons = live.sonarrSeasonStats;
+  if (live.liveAvailable) result.inLibrary = true;
+  if (activeQualityOptionIds.length > 0) result.activeQualityOptionIds = activeQualityOptionIds;
+  if (languages.audio) result.audioLanguages = languages.audio;
+  if (languages.subs) result.subtitleLanguages = languages.subs;
+  if (media.contentRating && isMatureRating(media.contentRating)) result.nsfw = true;
+  return result;
 }

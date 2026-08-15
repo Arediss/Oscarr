@@ -18,7 +18,8 @@
     "db:studio": "npm run db:studio --workspace=packages/backend",
     "db:seed": "npm run db:seed --workspace=packages/backend",
     "db:fresh": "rm -f packages/backend/data/oscarr.db packages/backend/data/install.json && npm run db:migrate && npm run db:generate",
-    "plugin:add-tailwind": "node packages/frontend/scripts/add-tailwind-to-plugin.mjs"
+    "plugin:add-tailwind": "node packages/frontend/scripts/add-tailwind-to-plugin.mjs",
+    "test": "npm run test --workspace=packages/backend"
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",

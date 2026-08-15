@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import { getArrClient, getServiceDefinition, arrIdFieldForService } from '../providers/index.js';
@@ -11,217 +11,238 @@ function sanitize(input: string): string {
   return input.replaceAll(/[\r\n\t]/g, '');
 }
 
-export async function webhookRoutes(app: FastifyInstance) {
+type ArrClient = Awaited<ReturnType<typeof getArrClient>>;
+type WebhookEvent = NonNullable<ReturnType<NonNullable<ArrClient['parseWebhookPayload']>>>;
+type TrackedMedia = NonNullable<Awaited<ReturnType<typeof findMediaByExternalId>>>;
 
+/** Reply shape shared by every branch: the *arr only cares that it got a 2xx. */
+type Ack = { ok: true; message?: string };
+
+// ─── Authentication ─────────────────────────────────────────────────
+
+/** Header, query param, or Basic Auth password — Radarr and Sonarr each use a different one. */
+function readApiKey(request: FastifyRequest): string | undefined {
+  const direct = (request.headers['x-api-key'] as string)
+    || (request.query as Record<string, string>).apikey;
+  if (direct) return direct;
+
+  const auth = request.headers.authorization;
+  if (!auth?.startsWith('Basic ')) return undefined;
+  const decoded = Buffer.from(auth.slice(6), 'base64').toString();
+  const colonIdx = decoded.indexOf(':');
+  return colonIdx === -1 ? undefined : decoded.slice(colonIdx + 1) || undefined;
+}
+
+/** Null when authenticated; otherwise the status + body to reply with. */
+async function authFailure(request: FastifyRequest): Promise<{ status: number; error: string } | null> {
+  const apiKey = readApiKey(request);
+  if (!apiKey) return { status: 401, error: 'API key required' };
+
+  const settings = await getAppSettings();
+  if (!settings?.apiKey) return { status: 403, error: 'No API key configured' };
+
+  const provided = Buffer.from(apiKey);
+  const stored = Buffer.from(settings.apiKey);
+  if (provided.length !== stored.length || !crypto.timingSafeEqual(provided, stored)) {
+    return { status: 403, error: 'Invalid API key' };
+  }
+  return null;
+}
+
+/** A client good enough to parse a payload, even when no such service is configured yet. */
+async function resolveClient(serviceType: string): Promise<ArrClient | null> {
+  const def = getServiceDefinition(serviceType);
+  if (!def?.createClient) return null;
+  try {
+    return await getArrClient(serviceType);
+  } catch {
+    // parseWebhookPayload needs no connection, so an unconfigured service can still be understood.
+    return def.createClient({ url: '', apiKey: '' });
+  }
+}
+
+// ─── Event handlers ─────────────────────────────────────────────────
+
+/** True when the *arr id should be written: we have one and the row has none yet. */
+function shouldBackfillArrId(media: TrackedMedia, arrIdField: string | null, internalId?: number): arrIdField is string {
+  if (!arrIdField || internalId === undefined || internalId <= 0) return false;
+  return (media as Record<string, unknown>)[arrIdField] == null;
+}
+
+/** Grab = the *arr started downloading → PROCESSING, backfilling its id when missing. */
+async function handleGrab(serviceType: string, client: ArrClient, event: WebhookEvent): Promise<Ack> {
+  const media = await findMediaByExternalId(client.mediaType, event.externalId);
+  if (media && media.statusCategory !== 'AVAILABLE') {
+    const arrIdField = arrIdFieldForService(serviceType);
+    const wasProcessing = media.statusCategory === 'PROCESSING';
+    try {
+      // Transactional update+cascade pair (same as mediaSync.applyUpdate): a failure between the
+      // two writes would strand requests at 'approved' behind the wasProcessing guard.
+      await prisma.$transaction(async (tx) => {
+        await tx.media.update({
+          where: { id: media.id },
+          data: {
+            statusCategory: 'PROCESSING',
+            ...(shouldBackfillArrId(media, arrIdField, event.internalId)
+              ? { [arrIdField]: event.internalId }
+              : {}),
+          },
+        });
+        // Grab means the *arr picked it up — flip approved/failed requests to processing too.
+        if (!wasProcessing) await cascadeRequestsForCategory(media.id, 'PROCESSING', tx);
+      });
+    } catch (err) {
+      logEvent('warn', 'Webhook', `grab → PROCESSING failed for media ${media.id}: ${String(err)}`);
+    }
+  }
+  logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" grabbed → processing`);
+  return { ok: true };
+}
+
+/** Poster/quality/seasons in one call — without it the row rendered an empty card until the next
+ *  periodic sync (~15 min). */
+async function enrich(client: ArrClient, internalId?: number) {
+  if (!internalId || internalId <= 0 || !client.getMediaById) return null;
+  return client.getMediaById(internalId).catch((err) => {
+    logEvent('warn', 'Webhook', `getMediaById failed for ${internalId}: ${String(err)}`);
+    return null;
+  });
+}
+
+async function backfillSeasons(mediaId: number, enriched: Awaited<ReturnType<typeof enrich>>): Promise<void> {
+  if (!enriched?.seasons?.length) return;
+  await prisma.season.createMany({
+    data: enriched.seasons
+      .filter((s) => s.seasonNumber > 0)
+      .map((s) => ({
+        mediaId,
+        seasonNumber: s.seasonNumber,
+        episodeCount: s.totalEpisodeCount,
+        statusCategory: s.statusCategory,
+      })),
+  }).catch((err) => {
+    logEvent('warn', 'Webhook', `Season backfill failed for media ${mediaId}: ${String(err)}`);
+  });
+}
+
+async function handleAdded(serviceType: string, client: ArrClient, event: WebhookEvent): Promise<Ack> {
+  const mediaType = client.mediaType;
+  if (await findMediaByExternalId(mediaType, event.externalId)) return { ok: true };
+
+  const arrIdField = arrIdFieldForService(serviceType);
+  const enriched = await enrich(client, event.internalId);
+  // A series with no resolvable TMDB id gets a negative placeholder keyed on its TVDB id; the
+  // real id lands when the media is next synced.
+  const realTmdbId = mediaType === 'tv'
+    ? (enriched?.tmdbId && enriched.tmdbId > 0 ? enriched.tmdbId : -event.externalId)
+    : event.externalId;
+
+  const created = await prisma.media.create({
+    data: {
+      tmdbId: realTmdbId,
+      ...(mediaType === 'tv' ? { tvdbId: event.externalId } : {}),
+      mediaType,
+      title: enriched?.title ?? sanitize(event.title),
+      statusCategory: 'SEARCHING',
+      posterPath: enriched?.posterPath ?? null,
+      backdropPath: enriched?.backdropPath ?? null,
+      qualityProfileId: enriched?.qualityProfileId ?? null,
+      ...(arrIdField && event.internalId !== undefined && event.internalId > 0
+        ? { [arrIdField]: event.internalId }
+        : {}),
+    },
+  });
+
+  if (mediaType === 'tv') await backfillSeasons(created.id, enriched);
+  logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" added — created in Oscarr`);
+  return { ok: true };
+}
+
+async function handleDeleted(serviceType: string, client: ArrClient, event: WebhookEvent): Promise<Ack> {
+  const media = await findMediaByExternalId(client.mediaType, event.externalId);
+  if (media?.statusCategory === 'AVAILABLE') {
+    await prisma.media.update({ where: { id: media.id }, data: { statusCategory: 'UNAVAILABLE' } });
+    logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" deleted from service`);
+    logEvent('debug', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" deleted`);
+  }
+  return { ok: true };
+}
+
+/** The *arr id is what "Recently added" filters on; a webhook-only media without it never shows. */
+async function backfillArrId(serviceType: string, media: TrackedMedia, internalId?: number): Promise<void> {
+  const arrIdField = arrIdFieldForService(serviceType);
+  if (!shouldBackfillArrId(media, arrIdField, internalId)) return;
+  await prisma.media.update({
+    where: { id: media.id },
+    data: { [arrIdField]: internalId },
+  }).catch((err) => {
+    logEvent('warn', 'Webhook', `Failed to backfill ${arrIdField}=${internalId} on media ${media.id}: ${String(err)}`);
+  });
+}
+
+async function handleDownload(serviceType: string, client: ArrClient, event: WebhookEvent): Promise<Ack> {
+  const mediaType = client.mediaType;
+  const media = await findMediaByExternalId(mediaType, event.externalId);
+  if (!media) {
+    logEvent('debug', 'Webhook', `${sanitize(serviceType)} download event for unknown media: ${sanitize(event.title)} (${event.externalId})`);
+    return { ok: true, message: 'Media not tracked' };
+  }
+
+  if (media.statusCategory !== 'AVAILABLE') {
+    await promoteMediaToAvailable(media.id, !!media.availableAt);
+    sendAvailabilityNotifications(
+      media.title || sanitize(event.title),
+      mediaType,
+      media.posterPath,
+      media.id,
+      media.tmdbId,
+    );
+    logEvent('info', 'Webhook', `"${sanitize(event.title)}" is now available (via ${sanitize(serviceType)} webhook)`);
+    logEvent('debug', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" now available`);
+  }
+
+  await backfillArrId(serviceType, media, event.internalId);
+  return { ok: true, message: 'Media updated' };
+}
+
+const HANDLERS: Record<string, (serviceType: string, client: ArrClient, event: WebhookEvent) => Promise<Ack>> = {
+  grab: handleGrab,
+  added: handleAdded,
+  deleted: handleDeleted,
+  download: handleDownload,
+};
+
+// ─── Route ──────────────────────────────────────────────────────────
+
+export async function webhookRoutes(app: FastifyInstance) {
   app.post('/:serviceType', { bodyLimit: 64 * 1024 }, async (request, reply) => {
     const { serviceType } = request.params as { serviceType: string };
 
-    // 1. Validate API key (X-Api-Key header, query param, or Basic Auth password)
-    let apiKey = (request.headers['x-api-key'] as string)
-      || (request.query as Record<string, string>).apikey;
+    const failure = await authFailure(request);
+    if (failure) return reply.status(failure.status).send({ error: failure.error });
 
-    // Support Basic Auth — API key as password (Radarr/Sonarr webhook format)
-    if (!apiKey && request.headers.authorization?.startsWith('Basic ')) {
-      const decoded = Buffer.from(request.headers.authorization.slice(6), 'base64').toString();
-      const colonIdx = decoded.indexOf(':');
-      const password = colonIdx !== -1 ? decoded.slice(colonIdx + 1) : '';
-      if (password) apiKey = password;
-    }
-
-    if (!apiKey) {
-      return reply.status(401).send({ error: 'API key required' });
-    }
-
-    const settings = await getAppSettings();
-    if (!settings?.apiKey) {
-      return reply.status(403).send({ error: 'No API key configured' });
-    }
-    const provided = Buffer.from(apiKey);
-    const stored = Buffer.from(settings.apiKey);
-    if (provided.length !== stored.length || !crypto.timingSafeEqual(provided, stored)) {
-      return reply.status(403).send({ error: 'Invalid API key' });
-    }
-
-    // 2. Get provider and parse webhook
-    const def = getServiceDefinition(serviceType);
-    if (!def?.createClient) {
-      return reply.status(400).send({ error: `Unknown service type: ${sanitize(serviceType)}` });
-    }
-
-    let client;
-    try {
-      client = await getArrClient(serviceType);
-    } catch {
-      // No service configured — create a temp client just for parsing
-      // parseWebhookPayload doesn't need a real connection
-      client = def.createClient({ url: '', apiKey: '' });
-    }
-
+    const client = await resolveClient(serviceType);
+    if (!client) return reply.status(400).send({ error: `Unknown service type: ${sanitize(serviceType)}` });
     if (!client.parseWebhookPayload) {
       return reply.status(400).send({ error: `Service ${sanitize(serviceType)} does not support webhooks` });
     }
 
     const event = client.parseWebhookPayload(request.body);
-    if (!event) {
-      return reply.send({ ok: true, message: 'Payload ignored' });
-    }
+    if (!event) return reply.send({ ok: true, message: 'Payload ignored' });
 
-    // 3. Handle event
     if (event.type === 'test') {
       logEvent('debug', 'Webhook', `${sanitize(serviceType)} test received`);
       logEvent('info', 'Webhook', `${sanitize(serviceType)} webhook test successful`);
       return reply.send({ ok: true, message: 'Webhook configured successfully' });
     }
 
-    // Validate externalId for actionable events
+    // Everything below acts on a specific title, so an unusable id is nothing to act on.
     if (!event.externalId || event.externalId <= 0) {
       return reply.send({ ok: true, message: 'Invalid externalId, skipped' });
     }
 
-    if (event.type === 'grab') {
-      // Grab = *arr started downloading → PROCESSING (+ backfill the internal id if missing).
-      const mediaType = client.mediaType;
-      const media = await findMediaByExternalId(mediaType, event.externalId);
-      if (media && media.statusCategory !== 'AVAILABLE') {
-        const arrIdField = arrIdFieldForService(serviceType);
-        const wasProcessing = media.statusCategory === 'PROCESSING';
-        try {
-          // Transactional update+cascade pair (same as mediaSync.applyUpdate): a failure between
-          // the two writes would strand requests at 'approved' behind the wasProcessing guard.
-          await prisma.$transaction(async (tx) => {
-            await tx.media.update({
-              where: { id: media.id },
-              data: {
-                statusCategory: 'PROCESSING',
-                ...(arrIdField && event.internalId !== undefined && event.internalId > 0 && (media as Record<string, unknown>)[arrIdField] == null
-                  ? { [arrIdField]: event.internalId }
-                  : {}),
-              },
-            });
-            // Grab means the *arr picked it up — flip approved/failed requests to processing too.
-            if (!wasProcessing) await cascadeRequestsForCategory(media.id, 'PROCESSING', tx);
-          });
-        } catch (err) {
-          logEvent('warn', 'Webhook', `grab → PROCESSING failed for media ${media.id}: ${String(err)}`);
-        }
-      }
-      logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" grabbed → processing`);
-      return reply.send({ ok: true });
-    }
-
-    if (event.type === 'added') {
-      const mediaType = client.mediaType;
-      const existing = await findMediaByExternalId(mediaType, event.externalId);
-
-      if (!existing) {
-        const arrIdField = arrIdFieldForService(serviceType);
-        // Enrich with poster/quality/seasons via getMediaById — without this the row stayed
-        // poster-less until next periodic sync (~15 min) and rendered an empty card on /home.
-        let enriched: Awaited<ReturnType<typeof client.getMediaById>> = null;
-        if (event.internalId && event.internalId > 0 && client.getMediaById) {
-          enriched = await client.getMediaById(event.internalId).catch((err) => {
-            logEvent('warn', 'Webhook', `getMediaById failed for ${sanitize(serviceType)}:${event.internalId}: ${String(err)}`);
-            return null;
-          });
-        }
-        const realTmdbId = mediaType === 'tv'
-          ? (enriched?.tmdbId && enriched.tmdbId > 0 ? enriched.tmdbId : -(event.externalId))
-          : event.externalId;
-        const created = await prisma.media.create({
-          data: {
-            tmdbId: realTmdbId,
-            ...(mediaType === 'tv' ? { tvdbId: event.externalId } : {}),
-            mediaType,
-            title: enriched?.title ?? sanitize(event.title),
-            statusCategory: 'SEARCHING',
-            posterPath: enriched?.posterPath ?? null,
-            backdropPath: enriched?.backdropPath ?? null,
-            qualityProfileId: enriched?.qualityProfileId ?? null,
-            ...(arrIdField && event.internalId !== undefined && event.internalId > 0
-              ? { [arrIdField]: event.internalId }
-              : {}),
-          },
-        });
-        if (mediaType === 'tv' && enriched?.seasons?.length) {
-          await prisma.season.createMany({
-            data: enriched.seasons
-              .filter((s) => s.seasonNumber > 0)
-              .map((s) => ({
-                mediaId: created.id,
-                seasonNumber: s.seasonNumber,
-                episodeCount: s.totalEpisodeCount,
-                statusCategory: s.statusCategory,
-              })),
-          }).catch((err) => {
-            logEvent('warn', 'Webhook', `Season backfill failed for media ${created.id}: ${String(err)}`);
-          });
-        }
-        logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" added — created in Oscarr`);
-      }
-      return reply.send({ ok: true });
-    }
-
-    if (event.type === 'deleted') {
-      const mediaType = client.mediaType;
-      const media = await findMediaByExternalId(mediaType, event.externalId);
-
-      if (media?.statusCategory === 'AVAILABLE') {
-        await prisma.media.update({
-          where: { id: media.id },
-          data: { statusCategory: 'UNAVAILABLE' },
-        });
-        logEvent('info', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" deleted from service`);
-        logEvent('debug', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" deleted`);
-      }
-      return reply.send({ ok: true });
-    }
-
-    if (event.type === 'download') {
-      const mediaType = client.mediaType;
-      const media = await findMediaByExternalId(mediaType, event.externalId);
-
-      if (!media) {
-        logEvent('debug', 'Webhook', `${sanitize(serviceType)} download event for unknown media: ${sanitize(event.title)} (${event.externalId})`);
-        return reply.send({ ok: true, message: 'Media not tracked' });
-      }
-
-      // Promote to available if not already
-      if (media.statusCategory !== 'AVAILABLE') {
-        await promoteMediaToAvailable(media.id, !!media.availableAt);
-        sendAvailabilityNotifications(
-          media.title || sanitize(event.title),
-          mediaType,
-          media.posterPath,
-          media.id,
-          media.tmdbId,
-        );
-        logEvent('info', 'Webhook', `"${sanitize(event.title)}" is now available (via ${sanitize(serviceType)} webhook)`);
-        logEvent('debug', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" now available`);
-      }
-
-      // Backfill the *arr internal id when the sync job hasn't populated it (or has been
-      // disabled by the admin in favour of webhook-driven updates). Without this, the
-      // home's "Recently added" query (which filters on radarrId/sonarrId IS NOT NULL)
-      // skips webhook-only media even though they're correctly marked `available`.
-      if (event.internalId !== undefined && event.internalId > 0) {
-        const arrIdField = arrIdFieldForService(serviceType);
-        if (arrIdField) {
-          const current = (media as Record<string, unknown>)[arrIdField];
-          if (current === null || current === undefined) {
-            await prisma.media.update({
-              where: { id: media.id },
-              data: { [arrIdField]: event.internalId },
-            }).catch((err) => {
-              logEvent('warn', 'Webhook', `Failed to backfill ${arrIdField}=${event.internalId} on media ${media.id}: ${String(err)}`);
-            });
-          }
-        }
-      }
-
-      return reply.send({ ok: true, message: 'Media updated' });
-    }
-
-    // Unknown or unhandled event type — acknowledge silently
-    return reply.send({ ok: true });
+    // Unknown event types are acknowledged silently — an *arr that sends one must not see an error.
+    const handler = HANDLERS[event.type];
+    return reply.send(handler ? await handler(serviceType, client, event) : { ok: true });
   });
 }

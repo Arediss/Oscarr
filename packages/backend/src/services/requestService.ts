@@ -179,6 +179,46 @@ export async function resolveServiceContext(
   return { targetService, targetProfileId, defaultProfileId, defaultFolder, ruleMatch };
 }
 
+/**
+ * Root folders are instance-local, but a folder rule can set a path without pinning a service —
+ * and a quality mapping may then redirect the request to a *different* instance. That combination
+ * used to send instance A's path to instance B, where the *arr either rejects it or silently
+ * creates an unmanaged directory outside the library.
+ *
+ * So the path is checked against what the target instance actually reports. A mismatch falls back
+ * to that instance's own first root folder and says so, instead of writing somewhere nobody
+ * manages. Comparison ignores a trailing slash, which *arr instances are inconsistent about.
+ */
+async function resolveRootFolder(
+  client: { getRootFolders: () => Promise<{ path: string }[]>; defaultRootFolder: string },
+  requested: string | null | undefined,
+  ctx: ServiceContext,
+): Promise<string> {
+  let available: { path: string }[] = [];
+  try {
+    available = await client.getRootFolders();
+  } catch {
+    // Instance unreachable: trust the configured path rather than block the request outright.
+    return requested || client.defaultRootFolder;
+  }
+
+  const strip = (p: string) => p.replace(/\/+$/, '');
+  if (requested) {
+    const match = available.find((f) => strip(f.path) === strip(requested));
+    if (match) return match.path;
+    logEvent(
+      'warn',
+      'FolderRules',
+      `Root folder "${requested}"${ctx.ruleMatch ? ` (rule "${ctx.ruleMatch.ruleName}")` : ''} is not configured on the target service`
+      + `${ctx.targetService ? ` #${ctx.targetService.id}` : ''}; falling back to that instance's default.`,
+    );
+  }
+  return available[0]?.path || client.defaultRootFolder;
+}
+
+/** Exported for tests only — sendToArrService is the sole production caller. */
+export const resolveRootFolderForTest = resolveRootFolder;
+
 async function sendToArrService(
   media: { tmdbId: number; tvdbId: number | null; title: string },
   mediaType: string,
@@ -193,8 +233,8 @@ async function sendToArrService(
     : await getArrClient(serviceType);
 
   // Priority: explicit override > rule match > default folder > first root folder
-  const folderPath = rootFolderOverride || ctx.ruleMatch?.folderPath || ctx.defaultFolder
-    || (await client.getRootFolders())[0]?.path || client.defaultRootFolder;
+  const requested = rootFolderOverride || ctx.ruleMatch?.folderPath || ctx.defaultFolder;
+  const folderPath = await resolveRootFolder(client, requested, ctx);
 
   // User tagging is opt-in via AppSettings.arrUserTaggingEnabled. When off (default), no
   // tag is created or attached — the *arr UI stays free of Oscarr-internal username tags.

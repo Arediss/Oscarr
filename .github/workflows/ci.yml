@@ -43,6 +43,11 @@ jobs:
       - name: Typecheck frontend
         run: npx tsc --noEmit --project packages/frontend/tsconfig.json
 
+      # Applies the real migrations to a throwaway SQLite file and generates its own secrets, so
+      # it needs no service container and no repository secret.
+      - name: Backend tests
+        run: npm run test --workspace=packages/backend
+
   react-doctor:
     name: React Doctor
     runs-on: ubuntu-latest

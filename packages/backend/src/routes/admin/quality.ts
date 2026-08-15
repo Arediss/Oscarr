@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { parseId } from '../../utils/params.js';
+import { findRulesUsingQuality, renameQualityInRules } from '../../services/qualityRuleLinks.js';
 
 export async function qualityRoutes(app: FastifyInstance) {
   // === QUALITY OPTIONS ===
@@ -66,6 +67,12 @@ export async function qualityRoutes(app: FastifyInstance) {
     const { label, position, allowedRoles, approvalMode } = request.body as {
       label?: string; position?: number; allowedRoles?: string[] | null; approvalMode?: string | null;
     };
+
+    // Folder rules store the label, not the id. Capture the old one so a rename can carry the
+    // rules with it instead of quietly orphaning them.
+    const before = await prisma.qualityOption.findUnique({ where: { id: optionId }, select: { label: true } });
+    if (!before) return reply.status(404).send({ error: 'Quality option not found' });
+
     const option = await prisma.qualityOption.update({
       where: { id: optionId },
       data: {
@@ -75,7 +82,11 @@ export async function qualityRoutes(app: FastifyInstance) {
         ...(approvalMode !== undefined ? { approvalMode: approvalMode === 'auto' || approvalMode === 'manual' ? approvalMode : null } : {}),
       },
     });
-    return option;
+
+    const rulesUpdated = label !== undefined && label !== before.label
+      ? await renameQualityInRules(before.label, label)
+      : 0;
+    return { ...option, rulesUpdated };
   });
 
   app.delete('/quality-options/:id', {
@@ -93,6 +104,20 @@ export async function qualityRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const optionId = parseId(id);
     if (!optionId) return reply.status(400).send({ error: 'Invalid ID' });
+
+    const option = await prisma.qualityOption.findUnique({ where: { id: optionId }, select: { label: true } });
+    if (!option) return reply.status(404).send({ error: 'Quality option not found' });
+
+    // Refused rather than cascaded: unlike a rename, a delete has no obvious replacement, and
+    // silently stripping the condition would change where those rules route media.
+    const rules = await findRulesUsingQuality(option.label);
+    if (rules.length > 0) {
+      return reply.status(409).send({
+        error: 'QUALITY_IN_USE_BY_RULES',
+        rules: rules.map((r) => r.name),
+      });
+    }
+
     await prisma.qualityOption.delete({ where: { id: optionId } });
     return { ok: true };
   });

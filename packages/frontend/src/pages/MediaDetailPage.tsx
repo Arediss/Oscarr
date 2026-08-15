@@ -36,6 +36,13 @@ import ActionButton from '@/components/ActionButton';
 import { SeasonsPicker } from '@/components/media/SeasonsPicker';
 import { EpisodeDetailsModal } from '@/components/media/EpisodeDetailsModal';
 import { LanguageTags } from '@/components/media/LanguageTags';
+import { useMediaAvailability } from '@/hooks/useMediaAvailability';
+import { MediaMetaBar } from '@/components/media/MediaMetaBar';
+import { QualityPicker } from '@/components/media/QualityPicker';
+import { NsfwRevealModal } from '@/components/media/NsfwRevealModal';
+import { MediaInfoColumn } from '@/components/media/MediaInfoColumn';
+import { MediaBackdrop, MediaPoster } from '@/components/media/MediaHeroArt';
+import { mediaSummary } from '@/utils/mediaSummary';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -91,31 +98,16 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     resetOnNavigation();
   }, [id, type]);
 
-  const isAvailable = dbMedia?.statusCategory === 'AVAILABLE' || inLibrary;
-  const isPartiallyAvailable = !isAvailable && dbMedia?.statusCategory === 'PROCESSING' && type === 'tv';
-  const isUpcoming = dbMedia?.statusCategory === 'UPCOMING';
-  const isSearching = dbMedia?.statusCategory === 'SEARCHING';
-  const isDownloading = !!download;
-  const activeRequests = dbMedia?.requests?.filter(
-    (r) => (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(r.status)
-  ) || [];
-  const takenQualityIds = new Set<number>([
-    ...activeRequests.map(r => r.qualityOptionId).filter(Boolean) as number[],
-    ...activeQualityOptionIds,
-  ]);
-  const userHasRequest = activeRequests.some(r => r.user?.id === user?.id);
-  const canRequestNewQuality = selectedQuality != null && !takenQualityIds.has(selectedQuality);
-
-  const buttonState = resolveButtonState({
-    isAvailable,
-    isPartiallyAvailable,
-    isDownloading,
-    isUpcoming,
-    isSearching,
-    userHasRequest,
-    canRequestNewQuality,
+  const { isAvailable, takenQualityIds, userHasRequest, buttonState } = useMediaAvailability({
+    dbMedia,
+    type,
+    inLibrary,
+    isDownloading: !!download,
     blacklisted: blacklisted?.blocked ?? false,
+    activeQualityOptionIds,
+    selectedQuality,
     searchMissingState,
+    currentUserId: user?.id,
   });
 
   if (loading) {
@@ -136,31 +128,11 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
   const nsfw = !revealed && isNsfw(media.id);
 
-  const title = media.title || media.name || '';
-  const year = (media.release_date || media.first_air_date || '').slice(0, 4);
-  const genres = media.genres?.map((g) => g.name).join(', ');
-  const trailer = media.videos?.results?.find((v) => v.type === 'Trailer' && v.site === 'YouTube');
-  const cast = media.credits?.cast?.slice(0, 20) || [];
-  const director = media.credits?.crew?.find((c) => c.job === 'Director');
+  const { title, year, genres, trailer, cast, director } = mediaSummary(media);
 
   return (
     <div className="min-h-dvh">
-      {/* Fixed backdrop */}
-      <div className="fixed inset-0 h-dvh z-0">
-        {media.backdrop_path ? (
-          <img src={backdropUrl(media.backdrop_path)} alt="" className={clsx('w-full h-full object-cover', nsfw && 'blur-3xl scale-110')} />
-        ) : (
-          <div className="w-full h-full bg-ndp-surface" />
-        )}
-        {/* Base gradients */}
-        <div className="absolute inset-0 bg-gradient-to-t from-ndp-bg via-ndp-bg/40 to-ndp-bg/20" />
-        <div className="absolute inset-0 bg-gradient-to-r from-ndp-bg/70 to-transparent" />
-        {/* Scroll-driven fade to bg color */}
-        <div
-          className="absolute inset-0 bg-ndp-bg transition-none"
-          style={{ opacity: scrollOpacity }}
-        />
-      </div>
+      <MediaBackdrop backdropPath={media.backdrop_path} blurred={nsfw} fadeOpacity={scrollOpacity} />
 
       {/* Back button - fixed */}
       <button onClick={() => navigate(-1)} className="fixed top-20 left-4 sm:left-8 z-20 p-2 glass rounded-xl hover:bg-white/10 transition-colors">
@@ -171,175 +143,45 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
       <div className="relative z-10 pt-[35vh] min-h-dvh">
         <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
         <div className="flex flex-col md:flex-row gap-8">
-          {/* Poster */}
-          <div className="flex-shrink-0 w-48 sm:w-56 mx-auto md:mx-0">
-            <div className="aspect-[2/3] rounded-2xl overflow-hidden shadow-2xl shadow-black/50 ring-1 ring-white/10 relative">
-              <img
-                src={posterUrl(media.poster_path)}
-                alt={title}
-                className={clsx('w-full h-full object-cover', nsfw && 'blur-xl scale-110')}
-              />
-              {nsfw && (
-                <button
-                  onClick={() => setShowNsfwModal(true)}
-                  className="absolute inset-0 flex items-center justify-center cursor-pointer group/nsfw"
-                >
-                  <div className="p-3 rounded-full bg-black/30 backdrop-blur-sm shadow-lg shadow-black/30 group-hover/nsfw:bg-black/50 transition-colors">
-                    <EyeOff className="w-6 h-6 text-white/80 group-hover/nsfw:text-white transition-colors" />
-                  </div>
-                </button>
-              )}
-            </div>
-          </div>
+          <MediaPoster
+            posterPath={media.poster_path}
+            title={title}
+            blurred={nsfw}
+            onReveal={() => setShowNsfwModal(true)}
+          />
 
           {/* Info */}
-          <div className="flex-1 min-w-0">
-            <h1 className="text-3xl sm:text-4xl font-extrabold text-white">{title}</h1>
-
-            {media.tagline && (
-              <p className="text-ndp-text-muted italic mt-2">{media.tagline}</p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-4 mt-4 text-sm text-ndp-text-muted">
-              {year && (
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4" />
-                  {year}
-                </span>
-              )}
-              {media.runtime && (
-                <span className="flex items-center gap-1.5">
-                  <Clock className="w-4 h-4" />
-                  {Math.floor(media.runtime / 60)}h{String(media.runtime % 60).padStart(2, '0')}
-                </span>
-              )}
-              {media.vote_average > 0 && (
-                <span className="flex items-center gap-1.5 text-ndp-gold">
-                  <Star className="w-4 h-4 fill-ndp-gold" />
-                  {media.vote_average.toFixed(1)} ({media.vote_count} {t('media.votes')})
-                </span>
-              )}
-              {type === 'tv' && media.number_of_seasons && (
-                <span className="flex items-center gap-1.5">
-                  <Tv className="w-4 h-4" />
-                  {t('media.season', { count: media.number_of_seasons })}
-                </span>
-              )}
-              <span className="flex items-center gap-1.5">
-                <Film className="w-4 h-4" />
-                {type === 'movie' ? t('common.movie') : t('common.series')}
-              </span>
-            </div>
-
-            {genres && (
-              <div className="flex flex-wrap gap-2 mt-4">
-                {genres.split(', ').map((g) => (
-                  <span key={g} className="px-3 py-1 bg-white/5 rounded-full text-xs font-medium text-ndp-text-muted">
-                    {g}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Synopsis */}
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold text-ndp-text-muted uppercase tracking-wider mb-2">{t('media.synopsis')}</h3>
-              <p className="text-ndp-text leading-relaxed">{media.overview || t('media.no_description')}</p>
-
-              {/* Plugin hook: media detail info */}
-              <PluginSlot hookPoint="media.detail.info" context={{ media, type, dbMedia }} />
-            </div>
-
-            {/* Director */}
-            {director && (
-              <p className="mt-4 text-sm text-ndp-text-muted">
-                {t('media.directed_by', { name: director.name })}
-              </p>
-            )}
-
-            {/* Actions */}
-            <div className="flex flex-wrap gap-3 mt-8">
-              {trailer && (
-                <a
-                  href={`https://www.youtube.com/watch?v=${trailer.key}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn-secondary flex items-center gap-2"
-                >
-                  <Play className="w-4 h-4" />
-                  {t('media.trailer')}
-                </a>
-              )}
-
-              <ActionButton
-                state={buttonState}
-                requesting={requesting}
-                justRequested={justRequested}
-                download={download ? { progress: download.progress, timeLeft: download.timeLeft } : null}
-                searchMissingError={searchMissingError}
-                blacklistReason={blacklisted?.reason ?? undefined}
-                onRequest={handleRequest}
-                onSearchMissing={handleSearchMissing}
-                t={t}
-              />
-
-              {/* Request error message */}
-              {requestError && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-ndp-danger/10 border border-ndp-danger/20 text-ndp-danger text-sm animate-fade-in">
-                  {requestError}
-                </div>
-              )}
-
-              {/* Plugin hook: media detail actions */}
-              <PluginSlot hookPoint="media.detail.actions" context={{ media, type, isAvailable, dbMedia }} />
-            </div>
-
-            {/* Quality selection */}
-            {qualityOptions.length > 0 && (
-              <div className="mt-6">
-                <h3 className="text-sm font-semibold text-ndp-text-muted uppercase tracking-wider mb-3">{t('media.quality')}</h3>
-                <div className="flex flex-wrap gap-2">
-                  {qualityOptions.map((q) => {
-                    const isRequested = takenQualityIds.has(q.id);
-                    const isSelected = selectedQuality === q.id;
-                    return (
-                      <button
-                        key={q.id}
-                        onClick={() => !isRequested && setSelectedQuality(prev => prev === q.id ? null : q.id)}
-                        className={clsx(
-                          'px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-1.5',
-                          isRequested
-                            ? 'bg-ndp-success/10 text-ndp-success border border-ndp-success/20 cursor-default'
-                            : isSelected
-                              ? 'bg-ndp-accent text-white'
-                              : 'bg-white/5 text-ndp-text-muted hover:bg-white/10'
-                        )}
-                      >
-                        {isRequested && <Check className="w-3.5 h-3.5" />}
-                        {q.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} />
-
-
-            {/* Seasons */}
-            {type === 'tv' && media.seasons && media.seasons.length > 0 && (
-              <SeasonsPicker
-                seasons={media.seasons}
-                sonarrSeasons={sonarrSeasons}
-                selectedSeasons={selectedSeasons}
-                setSelectedSeasons={setSelectedSeasons}
-                canSelect={!isAvailable && !userHasRequest}
-                onOpenDetails={openEpisodeModal}
-              />
-            )}
-
-          </div>
+          <MediaInfoColumn
+            media={media}
+            dbMedia={dbMedia}
+            type={type}
+            title={title}
+            year={year}
+            genres={genres}
+            director={director}
+            trailer={trailer}
+            isAvailable={isAvailable}
+            userHasRequest={userHasRequest}
+            buttonState={buttonState}
+            requesting={requesting}
+            justRequested={justRequested}
+            requestError={requestError}
+            download={download ? { progress: download.progress, timeLeft: download.timeLeft } : null}
+            blacklisted={blacklisted}
+            searchMissingError={searchMissingError}
+            onRequest={handleRequest}
+            onSearchMissing={handleSearchMissing}
+            qualityOptions={qualityOptions}
+            takenQualityIds={takenQualityIds}
+            selectedQuality={selectedQuality}
+            setSelectedQuality={setSelectedQuality}
+            audioLanguages={audioLanguages}
+            subtitleLanguages={subtitleLanguages}
+            sonarrSeasons={sonarrSeasons}
+            selectedSeasons={selectedSeasons}
+            setSelectedSeasons={setSelectedSeasons}
+            onOpenEpisodes={openEpisodeModal}
+          />
         </div>
 
         {/* Collection */}
@@ -375,35 +217,13 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
         />
       )}
 
-      {/* NSFW reveal modal */}
       {showNsfwModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowNsfwModal(false)}>
-          <div className="bg-ndp-bg rounded-2xl w-full max-w-sm mx-4 shadow-2xl shadow-black/60 p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-orange-500/10 rounded-xl">
-                <ShieldAlert className="w-5 h-5 text-orange-400" />
-              </div>
-              <h3 className="text-lg font-semibold text-ndp-text">{t('nsfw.modal.title')}</h3>
-            </div>
-            <p className="text-sm text-ndp-text-muted mb-6">
-              {t('nsfw.modal.description', { rating: dbMedia?.contentRating || '' })}
-            </p>
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => { setRevealed(true); setShowNsfwModal(false); }}
-                className="w-full px-4 py-2.5 bg-white/5 hover:bg-white/10 text-ndp-text text-sm font-medium rounded-xl transition-colors"
-              >
-                {t('nsfw.modal.show_once')}
-              </button>
-              <button
-                onClick={() => { disableBlur(); setShowNsfwModal(false); }}
-                className="w-full px-4 py-2.5 bg-orange-600/10 hover:bg-orange-600/20 text-orange-400 text-sm font-medium rounded-xl transition-colors"
-              >
-                {t('nsfw.modal.show_always')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <NsfwRevealModal
+          contentRating={dbMedia?.contentRating || ''}
+          onRevealOnce={() => { setRevealed(true); setShowNsfwModal(false); }}
+          onRevealAlways={() => { disableBlur(); setShowNsfwModal(false); }}
+          onClose={() => setShowNsfwModal(false)}
+        />
       )}
     </div>
   );

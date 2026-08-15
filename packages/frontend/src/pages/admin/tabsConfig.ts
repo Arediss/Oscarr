@@ -1,4 +1,5 @@
 import {
+  Mail,
   Users,
   Shield,
   Server,
@@ -121,6 +122,7 @@ export const ADMIN_GROUPS: AdminGroupDef[] = [
     icon: Cog,
     tabs: [
       { id: 'instance', label: 'admin.tab.instance', icon: Server },
+      { id: 'mail', label: 'admin.tab.mail', icon: Mail },
       { id: 'backups', label: 'admin.tab.backups', icon: Archive },
       { id: 'import', label: 'admin.tab.import', icon: DownloadCloud },
       { id: 'jobs', label: 'admin.tab.jobs', icon: RefreshCw },

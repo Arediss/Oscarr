@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/context/AuthContext';
 import { useFeatures } from '@/context/FeaturesContext';
@@ -396,6 +396,13 @@ export default function LoginPage() {
                         {loading && !polling ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Mail className="w-4 h-4" />}
                         {t('login.signin')}
                       </button>
+                      {/* Server-resolved: the flag is only true when the feature, the email
+                          provider and a working mail transport all line up. */}
+                      {features.passwordResetEnabled && (
+                        <Link to="/forgot-password" className="block text-center text-sm text-ndp-text-dim hover:text-ndp-accent">
+                          {t('reset.link')}
+                        </Link>
+                      )}
                     </form>
                   )}
 

@@ -54,6 +54,10 @@ const ROUTE_PERMISSIONS: Record<string, RouteRule> = {
   'GET:/api/auth/providers':             { permission: PUBLIC },
   'POST:/api/auth/register':             { permission: PUBLIC },
   'POST:/api/auth/login':                { permission: PUBLIC },
+  // Reset is public by necessity — the caller has lost the only credential they had. Both routes
+  // are rate-limited at the route level and answer identically whether or not the account exists.
+  'POST:/api/auth/password/forgot':      { permission: PUBLIC },
+  'POST:/api/auth/password/reset':       { permission: PUBLIC },
   'POST:/api/auth/link-provider':        { permission: AUTH },
   'GET:/api/auth/me':                    { permission: AUTH },
   'PUT:/api/auth/me/avatar-source':      { permission: AUTH },
@@ -150,6 +154,10 @@ const ROUTE_PERMISSIONS: Record<string, RouteRule> = {
   'GET:/api/plugins/updates':            { permission: 'admin.plugins' },
 
   // ── Admin auth-provider settings ──
+  'GET:/api/admin/availability-sources':      { permission: 'admin.*' },
+  'GET:/api/admin/mail':                     { permission: 'admin.*' },
+  'PUT:/api/admin/mail':                     { permission: 'admin.*' },
+  'POST:/api/admin/mail/test':               { permission: 'admin.*' },
   'GET:/api/admin/auth-providers':           { permission: 'admin.*' },
   'GET:/api/admin/auth-providers/syncable':  { permission: 'admin.*' },
   'PATCH:/api/admin/auth-providers/:id':     { permission: 'admin.*' },

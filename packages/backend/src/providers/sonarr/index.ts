@@ -8,6 +8,7 @@ export const sonarrProvider: Provider = {
     label: 'Sonarr',
     icon: '/providers/sonarr.svg',
     category: 'arr',
+    canConfirmAvailability: true,
     requiredForInstall: true,
     handlesMediaTypes: ['tv'],
     dbIdField: 'sonarrId',

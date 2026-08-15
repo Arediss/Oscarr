@@ -7,12 +7,21 @@ import { useFeatures } from '@/context/FeaturesContext';
 import { Spinner } from './Spinner';
 import { AdminTabLayout } from './AdminTabLayout';
 import { FloatingSaveBar } from '@/components/FloatingSaveBar';
+import { COLOR_TOKENS } from '@oscarr/shared';
 
 /**
  * "How Oscarr behaves" — feature flags + request policy + disabled-login behavior.
  * Split out of the old General tab. Everything here tunes what's on/off and how the site
  * responds to edge cases, without touching the instance's identity.
  */
+
+interface SourceOption { id: string; label: string; category: string }
+
+/** True when the chosen source is a media server, i.e. the one case that introduces a wait. */
+function sourceIsLibrary(id: string, options: SourceOption[]): boolean {
+  return options.find((o) => o.id === id)?.category === 'media-server';
+}
+
 export function FeaturesTab() {
   const { t } = useTranslation();
   const { refreshFeatures } = useFeatures();
@@ -28,6 +37,14 @@ export function FeaturesTab() {
   const [missingSearchCooldownMin, setMissingSearchCooldownMin] = useState(60);
   const [disabledLoginMode, setDisabledLoginMode] = useState<'block' | 'friendly'>('friendly');
   const [arrUserTaggingEnabled, setArrUserTaggingEnabled] = useState(false);
+  // Availability threshold — split by media type because a movie lands as one file while a series
+  // imports episode by episode into a library rescanned on a schedule.
+  const [movieAvailabilitySource, setMovieAvailabilitySource] = useState('radarr');
+  const [tvAvailabilitySource, setTvAvailabilitySource] = useState('sonarr');
+  // Only what the connectors declare they can do — the picker never offers a dead option.
+  const [sources, setSources] = useState<{ movie: SourceOption[]; tv: SourceOption[] }>({ movie: [], tv: [] });
+  const [importedStateLabel, setImportedStateLabel] = useState('');
+  const [importedStateColor, setImportedStateColor] = useState('');
 
   const initialValues = useRef<Record<string, unknown>>({});
 
@@ -46,6 +63,10 @@ export function FeaturesTab() {
         missingSearchCooldownMin: data.missingSearchCooldownMin ?? 60,
         disabledLoginMode: (data.disabledLoginMode === 'block' ? 'block' : 'friendly') as 'block' | 'friendly',
         arrUserTaggingEnabled: data.arrUserTaggingEnabled ?? false,
+        movieAvailabilitySource: data.movieAvailabilitySource ?? 'radarr',
+        tvAvailabilitySource: data.tvAvailabilitySource ?? 'sonarr',
+        importedStateLabel: data.importedStateLabel ?? '',
+        importedStateColor: data.importedStateColor ?? '',
       };
       setAutoApproveRequests(vals.autoApproveRequests);
       setRequestsEnabled(vals.requestsEnabled);
@@ -54,6 +75,14 @@ export function FeaturesTab() {
       setMissingSearchCooldownMin(vals.missingSearchCooldownMin);
       setDisabledLoginMode(vals.disabledLoginMode);
       setArrUserTaggingEnabled(vals.arrUserTaggingEnabled);
+      setMovieAvailabilitySource(vals.movieAvailabilitySource);
+      setTvAvailabilitySource(vals.tvAvailabilitySource);
+      try {
+        const { data: srcs } = await api.get('/admin/availability-sources');
+        setSources(srcs);
+      } catch { /* picker falls back to the stored value alone */ }
+      setImportedStateLabel(vals.importedStateLabel);
+      setImportedStateColor(vals.importedStateColor);
       initialValues.current = vals;
     } catch (err) {
       console.error('FeaturesTab load failed', err);
@@ -66,8 +95,8 @@ export function FeaturesTab() {
   useEffect(() => { loadAll(); }, [loadAll]);
 
   const currentValues = useMemo(
-    () => ({ autoApproveRequests, requestsEnabled, calendarEnabled, nsfwBlurEnabled, missingSearchCooldownMin, disabledLoginMode, arrUserTaggingEnabled }),
-    [autoApproveRequests, requestsEnabled, calendarEnabled, nsfwBlurEnabled, missingSearchCooldownMin, disabledLoginMode, arrUserTaggingEnabled]
+    () => ({ autoApproveRequests, requestsEnabled, calendarEnabled, nsfwBlurEnabled, missingSearchCooldownMin, disabledLoginMode, arrUserTaggingEnabled, movieAvailabilitySource, tvAvailabilitySource, importedStateLabel, importedStateColor }),
+    [autoApproveRequests, requestsEnabled, calendarEnabled, nsfwBlurEnabled, missingSearchCooldownMin, disabledLoginMode, arrUserTaggingEnabled, movieAvailabilitySource, tvAvailabilitySource, importedStateLabel, importedStateColor]
   );
 
   const hasChanges = !loading && Object.keys(initialValues.current).length > 0 &&
@@ -82,6 +111,10 @@ export function FeaturesTab() {
     setMissingSearchCooldownMin(iv.missingSearchCooldownMin as number);
     setDisabledLoginMode(iv.disabledLoginMode as 'block' | 'friendly');
     setArrUserTaggingEnabled(iv.arrUserTaggingEnabled as boolean);
+    setMovieAvailabilitySource(iv.movieAvailabilitySource as string);
+    setTvAvailabilitySource(iv.tvAvailabilitySource as string);
+    setImportedStateLabel(iv.importedStateLabel as string);
+    setImportedStateColor(iv.importedStateColor as string);
   };
 
   const handleSave = async () => {
@@ -95,6 +128,10 @@ export function FeaturesTab() {
         missingSearchCooldownMin,
         disabledLoginMode,
         arrUserTaggingEnabled,
+        movieAvailabilitySource,
+        tvAvailabilitySource,
+        importedStateLabel: importedStateLabel.trim() || null,
+        importedStateColor: importedStateColor || null,
       });
       await refreshFeatures();
       initialValues.current = { ...currentValues };
@@ -173,6 +210,58 @@ export function FeaturesTab() {
             />
             <span className="text-sm text-ndp-text-dim">min</span>
           </div>
+        </div>
+      </div>
+
+
+      <div className="mt-8">
+        <h2 className="text-lg font-semibold text-ndp-text mb-2">{t('admin.features.availability_title')}</h2>
+        <p className="text-xs text-ndp-text-dim mb-4">{t('admin.features.availability_desc')}</p>
+        <div className="card p-4 space-y-3">
+
+          {([
+            { key: 'movie', label: t('admin.features.source_movies'), value: movieAvailabilitySource, set: setMovieAvailabilitySource, options: sources.movie },
+            { key: 'tv', label: t('admin.features.source_tv'), value: tvAvailabilitySource, set: setTvAvailabilitySource, options: sources.tv },
+          ] as const).map(({ key, label, value, set, options }) => (
+            <div key={key} className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-medium text-ndp-text">{label}</p>
+              <select value={value} onChange={(e) => set(e.target.value)} className="input text-sm w-56">
+                {/* The stored value stays selectable even if its service was since disabled, so
+                    opening this page never silently rewrites the configuration. */}
+                {!options.some((o) => o.id === value) && <option value={value}>{value}</option>}
+                {options.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}{o.category === 'arr' ? t('admin.features.source_arr_suffix') : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+
+          {(sourceIsLibrary(movieAvailabilitySource, sources.movie) || sourceIsLibrary(tvAvailabilitySource, sources.tv)) && (
+            <div className="border-t border-white/10 pt-3 mt-1 space-y-3">
+              <p className="text-xs text-ndp-text-dim">{t('admin.features.imported_state_desc')}</p>
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <label className="block text-xs font-medium text-ndp-text mb-1">{t('admin.features.imported_label')}</label>
+                  <input
+                    value={importedStateLabel}
+                    maxLength={40}
+                    onChange={(e) => setImportedStateLabel(e.target.value)}
+                    placeholder={t('status.imported')}
+                    className="input text-sm w-56"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-ndp-text mb-1">{t('admin.features.imported_color')}</label>
+                  <select value={importedStateColor} onChange={(e) => setImportedStateColor(e.target.value)} className="input text-sm w-40">
+                    <option value="">{t('admin.features.imported_color_default')}</option>
+                    {COLOR_TOKENS.map((token) => (<option key={token} value={token}>{token}</option>))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

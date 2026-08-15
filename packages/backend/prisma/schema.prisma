@@ -27,6 +27,37 @@ model User {
   blacklistedMedia      BlacklistedMedia[] @relation("BlacklistCreatedBy")
   pushSubscriptions     PushSubscription[]
   apiKeys               UserApiKey[]
+  passwordResets        PasswordResetToken[]
+}
+
+/// Password reset is for local accounts only — a Plex/Jellyfin/Emby/Discord user has no
+/// passwordHash and must recover through their own provider. Rows are keyed by a SHA-256 of the
+/// token: the raw value exists only in the email we send, so a database read cannot mint a reset.
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Transactional mail transport, separate from the notification providers: those broadcast to a
+/// fixed admin address, this one writes to an arbitrary user. Singleton row (id = 1).
+/// `config` is an encrypted JSON blob (same AES-256-GCM path as Service.config) — never plaintext.
+/// Environment variables override this row entirely when set, so a compose-only deployment never
+/// has to touch the panel.
+model MailConfig {
+  id        Int      @id @default(1)
+  enabled   Boolean  @default(false)
+  transport String   @default("smtp") // "smtp" | "resend"
+  config    String   @default("{}")
+  updatedAt DateTime @updatedAt
 }
 
 model UserApiKey {
@@ -106,6 +137,9 @@ model Media {
   serviceId           Int?
   qualityProfileId    Int?      // Quality profile ID from Radarr/Sonarr
   availableAt         DateTime? // Set when statusCategory becomes AVAILABLE
+  // Last time a media-server library scan actually saw this title. Null = never seen there, which
+  // is only meaningful when the admin requires library confirmation (see AppSettings).
+  libraryConfirmedAt  DateTime?
   lastMissingSearchAt DateTime? // Last time a missing episode search was triggered
   lastEpisodeInfo     String?   // JSON: latest episode added (e.g. {"season":2,"episode":5,"title":"..."})
   audioLanguages      String?   // JSON array of normalized audio languages, cached when available
@@ -180,6 +214,21 @@ model AppSettings {
   calendarEnabled       Boolean   @default(true)
   siteName              String    @default("Oscarr")
   registrationEnabled   Boolean   @default(true)
+  // Opt-in: an install that upgrades must not silently gain a new unauthenticated auth surface.
+  // Also inert without a working mail transport, so defaulting it on would only produce dead links.
+  passwordResetEnabled  Boolean   @default(false)
+  // Which connected service decides that a title is available — its "source of truth". Defaults to
+  // the *arr, which is the historical behaviour and stays a plain value here rather than a special
+  // case. Split by media type because a movie lands as one file while a series imports episode by
+  // episode into a library rescanned on a schedule; the lag is not comparable.
+  // Only services declaring canConfirmAvailability are offered, so the picker cannot promise
+  // something a connector is unable to do.
+  movieAvailabilitySource String  @default("radarr")
+  tvAvailabilitySource    String  @default("sonarr")
+  // Presentation of the IMPORTED state. The vocabulary is closed; only its label and colour are
+  // the admin's. Colour is validated against COLOR_TOKENS before use.
+  importedStateLabel    String?
+  importedStateColor    String?
   nsfwBlurEnabled       Boolean   @default(true)
   missingSearchCooldownMin Int   @default(60) // Minutes before allowing another missing search
   instanceLanguages     String    @default("[\"en\"]") // JSON array of ISO 639-1 codes, e.g. ["fr","en"]

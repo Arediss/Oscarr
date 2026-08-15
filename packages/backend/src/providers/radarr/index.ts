@@ -8,6 +8,7 @@ export const radarrProvider: Provider = {
     label: 'Radarr',
     icon: '/providers/radarr.svg',
     category: 'arr',
+    canConfirmAvailability: true,
     requiredForInstall: true,
     handlesMediaTypes: ['movie'],
     dbIdField: 'radarrId',

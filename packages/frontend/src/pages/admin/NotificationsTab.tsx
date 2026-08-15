@@ -7,6 +7,7 @@ import api from '@/lib/api';
 import { Spinner } from './Spinner';
 import { AdminTabLayout } from './AdminTabLayout';
 import { useModal } from '@/hooks/useModal';
+import { Link } from 'react-router-dom';
 
 // ─── Types from registry API ────────────────────────────
 
@@ -51,6 +52,9 @@ export function NotificationsTab() {
   // Per-provider state
   const [configs, setConfigs] = useState<Record<string, { enabled: boolean; settings: Record<string, string> }>>({});
   const [matrix, setMatrix] = useState<Record<string, Record<string, boolean>>>({});
+  // The email channel owns only the recipient; the transport it sends through is instance-wide
+  // (Admin → System → Mail) and shared with password reset.
+  const [mailReady, setMailReady] = useState(true);
 
   // Modal state
   const [editingProvider, setEditingProvider] = useState<string | null>(null);
@@ -70,7 +74,7 @@ export function NotificationsTab() {
       api.get('/admin/notifications/meta'),
       api.get('/admin/notifications/providers'),
       api.get('/admin/settings'),
-    ]).then(([metaRes, configsRes, settingsRes]) => {
+    ]).then(async ([metaRes, configsRes, settingsRes]) => {
       const meta = metaRes.data;
       setProviders(meta.providers);
       setEventTypes(meta.eventTypes);
@@ -87,6 +91,15 @@ export function NotificationsTab() {
         };
       }
       setConfigs(cfgMap);
+
+      if (meta.providers.some((p: ProviderMeta) => p.id === 'email')) {
+        try {
+          const { data: mail } = await api.get('/admin/mail');
+          setMailReady(Boolean(mail.configured && mail.enabled));
+        } catch {
+          setMailReady(false);
+        }
+      }
 
       // Parse matrix
       const savedMatrix = settingsRes.data.notificationMatrix
@@ -106,6 +119,8 @@ export function NotificationsTab() {
   const isConfigured = (providerId: string) => {
     const cfg = configs[providerId];
     if (!cfg?.enabled) return false;
+    // A recipient without a working transport is not a configured channel.
+    if (providerId === 'email' && !mailReady) return false;
     const provider = providers.find(p => p.id === providerId);
     if (!provider) return false;
     return provider.settingsSchema
@@ -276,7 +291,14 @@ export function NotificationsTab() {
                 <div key={provider.id} className={clsx('card', !enabled && 'opacity-50')}>
                   <div className="flex items-center gap-4 p-4">
                     <span className={clsx('w-2.5 h-2.5 rounded-full flex-shrink-0', configured && enabled ? 'bg-ndp-success' : 'bg-ndp-text-dim')} />
-                    <span className="text-sm font-semibold text-ndp-text flex-1">{t(provider.nameKey)}</span>
+                    <span className="text-sm font-semibold text-ndp-text flex-1">
+                      {t(provider.nameKey)}
+                      {provider.id === 'email' && !mailReady && (
+                        <Link to="/admin?tab=mail" className="ml-2 text-xs font-normal text-ndp-accent hover:underline">
+                          {t('admin.notifications.email_needs_transport')}
+                        </Link>
+                      )}
+                    </span>
 
                     {result && (
                       <span className={clsx('text-xs px-2 py-1 rounded-lg flex-shrink-0', result.ok ? 'bg-ndp-success/10 text-ndp-success' : 'bg-ndp-danger/10 text-ndp-danger')}>

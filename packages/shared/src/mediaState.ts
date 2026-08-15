@@ -1,9 +1,14 @@
 // Closed canonical vocabulary. Each connector's resolveState produces one of these.
+//
+// Closed on purpose: plugins consume it as a fixed set (see pluginContext) and the Seerr-compat
+// layer maps it onto Overseerr's numeric enum. Admins configure *when* a state is reached and how
+// it is presented — never which states exist.
 export const MEDIA_STATE_CATEGORIES = [
   'UNAVAILABLE',
   'UPCOMING',
   'SEARCHING',
   'PROCESSING',
+  'IMPORTED',
   'AVAILABLE',
   'BLACKLISTED',
 ] as const;
@@ -55,6 +60,9 @@ export const MEDIA_STATE_DISPLAY: Record<MediaStateCategory, MediaStateDisplay> 
   UPCOMING:    { labelKey: 'status.upcoming',    colorToken: 'info',    iconName: 'CalendarClock', showsRequestCTA: false },
   SEARCHING:   { labelKey: 'status.searching',   colorToken: 'accent',  iconName: 'Search',        showsRequestCTA: false },
   PROCESSING:  { labelKey: 'status.processing',  colorToken: 'accent',  iconName: 'Loader2',       showsRequestCTA: false },
+  // The *arr has the file, the media server has not confirmed it yet. showsRequestCTA is false on
+  // purpose: it is already here, so offering "request" would only produce duplicates.
+  IMPORTED:    { labelKey: 'status.imported',    colorToken: 'warning', iconName: 'Clock',         showsRequestCTA: false },
   AVAILABLE:   { labelKey: 'status.available',   colorToken: 'success', iconName: 'CheckCircle',   showsRequestCTA: false },
   BLACKLISTED: { labelKey: 'status.blocked',     colorToken: 'danger',  iconName: 'Ban',           showsRequestCTA: false },
 };

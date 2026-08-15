@@ -167,6 +167,11 @@ export interface ServiceDefinition {
   /** Media DB column holding this service's *arr id (radarr→radarrId, sonarr→sonarrId). Lets the
    *  core resolve the column from the module registry instead of hardcoding service ids. */
   dbIdField?: 'radarrId' | 'sonarrId';
+  /** This connector can answer "is this title actually in the library?", i.e. it can serve as the
+   *  availability source of truth. Declared by the connector itself, so a service appears in the
+   *  admin picker the day it gains the capability — and never before. Absence is the honest
+   *  default: a connector that cannot confirm must not be offered as if it could. */
+  canConfirmAvailability?: boolean;
   /** True until this connector has been validated against a real instance by the maintainer.
    *  Surfaces an "Untested" pill in the picker and a feedback banner once selected, so users
    *  know to report back. Removed in the same commit that confirms the integration works. */

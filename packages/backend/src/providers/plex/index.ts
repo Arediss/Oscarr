@@ -280,6 +280,7 @@ export const plexProvider: Provider = {
     label: 'Plex',
     icon: '/providers/plex.svg',
     category: 'media-server',
+    canConfirmAvailability: true,
     requiredForInstall: true,
     fields: [
       { key: 'url', labelKey: 'common.url', type: 'text', placeholder: 'http://localhost:32400' },

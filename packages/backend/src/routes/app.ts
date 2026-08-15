@@ -10,6 +10,7 @@ import { getServiceConfig } from '../utils/services.js';
 import { isQualityAllowedForRole } from '../utils/qualityAccess.js';
 import { PROJECT_PACKAGE_JSON } from '../utils/paths.js';
 import { getHomepageLayout } from './admin/homepage.js';
+import { isResetEnabled } from '../services/passwordReset.js';
 
 const APP_VERSION = JSON.parse(
   readFileSync(PROJECT_PACKAGE_JSON, 'utf-8')
@@ -142,11 +143,19 @@ export async function appRoutes(app: FastifyInstance) {
       const parsed = settings?.customLinks ? JSON.parse(settings.customLinks) : [];
       if (Array.isArray(parsed)) customLinks = parsed;
     } catch { /* malformed JSON in DB → empty list */ }
+    // Resolved server-side rather than exposed as a raw setting: the login page may only offer the
+    // link when the flag, the email provider AND a working mail transport all line up.
+    const passwordResetEnabled = await isResetEnabled();
     return {
       requestsEnabled: settings?.requestsEnabled ?? true,
       calendarEnabled: settings?.calendarEnabled ?? true,
       siteName: settings?.siteName ?? 'Oscarr',
       nsfwBlurEnabled: settings?.nsfwBlurEnabled ?? true,
+      passwordResetEnabled,
+      // Presentation of the IMPORTED state. The vocabulary stays closed; only these two are the
+      // admin's, and the colour was validated against COLOR_TOKENS on write.
+      importedStateLabel: settings?.importedStateLabel ?? null,
+      importedStateColor: settings?.importedStateColor ?? null,
       instanceLanguage: languages[0] ?? 'en',
       customLinks,
       ...pluginFeatures,

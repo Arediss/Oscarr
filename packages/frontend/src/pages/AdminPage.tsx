@@ -27,6 +27,7 @@ import { RolesTab } from './admin/RolesTab';
 import { HomepageTab } from './admin/HomepageTab';
 import { LinksTab } from './admin/LinksTab';
 import { AuthProvidersTab } from './admin/AuthProvidersTab';
+import { MailTab } from './admin/MailTab';
 import { ApiKeysTab } from './admin/ApiKeysTab';
 import { ImportTab } from './admin/ImportTab';
 
@@ -93,6 +94,7 @@ export default function AdminPage() {
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'roles' && <RolesTab />}
       {activeTab === 'auth' && <AuthProvidersTab />}
+      {activeTab === 'mail' && <MailTab />}
       {activeTab === 'api-keys' && <ApiKeysTab />}
       {activeTab === 'services' && <ServicesTab />}
       {activeTab === 'quality' && <QualityTab />}

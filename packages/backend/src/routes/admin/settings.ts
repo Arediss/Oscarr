@@ -6,6 +6,8 @@ import { getAppSettings, ensureAppSettings, patchAppSettings, parseInstanceLangu
 import { logEvent } from '../../utils/logEvent.js';
 import { safeNotify, invalidateSiteUrl } from '../../utils/safeNotify.js';
 import { invalidateLanguageCache } from '../../services/tmdb.js';
+import { COLOR_TOKENS } from '@oscarr/shared';
+import { getAllServiceDefinitions } from '../../providers/index.js';
 
 // Issue #167 — admin-defined external links rendered in the home topbar.
 // Strict-https for safety (no http://), short labels (50 chars), icon is either a Lucide name,
@@ -90,6 +92,11 @@ export async function settingsRoutes(app: FastifyInstance) {
           requestsEnabled: { type: 'boolean', description: 'Enable the request system' },
           nsfwBlurEnabled: { type: 'boolean', description: 'Enable NSFW content blur' },
           calendarEnabled: { type: 'boolean', description: 'Enable the calendar feature' },
+          passwordResetEnabled: { type: 'boolean', description: 'Allow local accounts to reset their password by email' },
+          movieAvailabilitySource: { type: 'string', description: 'Service id that decides a movie is available' },
+          tvAvailabilitySource: { type: 'string', description: 'Service id that decides a series is available' },
+          importedStateLabel: { type: 'string', nullable: true, description: 'Custom label for the IMPORTED state' },
+          importedStateColor: { type: 'string', nullable: true, description: 'Colour token for the IMPORTED state' },
           siteName: { type: 'string', description: 'Custom site name' },
           siteUrl: { type: 'string', description: 'Public URL of the instance for notification links' },
           instanceLanguages: { type: 'array', items: { type: 'string' }, description: 'Instance languages (ISO 639-1 codes)' },
@@ -112,6 +119,11 @@ export async function settingsRoutes(app: FastifyInstance) {
       requestsEnabled?: boolean;
       nsfwBlurEnabled?: boolean;
       calendarEnabled?: boolean;
+      passwordResetEnabled?: boolean;
+      movieAvailabilitySource?: string;
+      tvAvailabilitySource?: string;
+      importedStateLabel?: string | null;
+      importedStateColor?: string | null;
       siteName?: string;
       siteUrl?: string;
       instanceLanguages?: string[];
@@ -131,6 +143,16 @@ export async function settingsRoutes(app: FastifyInstance) {
       requestsEnabled: body.requestsEnabled ?? undefined,
       nsfwBlurEnabled: body.nsfwBlurEnabled ?? undefined,
       calendarEnabled: body.calendarEnabled ?? undefined,
+      passwordResetEnabled: body.passwordResetEnabled ?? undefined,
+      // Validated against the declared capability: an id the connector cannot honour would
+      // silently freeze every title in the in-between state.
+      movieAvailabilitySource: await validAvailabilitySource(body.movieAvailabilitySource, 'movie'),
+      tvAvailabilitySource: await validAvailabilitySource(body.tvAvailabilitySource, 'tv'),
+      importedStateLabel: body.importedStateLabel !== undefined ? (body.importedStateLabel?.trim() || null) : undefined,
+      // Validated against the whitelist so an admin can never inject a raw className.
+      importedStateColor: body.importedStateColor !== undefined
+        ? ((COLOR_TOKENS as readonly string[]).includes(body.importedStateColor ?? '') ? body.importedStateColor : null)
+        : undefined,
       siteName: body.siteName ?? undefined,
       siteUrl: body.siteUrl !== undefined ? (body.siteUrl?.trim() || null) : undefined,
       instanceLanguages: body.instanceLanguages ? JSON.stringify(body.instanceLanguages) : undefined,
@@ -286,4 +308,28 @@ export async function settingsRoutes(app: FastifyInstance) {
     logEvent('info', 'Settings', 'API key revoked');
     return { ok: true };
   });
+  // Drives the source-of-truth pickers. Returns only what each connector declares it can do, so
+  // the UI can never offer a service that would silently never confirm anything.
+  app.get('/availability-sources', async () => ({
+    movie: await availabilitySources('movie'),
+    tv: await availabilitySources('tv'),
+  }));
+}
+
+/** Configured services that declare they can confirm availability for this media type. */
+export async function availabilitySources(mediaType: 'movie' | 'tv') {
+  const configured = await prisma.service.findMany({ where: { enabled: true }, select: { type: true } });
+  const enabled = new Set(configured.map((s) => s.type));
+  return getAllServiceDefinitions()
+    .filter((d) => d.canConfirmAvailability && enabled.has(d.id))
+    // An *arr only speaks for the media type it handles; a media server speaks for both.
+    .filter((d) => !d.handlesMediaTypes || d.handlesMediaTypes.includes(mediaType))
+    .map((d) => ({ id: d.id, label: d.label, category: d.category }));
+}
+
+/** Falls back to undefined (leave unchanged) rather than persisting an id nothing can honour. */
+async function validAvailabilitySource(value: string | undefined, mediaType: 'movie' | 'tv') {
+  if (value === undefined) return undefined;
+  const allowed = await availabilitySources(mediaType);
+  return allowed.some((s) => s.id === value) ? value : undefined;
 }

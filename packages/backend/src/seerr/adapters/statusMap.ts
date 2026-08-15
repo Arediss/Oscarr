@@ -41,6 +41,10 @@ export function mapMediaStatus(category: string | null | undefined): number {
     case 'UPCOMING':    return SEERR_MEDIA_STATUS.PENDING;
     case 'SEARCHING':   return SEERR_MEDIA_STATUS.PENDING;    // monitored/queued, not yet downloading
     case 'PROCESSING':  return SEERR_MEDIA_STATUS.PROCESSING;
+    // Downloaded but not yet visible on the media server. Overseerr has no equivalent, and its
+    // clients treat AVAILABLE as "watch it now" — reporting PROCESSING keeps them honest rather
+    // than sending a user to a title their player cannot find.
+    case 'IMPORTED':    return SEERR_MEDIA_STATUS.PROCESSING;
     case 'AVAILABLE':   return SEERR_MEDIA_STATUS.AVAILABLE;
     case 'BLACKLISTED': return SEERR_MEDIA_STATUS.UNKNOWN;    // no Overseerr 'blocked' state (7 is out of range)
     default:            return SEERR_MEDIA_STATUS.UNKNOWN;    // UNAVAILABLE + unmapped

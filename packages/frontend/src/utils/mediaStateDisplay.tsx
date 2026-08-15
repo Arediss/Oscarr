@@ -5,7 +5,8 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useTranslation } from 'react-i18next';
-import { MEDIA_STATE_DISPLAY, COLOR_TOKEN_CLASSES, type MediaStateCategory, type IconName } from '@oscarr/shared';
+import { MEDIA_STATE_DISPLAY, COLOR_TOKEN_CLASSES, type MediaStateCategory, type IconName, type ColorToken } from '@oscarr/shared';
+import { useFeatures } from '@/context/FeaturesContext';
 
 // keyed by IconName so a missing icon is a compile error, not a silent HelpCircle fallback
 const ICONS: Record<IconName, LucideIcon> = {
@@ -21,12 +22,27 @@ export interface BadgeView {
 
 type T = (key: string) => string;
 
+/** Admin-set label and colour for IMPORTED. Only that state is customisable, and only its
+ *  presentation — never whether it exists or what it means. */
+export interface StateOverride {
+  importedStateLabel?: string | null;
+  importedStateColor?: string | null;
+}
+
 /** Visual presentation for a media category (source: MEDIA_STATE_DISPLAY). */
-export function mediaStateDisplay(category: MediaStateCategory, t: T): BadgeView {
+export function mediaStateDisplay(category: MediaStateCategory, t: T, override?: StateOverride): BadgeView {
   // Guards an unknown value: statusCategory is cast from a DB string upstream.
   const d = MEDIA_STATE_DISPLAY[category] ?? MEDIA_STATE_DISPLAY.UNAVAILABLE;
-  // ICONS is exhaustive over IconName, so d.iconName always resolves — no runtime fallback needed.
-  return { label: t(d.labelKey), Icon: ICONS[d.iconName], badgeClass: COLOR_TOKEN_CLASSES[d.colorToken] };
+  const custom = category === 'IMPORTED' ? override : undefined;
+  const colorToken = (custom?.importedStateColor ?? d.colorToken) as ColorToken;
+  return {
+    label: custom?.importedStateLabel?.trim() || t(d.labelKey),
+    // ICONS is exhaustive over IconName, so d.iconName always resolves — no runtime fallback needed.
+    Icon: ICONS[d.iconName],
+    // Falls back when the stored token is not in the whitelist, so a bad value can never emit a
+    // className the map does not define.
+    badgeClass: COLOR_TOKEN_CLASSES[colorToken] ?? COLOR_TOKEN_CLASSES[d.colorToken],
+  };
 }
 
 interface AvailabilityLike {
@@ -40,6 +56,7 @@ export function resolveDisplayState(
   availability: AvailabilityLike | null | undefined,
   t: T,
   mediaType?: string,
+  override?: StateOverride,
 ): BadgeView | null {
   if (!availability) return null;
   const { statusCategory: cat, requestStatus } = availability;
@@ -51,7 +68,7 @@ export function resolveDisplayState(
     return null;
   }
   if (cat === 'PROCESSING' && mediaType === 'tv') return { label: t('status.partial'), Icon: Loader2, badgeClass: COLOR_TOKEN_CLASSES.accent };
-  return mediaStateDisplay(cat, t);
+  return mediaStateDisplay(cat, t, override);
 }
 
 /** Single badge used across all media surfaces. */
@@ -61,7 +78,8 @@ export function MediaStateBadge({ availability, mediaType, className }: {
   className?: string;
 }) {
   const { t } = useTranslation();
-  const view = resolveDisplayState(availability, t, mediaType);
+  const { features } = useFeatures();
+  const view = resolveDisplayState(availability, t, mediaType, features);
   if (!view) return null;
   const { label, Icon, badgeClass } = view;
   return (

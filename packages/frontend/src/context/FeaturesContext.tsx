@@ -14,6 +14,9 @@ export interface CustomLink {
 interface Features {
   requestsEnabled: boolean;
   calendarEnabled: boolean;
+  passwordResetEnabled?: boolean;
+  importedStateLabel?: string | null;
+  importedStateColor?: string | null;
   siteName: string;
   instanceLanguage?: string;
   customLinks?: CustomLink[];

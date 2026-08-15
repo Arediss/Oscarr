@@ -67,7 +67,8 @@ export async function mediaRoutes(app: FastifyInstance) {
     return {
       total: [...byStatus.values()].reduce((a, b) => a + b, 0),
       pending:    (byStatus.get('UPCOMING') ?? 0) + (byStatus.get('SEARCHING') ?? 0),
-      processing: byStatus.get('PROCESSING') ?? 0,
+      // IMPORTED joins PROCESSING here to stay in lockstep with mapMediaStatus.
+      processing: (byStatus.get('PROCESSING') ?? 0) + (byStatus.get('IMPORTED') ?? 0),
       available:  byStatus.get('AVAILABLE') ?? 0,
       deleted:    byStatus.get('UNAVAILABLE') ?? 0,
     };
@@ -80,7 +81,7 @@ export async function mediaRoutes(app: FastifyInstance) {
 function mapFilterToOscarrStatus(filter: string | undefined): string[] | null {
   switch (filter) {
     case 'available':           return ['AVAILABLE'];
-    case 'processing':          return ['PROCESSING'];
+    case 'processing':          return ['PROCESSING', 'IMPORTED'];
     case 'pending':             return ['UPCOMING', 'SEARCHING'];
     case 'deleted':             return ['UNAVAILABLE'];
     default:                    return null;

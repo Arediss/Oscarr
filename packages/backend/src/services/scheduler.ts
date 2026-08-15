@@ -10,6 +10,8 @@ import { runAutoBackup } from './backupService.js';
 import { clearExpiredCache } from '../utils/cache.js';
 import type { PluginEngine } from '../plugins/engine.js';
 import { logEvent } from '../utils/logEvent.js';
+import { purgeExpiredResets } from './passwordReset.js';
+import { syncLibraryConfirmations } from './mediaServerLibrary.js';
 
 /** Strip control characters (newlines, tabs, etc.) to prevent log injection */
 function sanitize(input: string): string {
@@ -20,7 +22,13 @@ function sanitize(input: string): string {
 const JOB_HANDLERS: Record<string, () => Promise<unknown>> = {
   new_media_sync: async () => runNewMediaSync(),
   full_sync: async () => runFullSync(),
-  cleanup_orphans: async () => cleanupOrphanedRequests(),
+  library_scan: async () => syncLibraryConfirmations(),
+  cleanup_orphans: async () => {
+    const orphans = await cleanupOrphanedRequests();
+    // Spent and expired reset tokens have no further use; sweeping them here avoids a second job.
+    await purgeExpiredResets();
+    return orphans;
+  },
   retry_failed_requests: async () => retryFailedRequests(),
   genre_backdrops_refresh: async () => getGenreBackdrops(),
   keyword_sync: async () => syncMissingKeywords(),
@@ -32,6 +40,9 @@ const JOB_HANDLERS: Record<string, () => Promise<unknown>> = {
 const DEFAULT_JOBS = [
   { key: 'new_media_sync',        label: 'admin.jobs.labels.new_media_sync',        cronExpression: '*/15 * * * *', enabled: true },
   { key: 'full_sync',              label: 'admin.jobs.labels.full_sync',              cronExpression: '0 6 * * *',    enabled: true },
+  // Every 30 min: often enough that the IMPORTED window stays short, rare enough not to hammer
+  // a Plex server with a full library listing.
+  { key: 'library_scan',           label: 'admin.jobs.labels.library_scan',           cronExpression: '*/30 * * * *', enabled: true },
   { key: 'cleanup_orphans',        label: 'admin.jobs.labels.cleanup_orphans',        cronExpression: '0 3 * * *',    enabled: true },
   { key: 'retry_failed_requests',  label: 'admin.jobs.labels.retry_failed_requests',  cronExpression: '*/30 * * * *', enabled: true },
   { key: 'genre_backdrops_refresh', label: 'admin.jobs.labels.genre_backdrops_refresh', cronExpression: '0 4 * * *',   enabled: true },

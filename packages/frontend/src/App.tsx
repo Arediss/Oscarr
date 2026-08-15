@@ -8,6 +8,8 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
+import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
+import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import PlexReturnPage from '@/pages/PlexReturnPage';
 import InstallPage from '@/pages/InstallPage';
 import SearchPage from '@/pages/SearchPage';
@@ -91,6 +93,9 @@ export default function App() {
     <SkipLink />
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      {/* Public by necessity: the visitor has lost the only credential they had. */}
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/plex-return" element={<PlexReturnPage />} />
       <Route
         path="/admin/*"

@@ -18,6 +18,7 @@ export type TestErrorCode =
   | 'HTTP_FORBIDDEN'
   | 'HTTP_NOT_FOUND'
   | 'HTTP_SERVER_ERROR'
+  | 'WRONG_APP'
   | 'AUTH_FAILED'
   | 'AUTH_BANNED'
   | 'AUTH_NO_SESSION'
@@ -33,6 +34,17 @@ export function classifyTestError(err: unknown): TestErrorInfo {
   const host = ax?.config?.url ? safeHost(ax.config.url) : undefined;
   const message = (err as Error)?.message ?? '';
 
+  // Every *arr answers /system/status on the same path shape with a valid key, so a URL pointing
+  // at the wrong one used to test green. The provider reports what it actually found.
+  if (message.startsWith('WRONG_APP:')) {
+    const [, found, expected] = message.split(':');
+    return {
+      code: 'WRONG_APP',
+      message: found
+        ? `This looks like a ${found} instance, not ${expected} — check the URL.`
+        : `This does not look like a ${expected} instance — check the URL.`,
+    };
+  }
   if (message === 'AUTH_FAILED') {
     return { code: 'AUTH_FAILED', message: 'Authentication failed — bad username or password' };
   }

@@ -28,7 +28,7 @@ export const prowlarrProvider: Provider = {
       // Guard against the URL pointing at a different *arr (Radarr/Sonarr expose the same path
       // shape and would 200 with a matching key) — refuse anything that isn't Prowlarr.
       if (data.appName !== 'Prowlarr') {
-        throw new Error('AUTH_FAILED');
+        throw new Error(`WRONG_APP:${data.appName ?? ''}:Prowlarr`);
       }
       return { ok: true, version: data.version };
     },

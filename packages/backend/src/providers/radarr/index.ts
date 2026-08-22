@@ -17,10 +17,15 @@ export const radarrProvider: Provider = {
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },
     ],
     async test(config) {
-      const { data } = await axios.get(`${config.url}/api/v3/system/status`, {
-        params: { apikey: config.apiKey },
-        timeout: 5000,
-      });
+      const { data } = await axios.get<{ appName?: string; version?: string }>(
+        `${config.url}/api/v3/system/status`,
+        { params: { apikey: config.apiKey }, timeout: 5000 },
+      );
+      // Radarr and Sonarr expose the same endpoint and both answer 200 with a valid key, so
+      // without this a URL swapped between the two tested green and media routed to the wrong app.
+      if (data.appName !== 'Radarr') {
+        throw new Error(`WRONG_APP:${data.appName ?? ''}:Radarr`);
+      }
       return { ok: true, version: data.version };
     },
     createClient(config) {

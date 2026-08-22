@@ -126,6 +126,18 @@ export default function ActionButton({
         </button>
       );
 
+    case 'can_request_seasons':
+      return (
+        <button
+          onClick={onRequest}
+          disabled={requesting}
+          className="btn-primary flex items-center gap-2"
+        >
+          {requesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+          {t('media.request_more_seasons')}
+        </button>
+      );
+
     case 'can_request':
       return (
         <button

@@ -1,5 +1,6 @@
 export type ButtonState =
   | 'available'
+  | 'can_request_seasons'
   | 'can_request_quality'
   | 'downloading'
   | 'upcoming'
@@ -19,6 +20,8 @@ export interface ButtonStateInputs {
   isSearching: boolean;
   userHasRequest: boolean;
   canRequestNewQuality: boolean;
+  /** Series only: at least one season the library does not hold in full. */
+  hasRequestableSeasons: boolean;
   blacklisted: boolean;
   searchMissingState: 'idle' | 'searching' | 'error';
 }
@@ -26,11 +29,14 @@ export interface ButtonStateInputs {
 export function resolveButtonState(inputs: ButtonStateInputs): ButtonState {
   const {
     isAvailable, isPartiallyAvailable, isDownloading, isUpcoming,
-    isSearching, userHasRequest, canRequestNewQuality, blacklisted,
+    isSearching, userHasRequest, canRequestNewQuality, hasRequestableSeasons, blacklisted,
     searchMissingState,
   } = inputs;
 
-  // Priority order matches the original ternary chain exactly
+  // Checked before `available`: Sonarr reports percentOfEpisodes against *monitored* episodes, so
+  // a series with one complete season and two unmonitored ones comes back 100% and used to end
+  // here with no way to ask for the rest.
+  if (isAvailable && hasRequestableSeasons && !userHasRequest) return 'can_request_seasons';
   if (isAvailable && !canRequestNewQuality) return 'available';
   if (isAvailable && canRequestNewQuality) return 'can_request_quality';
   // Note: canRequestNewQuality is intentionally checked AFTER isDownloading/isUpcoming/isSearching

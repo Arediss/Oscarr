@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
   },
   "dependencies": {
     "@dicebear/avataaars": "^9.4.2",
@@ -39,6 +40,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^6.0.2",
     "vite": "^8.0.16",
-    "vite-plugin-pwa": "^1.2.0"
+    "vite-plugin-pwa": "^1.2.0",
+    "vitest": "^4.1.11"
   }
 }

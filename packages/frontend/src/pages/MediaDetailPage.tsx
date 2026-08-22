@@ -43,6 +43,7 @@ import { NsfwRevealModal } from '@/components/media/NsfwRevealModal';
 import { MediaInfoColumn } from '@/components/media/MediaInfoColumn';
 import { MediaBackdrop, MediaPoster } from '@/components/media/MediaHeroArt';
 import { mediaSummary } from '@/utils/mediaSummary';
+import { hasRequestableSeasons } from '@/utils/seasonFill';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -107,6 +108,8 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     activeQualityOptionIds,
     selectedQuality,
     searchMissingState,
+    hasRequestableSeasons: type === 'tv' && !!media?.seasons
+      && hasRequestableSeasons(media.seasons, sonarrSeasons),
     currentUserId: user?.id,
   });
 

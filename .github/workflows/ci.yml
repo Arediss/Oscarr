@@ -48,6 +48,10 @@ jobs:
       - name: Backend tests
         run: npm run test --workspace=packages/backend
 
+      # Pure logic only (no jsdom) — the rules that decide what a user may do next.
+      - name: Frontend tests
+        run: npm run test --workspace=packages/frontend
+
   react-doctor:
     name: React Doctor
     runs-on: ubuntu-latest

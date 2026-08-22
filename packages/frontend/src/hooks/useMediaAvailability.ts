@@ -21,6 +21,8 @@ interface Params {
   activeQualityOptionIds: number[];
   selectedQuality: number | null;
   searchMissingState: ButtonStateInputs['searchMissingState'];
+  /** Series only: at least one season the library does not hold in full. */
+  hasRequestableSeasons: boolean;
   currentUserId: number | undefined;
 }
 
@@ -41,7 +43,7 @@ export interface MediaAvailability {
  */
 export function useMediaAvailability({
   dbMedia, type, inLibrary, isDownloading, blacklisted,
-  activeQualityOptionIds, selectedQuality, searchMissingState, currentUserId,
+  activeQualityOptionIds, selectedQuality, searchMissingState, hasRequestableSeasons, currentUserId,
 }: Params): MediaAvailability {
   const category = dbMedia?.statusCategory;
   const isAvailable = category === 'AVAILABLE' || inLibrary;
@@ -70,6 +72,7 @@ export function useMediaAvailability({
       isSearching: category === 'SEARCHING',
       userHasRequest,
       canRequestNewQuality: selectedQuality != null && !takenQualityIds.has(selectedQuality),
+      hasRequestableSeasons,
       blacklisted,
       searchMissingState,
     }),

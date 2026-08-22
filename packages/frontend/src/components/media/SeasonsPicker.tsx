@@ -1,36 +1,16 @@
 import { clsx } from 'clsx';
 import { useTranslation } from 'react-i18next';
-
-interface TmdbSeason {
-  season_number: number;
-  episode_count: number;
-}
-
-interface SonarrSeason {
-  seasonNumber: number;
-  episodeFileCount: number;
-  totalEpisodeCount: number;
-}
+import { fillOf, type Fill, type TmdbSeasonLike as TmdbSeason, type SonarrSeasonLike as SonarrSeason } from '@/utils/seasonFill';
 
 interface Props {
   seasons: TmdbSeason[];
   sonarrSeasons: SonarrSeason[];
   selectedSeasons: number[];
   setSelectedSeasons: (updater: (prev: number[]) => number[]) => void;
-  /** Selection is pointless once the whole series is here or a request is already in flight. */
+  /** False only while the user's own request is in flight. Whole-series availability is
+   *  deliberately not considered here — individual seasons decide for themselves. */
   canSelect: boolean;
   onOpenDetails: () => void;
-}
-
-/** How complete a season is, from Sonarr's own file counts. `unknown` means Sonarr does not track
- *  this series yet — the season is requestable and shows TMDB's episode count instead. */
-type Fill = 'full' | 'partial' | 'empty' | 'unknown';
-
-function fillOf(season: TmdbSeason, sonarr: SonarrSeason | undefined): Fill {
-  if (!sonarr) return 'unknown';
-  const total = sonarr.totalEpisodeCount || season.episode_count;
-  if (total > 0 && sonarr.episodeFileCount >= total) return 'full';
-  return sonarr.episodeFileCount > 0 ? 'partial' : 'empty';
 }
 
 const FILL_CLASS: Record<Fill, string> = {

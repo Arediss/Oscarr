@@ -13,6 +13,7 @@ import MigrateSourceStep, { type DerivedConfig, type SeerrCreds } from './instal
 import MigrateApplyStep from './install/steps/MigrateApplyStep';
 import SyncStep from './install/steps/SyncStep';
 import DoneStep from './install/steps/DoneStep';
+import { useBackend } from '@/context/BackendGate';
 
 /**
  * Install wizard — 7-step state machine with a Fresh / Migrate fork.
@@ -32,6 +33,7 @@ const MIGRATE_LABELS_KEYS = ['secret', 'admin', 'path', 'source', 'apply', 'done
 export default function InstallPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { markInstalled } = useBackend();
   const [checking, setChecking] = useState(true);
   const [step, setStep] = useState(0);
   const [secretValid, setSecretValid] = useState(false);
@@ -140,7 +142,7 @@ export default function InstallPage() {
       )}
 
       {step === 6 && (
-        <DoneStep onGo={() => navigate('/', { replace: true })} />
+        <DoneStep onGo={() => { markInstalled(); navigate('/', { replace: true }); }} />
       )}
     </WizardShell>
   );

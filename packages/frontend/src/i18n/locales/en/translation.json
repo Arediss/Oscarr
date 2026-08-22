@@ -1168,5 +1168,7 @@
   "admin.plugins.installed_disabled": "{{name}} v{{version}} installed — it stays off until you review what it is allowed to do.",
   "admin.plugins.review_and_enable": "Review & enable",
   "media.open_in_radarr": "Open in Radarr Manager",
-  "media.open_in_sonarr": "Open in Sonarr Manager"
+  "media.open_in_sonarr": "Open in Sonarr Manager",
+  "admin.plugins.update.now_explained": "{{capability}} — reason now documented",
+  "admin.plugins.update.no_longer_explained": "{{capability}} — reason no longer documented"
 }

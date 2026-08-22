@@ -1168,5 +1168,7 @@
   "admin.plugins.installed_disabled": "{{name}} v{{version}} installé — il reste désactivé tant que tu n'as pas vérifié ce qu'il a le droit de faire.",
   "admin.plugins.review_and_enable": "Vérifier et activer",
   "media.open_in_radarr": "Ouvrir dans Radarr Manager",
-  "media.open_in_sonarr": "Ouvrir dans Sonarr Manager"
+  "media.open_in_sonarr": "Ouvrir dans Sonarr Manager",
+  "admin.plugins.update.now_explained": "{{capability}} — justification désormais documentée",
+  "admin.plugins.update.no_longer_explained": "{{capability}} — justification retirée"
 }

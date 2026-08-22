@@ -6,6 +6,7 @@ import { extractApiError } from '@/utils/toast';
 import { useModal } from '@/hooks/useModal';
 import type { PluginInfo } from '@/plugins/types';
 import type { PluginUpdatePreflight } from '@oscarr/shared';
+import { addedPermissionLines, removedPermissionLines } from '@/utils/permissionDiff';
 
 interface Props {
   plugin: PluginInfo | null;
@@ -132,10 +133,13 @@ export function PluginUpdateModal({ plugin, open, busy, applyError, onCancel, on
                   <div className="text-[11px] uppercase tracking-wider text-ndp-text-dim mb-2">
                     {t('admin.plugins.update.new_permissions')}
                   </div>
-                  <PermList items={preflight.permissionDiff.services.added.map((s) => `service:${s}`)} kind="added" />
-                  <PermList items={preflight.permissionDiff.capabilities.added} kind="added" />
-                  {Object.entries(preflight.permissionDiff.capabilityReasons.added).map(([cap, reason]) => (
-                    <PermLine key={cap} kind="added" label={cap} hint={reason} />
+                  {addedPermissionLines(preflight.permissionDiff).map((line) => (
+                    <PermLine
+                      key={line.key}
+                      kind="added"
+                      label={line.granted ? line.label : t('admin.plugins.update.now_explained', { capability: line.label })}
+                      hint={line.hint}
+                    />
                   ))}
                 </div>
               )}
@@ -147,10 +151,12 @@ export function PluginUpdateModal({ plugin, open, busy, applyError, onCancel, on
                   <div className="text-[11px] uppercase tracking-wider text-ndp-text-dim mb-2">
                     {t('admin.plugins.update.removed_permissions')}
                   </div>
-                  <PermList items={preflight.permissionDiff.services.removed.map((s) => `service:${s}`)} kind="removed" />
-                  <PermList items={preflight.permissionDiff.capabilities.removed} kind="removed" />
-                  {preflight.permissionDiff.capabilityReasons.removed.map((cap) => (
-                    <PermLine key={cap} kind="removed" label={cap} />
+                  {removedPermissionLines(preflight.permissionDiff).map((line) => (
+                    <PermLine
+                      key={line.key}
+                      kind="removed"
+                      label={line.granted ? line.label : t('admin.plugins.update.no_longer_explained', { capability: line.label })}
+                    />
                   ))}
                 </div>
               )}
@@ -209,11 +215,6 @@ export function PluginUpdateModal({ plugin, open, busy, applyError, onCancel, on
       </div>
     </div>
   );
-}
-
-function PermList({ items, kind }: Readonly<{ items: string[]; kind: 'added' | 'removed' }>) {
-  if (items.length === 0) return null;
-  return <>{items.map((label) => <PermLine key={label} label={label} kind={kind} />)}</>;
 }
 
 function PermLine({ label, kind, hint }: Readonly<{ label: string; kind: 'added' | 'removed'; hint?: string }>) {

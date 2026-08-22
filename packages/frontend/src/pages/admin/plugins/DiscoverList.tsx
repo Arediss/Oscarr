@@ -79,8 +79,16 @@ export function DiscoverList({
             installMessage.kind === 'error' && 'border-ndp-error/30 text-ndp-error',
           )}
         >
-          {installMessage.kind === 'success' ? <Check className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
-          <span>{installMessage.text}</span>
+          {installMessage.kind === 'success' ? <Check className="w-4 h-4 flex-shrink-0" /> : <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+          <span className="flex-1">{installMessage.text}</span>
+          {installMessage.showManage && (
+            <button
+              onClick={onManage}
+              className="flex-shrink-0 rounded-lg border border-current/30 px-2.5 py-1 text-xs font-medium hover:bg-current/10 transition-colors"
+            >
+              {t('admin.plugins.review_and_enable')}
+            </button>
+          )}
         </div>
       )}
 

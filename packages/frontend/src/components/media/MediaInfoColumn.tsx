@@ -7,6 +7,9 @@ import { QualityPicker } from '@/components/media/QualityPicker';
 import { LanguageTags } from '@/components/media/LanguageTags';
 import { SeasonsPicker } from '@/components/media/SeasonsPicker';
 import type { ButtonState } from '@/utils/resolveButtonState';
+import { Link } from 'react-router-dom';
+import { ExternalLink } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 interface Props {
   media: Record<string, any>;
@@ -51,6 +54,13 @@ export function MediaInfoColumn({
   sonarrSeasons, selectedSeasons, setSelectedSeasons, onOpenEpisodes,
 }: Readonly<Props>) {
   const { t } = useTranslation();
+  const { isAdmin } = useAuth();
+
+  // Deep link into the plugin that manages this title. Only rendered when the media is actually
+  // tracked by an *arr and the viewer can reach the admin area — a dead link is worse than none.
+  const arrPlugin = type === 'movie'
+    ? (dbMedia?.radarrId ? { id: 'radarr', param: 'movieId', value: dbMedia.radarrId, label: t('media.open_in_radarr') } : null)
+    : (dbMedia?.sonarrId ? { id: 'sonarr', param: 'seriesId', value: dbMedia.sonarrId, label: t('media.open_in_sonarr') } : null);
 
   return (
       <div className="flex-1 min-w-0">
@@ -140,7 +150,7 @@ export function MediaInfoColumn({
             sonarrSeasons={sonarrSeasons}
             selectedSeasons={selectedSeasons}
             setSelectedSeasons={setSelectedSeasons}
-            canSelect={!isAvailable && !userHasRequest}
+            canSelect={!userHasRequest}
             onOpenDetails={onOpenEpisodes}
           />
         )}

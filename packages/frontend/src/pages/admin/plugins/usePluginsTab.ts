@@ -10,6 +10,9 @@ import type { RegistryPlugin, SubTab } from './constants';
 export interface InstallMessage {
   kind: 'success' | 'error';
   text: string;
+  /** Offers the jump to Installed. Set after an install, where the plugin is deliberately left
+   *  off until the admin has reviewed its permissions — testers read that silence as a bug. */
+  showManage?: boolean;
 }
 
 /**
@@ -87,7 +90,8 @@ export function usePluginsTab() {
       await fetchPlugins();
       invalidatePluginUICache();
       refreshPluginUpdatesCount();
-      setTimeout(() => setInstallMessage(null), 6000);
+      // Longer than the old 6s: this one asks the admin to go and do something.
+      setTimeout(() => setInstallMessage(null), 12000);
       return true;
     } catch (err) {
       setInstallMessage({ kind: 'error', text: extractApiError(err, String((err as Error).message)) });
@@ -116,14 +120,19 @@ export function usePluginsTab() {
       // Pass the repo slug — backend resolves to a Release asset URL via the GitHub API.
       // Keeps api.github.com out of the frontend's connect-src CSP.
       const { data } = await api.post('/plugins/install', { repository: entry.repository });
-      setInstallMessage({ kind: 'success', text: `Installed ${data.plugin.name} v${data.plugin.version} — toggle it on in Installed whenever you're ready` });
+      setInstallMessage({
+        kind: 'success',
+        text: t('admin.plugins.installed_disabled', { name: data.plugin.name, version: data.plugin.version }),
+        showManage: true,
+      });
       // Fire-and-forget so the caller can unmount the consent modal immediately; the refetch
       // populates the Installed tab in the background before the admin flips to it.
       fetchPlugins();
       refreshPluginUpdatesCount();
       // Only the success banner self-dismisses. A failure stays until the admin dismisses the
       // dialog — install errors are long and actionable, and 6s is not enough to read one.
-      setTimeout(() => setInstallMessage(null), 6000);
+      // Longer than the old 6s: this one asks the admin to go and do something.
+      setTimeout(() => setInstallMessage(null), 12000);
       return true;
     } catch (err) {
       setInstallMessage({ kind: 'error', text: extractApiError(err, String((err as Error).message)) });
@@ -142,7 +151,8 @@ export function usePluginsTab() {
       refreshPluginUpdatesCount();
     } catch (err) {
       setInstallMessage({ kind: 'error', text: `Uninstall failed: ${extractApiError(err, String((err as Error).message))}` });
-      setTimeout(() => setInstallMessage(null), 6000);
+      // Longer than the old 6s: this one asks the admin to go and do something.
+      setTimeout(() => setInstallMessage(null), 12000);
     } finally {
       setUninstalling(null);
     }

@@ -1163,5 +1163,10 @@
   "admin.features.availability_plex_only": "Seul Plex sait confirmer pour l'instant. Jellyfin et Emby ne sont pas encore pris en charge : sur ces installations, ces cases n'ont aucun effet.",
   "admin.features.source_movies": "Films",
   "admin.features.source_tv": "Séries",
-  "admin.features.source_arr_suffix": " (dès le téléchargement)"
+  "admin.features.source_arr_suffix": " (dès le téléchargement)",
+  "media.request_more_seasons": "Demander d’autres saisons",
+  "admin.plugins.installed_disabled": "{{name}} v{{version}} installé — il reste désactivé tant que tu n'as pas vérifié ce qu'il a le droit de faire.",
+  "admin.plugins.review_and_enable": "Vérifier et activer",
+  "media.open_in_radarr": "Ouvrir dans Radarr Manager",
+  "media.open_in_sonarr": "Ouvrir dans Sonarr Manager"
 }

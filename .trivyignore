@@ -1,0 +1,14 @@
+# CVE-2026-40345 — deepmerge-ts 7.1.5, stack exhaustion when merging recursive object graphs.
+#
+# Not reachable here. deepmerge-ts arrives only as prisma -> @prisma/config -> deepmerge-ts, where
+# it merges Prisma configuration files. That input is the repository's own config, never anything
+# from the network or from a user. This repository has no prisma.config.ts at all, so the code
+# path is not exercised in the first place.
+#
+# It cannot be fixed in place: the advisory is patched in deepmerge-ts 8.0.0, @prisma/config pins
+# 7.1.5 exactly, and npm overrides do not displace that pin. Prisma 6.x ends at 6.19.3, so the real
+# fix is the Prisma 7 upgrade already tracked in issue #196 — a database-layer major that deserves
+# its own testing rather than being rushed through to unblock a build.
+#
+# Revisit with the Prisma 7 upgrade. Expires so this cannot quietly become permanent.
+CVE-2026-40345 exp:2026-11-30

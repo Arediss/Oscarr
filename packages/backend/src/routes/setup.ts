@@ -8,6 +8,7 @@ import { parseServiceConfig, serializeServiceConfig } from '../utils/services.js
 import { isInstalled, markInstalled } from '../utils/install.js';
 import { classifyTestError } from '../utils/serviceTestError.js';
 import { assertPublicUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
+import { isSensitiveKey } from '../utils/secrets.js';
 
 // Strength is checked once at boot by assertSetupSecretOrExit (utils/envSecret.ts), which refuses
 // to start a not-yet-installed instance on a weak value. The old warning here fired before that
@@ -150,6 +151,20 @@ export async function setupRoutes(app: FastifyInstance) {
     }
   });
 
+  /** Services already saved, so a resumed wizard shows what is configured instead of a blank
+   *  form. Secret fields are stripped — the wizard only needs to know a service exists. */
+  app.get('/services', async () => {
+    const services = await prisma.service.findMany({ orderBy: { id: 'asc' } });
+    return services.map((s) => {
+      const config = parseServiceConfig(s.config);
+      const safe: Record<string, string> = {};
+      for (const [k, v] of Object.entries(config)) {
+        safe[k] = isSensitiveKey(k) ? '' : v;
+      }
+      return { id: s.id, name: s.name, type: s.type, enabled: s.enabled, config: safe };
+    });
+  });
+
   // Add any service during setup
   app.post('/service', {
     schema: {
@@ -169,15 +184,20 @@ export async function setupRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'All fields are required' });
     }
 
-    const service = await prisma.service.create({
-      data: {
-        name,
-        type,
-        config: serializeServiceConfig(config),
-        isDefault: true,
-        enabled: true,
-      },
-    });
+    // Idempotent on (type, url). The wizard keeps its services in React state only, so a page
+    // refresh restarts it empty while the rows it already saved are still in the database —
+    // creating unconditionally then added every service a second time.
+    const existing = await findServiceByTypeAndUrl(type, config.url);
+    const data = {
+      name,
+      type,
+      config: serializeServiceConfig(config),
+      isDefault: true,
+      enabled: true,
+    };
+    const service = existing
+      ? await prisma.service.update({ where: { id: existing.id }, data })
+      : await prisma.service.create({ data });
 
     // If Plex with machineId, store in AppSettings
     if (type === 'plex' && config.machineId) {
@@ -211,4 +231,21 @@ export async function setupRoutes(app: FastifyInstance) {
       return reply.status(500).send({ error: 'Sync failed', details: String(err) });
     }
   });
+}
+
+/** Matches on the service's URL when it has one, falling back to type alone for connectors that
+ *  are single-instance by nature. Configs are encrypted, so the comparison happens after decrypt
+ *  rather than in SQL. */
+async function findServiceByTypeAndUrl(type: string, url: string | undefined) {
+  const candidates = await prisma.service.findMany({ where: { type } });
+  if (candidates.length === 0) return null;
+  if (!url) return candidates[0];
+  const target = url.replace(/\/+$/, '');
+  return candidates.find((c) => {
+    try {
+      return (parseServiceConfig(c.config).url ?? '').replace(/\/+$/, '') === target;
+    } catch {
+      return false;
+    }
+  }) ?? null;
 }

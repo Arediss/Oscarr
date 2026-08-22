@@ -49,6 +49,25 @@ export default function ServicesStep({ onNext, onBack }: Readonly<Props>) {
   const [error, setError] = useState('');
   const flowRef = useRef<PlexPinFlowHandle | null>(null);
 
+  // A refreshed wizard used to restart from an empty form while the services it had already saved
+  // were still in the database, so configuring them again produced duplicates. Reload what exists.
+  useEffect(() => {
+    void api.get<{ type: string; config: Record<string, string> }[]>('/setup/services')
+      .then(({ data }) => {
+        if (data.length === 0) return;
+        setServices((prev) => {
+          const next = { ...prev };
+          for (const svc of data) {
+            // Never clobber something the user is mid-way through typing in this session.
+            if (next[svc.type]) continue;
+            next[svc.type] = { type: svc.type, config: svc.config, testStatus: 'idle', saved: true };
+          }
+          return next;
+        });
+      })
+      .catch(() => { /* fresh install, or the endpoint is unreachable — start empty */ });
+  }, []);
+
   const closeModal = () => {
     setServices((prev) => {
       if (!editingType) return prev;

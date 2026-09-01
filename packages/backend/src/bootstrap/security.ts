@@ -6,6 +6,7 @@ import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import { rbacPlugin } from '../middleware/rbac.js';
 import { logEvent } from '../utils/logEvent.js';
+import { maintenanceReason } from '../utils/maintenance.js';
 
 /** Security layer: headers, CORS, cookies, JWT, rate-limit, CSRF gate, RBAC. */
 export async function registerSecurity(app: FastifyInstance) {
@@ -53,6 +54,15 @@ export async function registerSecurity(app: FastifyInstance) {
     cookie: { cookieName: 'token', signed: false },
   });
   await app.register(rateLimit, { global: false });
+
+  // Maintenance latch — held while a restore swaps the database file. Answering 503 here beats
+  // letting handlers hit a disconnected Prisma client mid-swap.
+  app.addHook('onRequest', async (request, reply) => {
+    const why = maintenanceReason();
+    if (!why) return;
+    if (!request.url.startsWith('/api/')) return;
+    return reply.status(503).header('Retry-After', '15').send({ error: 'MAINTENANCE', reason: why });
+  });
 
   // CSRF gate — /api/admin/* must carry X-Requested-With: oscarr. Custom headers can't be
   // set by a forged cross-origin request.

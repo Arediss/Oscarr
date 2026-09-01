@@ -14,8 +14,8 @@ import {
   safeBackupPath,
   hmacOfBuffer,
   safeEqualHex,
-  applyDbBuffer,
 } from '../../services/backupService.js';
+import { restoreDatabase } from '../../services/restoreService.js';
 
 const APP_VERSION = getBackupAppVersion();
 
@@ -131,6 +131,7 @@ export async function backupRoutes(app: FastifyInstance) {
       db?: string;
       manifest?: { version: string; integrity?: string };
       password?: string;
+      plugins?: { path?: string; data?: string }[];
     };
     if (!body?.db || !body?.manifest) return reply.status(400).send({ error: 'Database and manifest required' });
     if (!body?.password || typeof body.password !== 'string') {
@@ -170,8 +171,24 @@ export async function backupRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'BACKUP_UNSIGNED' });
     }
 
-    const result = applyDbBuffer(dbBuffer);
+    // Plugin payload is optional — an archive from before plugin data was captured, or an admin
+    // panel that didn't send it, still restores the core database. Entries with a path that
+    // escapes the plugins directory are dropped by the restore itself and reported back.
+    const pluginEntries = Array.isArray(body.plugins)
+      ? body.plugins.flatMap((entry) => (typeof entry?.path === 'string' && typeof entry?.data === 'string'
+        ? [{ path: entry.path, data: entry.data }]
+        : []))
+      : [];
+
+    const result = await restoreDatabase(dbBuffer, pluginEntries);
     if (!result.ok) {
+      // Nothing live was touched — the other restore still holds the latch. 409, not 500.
+      if (result.error === 'RESTORE_IN_PROGRESS') {
+        return reply.status(409).send({
+          error: 'RESTORE_IN_PROGRESS',
+          message: 'Another restore is already running. Wait for it to finish before starting a new one.',
+        });
+      }
       if (result.rollbackFailed) {
         logEvent('error', 'Backup', `CRITICAL: restore + rollback both failed. safetyPath=${result.safetyPath} details=${result.error}`);
         return reply.status(500).send({
@@ -185,8 +202,25 @@ export async function backupRoutes(app: FastifyInstance) {
       return reply.status(500).send({ error: 'Failed to write database. Original restored.', details: result.error });
     }
 
-    logEvent('info', 'Backup', `Database restored from v${version} backup by user ${actor.id}. Restart required.`);
-    return { ok: true, message: 'Database restored. Restart required.', needsRestart: true };
+    if (result.pluginFilesRejected?.length) {
+      logEvent('warn', 'Backup', `Restore dropped ${result.pluginFilesRejected.length} plugin file(s) with an unsafe path: ${result.pluginFilesRejected.slice(0, 5).join(', ')}`);
+    }
+    const pluginNote = result.pluginFilesRestored ? ` ${result.pluginFilesRestored} plugin file(s) restored.` : '';
+    logEvent('info', 'Backup', `Database restored from v${version} backup by user ${actor.id}.${pluginNote}`);
+    // The database side reconnects on its own, so a plain restore needs no restart. Plugin data is
+    // different: the engine holds each plugin's enabled flag, settings cache, registered routers
+    // and job handlers in memory, and nothing reloads them from the database we just swapped in.
+    // Restoring a backup taken while a plugin was off would otherwise leave its routes served and
+    // its jobs running against pre-restore settings, with the admin told all was well.
+    const pluginFilesRestored = result.pluginFilesRestored ?? 0;
+    return {
+      ok: true,
+      message: pluginFilesRestored > 0
+        ? 'Database and plugin data restored. Restart Oscarr so plugins reload their restored state.'
+        : 'Database restored.',
+      needsRestart: pluginFilesRestored > 0,
+      pluginFilesRestored,
+    };
   });
 }
 

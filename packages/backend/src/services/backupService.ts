@@ -1,9 +1,9 @@
-import { readFileSync, writeFileSync, existsSync, copyFileSync, mkdirSync, readdirSync, unlinkSync, statSync, createWriteStream } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, statSync, createWriteStream } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { ZipArchive } from 'archiver';
+import Database from 'better-sqlite3';
 import { prisma } from '../utils/prisma.js';
 import { logEvent } from '../utils/logEvent.js';
 import { BACKEND_PRISMA_DIR, PROJECT_PACKAGE_JSON } from '../utils/paths.js';
@@ -66,19 +66,37 @@ export function safeBackupPath(filename: string): string | null {
   return resolved;
 }
 
-/** VACUUM INTO when sqlite3 CLI is present, raw copyFile fallback otherwise. */
-function createDbCopy(dbPath: string, includeCache: boolean): string {
+/** Consistent snapshot of the live database.
+ *
+ *  `VACUUM INTO` runs through better-sqlite3 — the native module the app already ships — instead
+ *  of the `sqlite3` CLI, which the production image does not install. The old code shelled out
+ *  and fell back to `copyFileSync` on failure, so in that image *every* backup was a raw copy of
+ *  the `.db` alone: with `journal_mode = WAL`, every write not yet checkpointed lives in
+ *  `<db>-wal` and was silently left out. Worse, the archive's HMAC was then computed over that
+ *  truncated copy, so it verified as valid. No fallback here on purpose — a backup that cannot
+ *  be taken consistently must fail loudly, not produce a lossy archive.
+ *
+ *  The source handle is read-only: taking a backup must not be able to mutate the live DB.
+ *
+ *  Exported for `test/backupRestore.test.ts`, which asserts the WAL contents survive. */
+export function createDbCopy(dbPath: string, includeCache: boolean): string {
   const tmpPath = resolve(tmpdir(), `oscarr-backup-${randomUUID()}.db`);
+
+  const source = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
-    execFileSync('sqlite3', [dbPath, `VACUUM INTO '${tmpPath}';`], { timeout: 60000 });
-  } catch {
-    copyFileSync(dbPath, tmpPath);
+    source.prepare('VACUUM INTO ?').run(tmpPath);
+  } finally {
+    source.close();
   }
+
   if (!includeCache) {
+    const copy = new Database(tmpPath);
     try {
-      execFileSync('sqlite3', [tmpPath, 'DELETE FROM TmdbCache;'], { timeout: 30000 });
-      execFileSync('sqlite3', [tmpPath, 'VACUUM;'], { timeout: 30000 });
-    } catch { /* sqlite3 not available — keep full DB */ }
+      copy.exec('DELETE FROM TmdbCache');
+      copy.exec('VACUUM');
+    } finally {
+      copy.close();
+    }
   }
   return tmpPath;
 }
@@ -102,7 +120,7 @@ export async function buildManifest(includeCache: boolean) {
     stats: { users: userCount, media: mediaCount, requests: requestCount, cache: includeCache ? cacheCount : 0 },
     migrations: migrations.map((m) => m.migration_name),
     // True when the backup zip contains plugin-owned KV/SQLite files under `plugins/`.
-    // Restore path doesn't yet re-extract these (see TODO in applyDbBuffer); this flag is
+    // Restore path re-extracts these too (services/restoreService.ts); this flag is
     // forward-compat metadata so a future restore can detect what's available in the zip.
     pluginsDataIncluded: existsSync(join(dirname(getDbPath()), 'plugins')),
   };
@@ -166,40 +184,4 @@ export async function runAutoBackup(): Promise<{ filename: string; size: number 
 
   logEvent('info', 'Backup', `Auto-backup created: ${filename} (${(size / 1024 / 1024).toFixed(1)} MB)`);
   return { filename, size };
-}
-
-/** Write a DB buffer to the live path with a pre-restore safety copy for rollback.
- *  Trust chain (all enforced in `routes/admin/backup.ts` /backup/restore):
- *    1. RBAC (admin.* permission) 2. CSRF header 3. rate-limit (3/min)
- *    4. admin password re-auth   5. version-compat check                6. SQLite magic-header match
- *    7. HMAC signature (or explicit BACKUP_ALLOW_UNSIGNED=true opt-in).
- *  By the time the buffer reaches this function it's been validated 7 ways and is NOT untrusted
- *  network data anymore — dbPath is also a constant derived from env/config, never from the body.
- *
- *  TODO: backups now include `plugins/**` (manifest.pluginsDataIncluded), but restore only
- *  re-applies oscarr.db. A follow-up should extract `plugins/**` from the zip into
- *  `data/plugins/` so plugin KV/SQLite data is restored alongside the core DB. */
-export function applyDbBuffer(dbBuffer: Buffer): { ok: boolean; safetyPath: string; rollbackFailed?: boolean; error?: string } {
-  const dbPath = getDbPath();
-  const safetyPath = `${dbPath}.pre-restore.bak`;
-  copyFileSync(dbPath, safetyPath);
-  try {
-    const dbDir = dirname(dbPath);
-    if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
-    writeFileSync(dbPath, dbBuffer);
-    return { ok: true, safetyPath };
-  } catch (writeErr) {
-    // Restore failed — try to put the safety copy back. If that ALSO fails, the live DB is
-    // broken and the only good copy is safetyPath. Use stderr (not logEvent) since logEvent
-    // depends on the DB we just broke.
-    const writeMsg = String((writeErr as Error)?.message ?? writeErr);
-    try {
-      copyFileSync(safetyPath, dbPath);
-      return { ok: false, safetyPath, error: writeMsg };
-    } catch (rollbackErr) {
-      const rollbackMsg = String((rollbackErr as Error)?.message ?? rollbackErr);
-      console.error(`[Backup] CRITICAL: restore failed (${writeMsg}) AND rollback failed (${rollbackMsg}). Database may be corrupted; safety copy at ${safetyPath}`);
-      return { ok: false, safetyPath, rollbackFailed: true, error: `restore: ${writeMsg}; rollback: ${rollbackMsg}` };
-    }
-  }
 }

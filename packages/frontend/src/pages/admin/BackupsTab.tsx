@@ -90,10 +90,22 @@ export function BackupsTab() {
       if (!dbFile) { setRestoreError(t('admin.backup.no_db')); setRestoring(false); return; }
 
       const dbBase64 = await dbFile.async('base64');
+
+      // Plugin-owned data (KV files, per-plugin SQLite) travels in the archive under `plugins/`.
+      // Restore used to apply oscarr.db alone, so a restored instance came back with core data
+      // from the backup and plugin data from whenever. The backend re-checks every path.
+      const pluginFiles = zip.file(/^plugins\//);
+      const plugins = await Promise.all(
+        pluginFiles
+          .filter((entry) => !entry.dir)
+          .map(async (entry) => ({ path: entry.name, data: await entry.async('base64') })),
+      );
+
       const { data } = await api.post('/admin/backup/restore', {
         db: dbBase64,
         manifest: restoreManifest,
         password: restorePassword,
+        plugins,
       });
 
       setRestoreResult(data.message);
@@ -308,7 +320,7 @@ export function BackupsTab() {
                   <div className="p-6 rounded-xl bg-ndp-success/10 border border-ndp-success/20 text-center">
                     <CheckCircle className="w-8 h-8 text-ndp-success mx-auto mb-3" />
                     <p className="text-base text-ndp-success font-semibold">{t('admin.backup.restore_success')}</p>
-                    <p className="text-sm text-ndp-text-dim mt-2">{t('admin.backup.restart_required')}</p>
+                    <p className="text-sm text-ndp-text-dim mt-2">{t('admin.backup.reload_hint')}</p>
                   </div>
                   <button onClick={() => setRestoreModal(false)} className="btn-primary w-full text-sm">
                     {t('common.close')}

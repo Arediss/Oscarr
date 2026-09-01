@@ -4,11 +4,9 @@ import { assertJwtSecretOrExit, assertSetupSecretOrExit } from './utils/envSecre
 loadMasterKeyOrExit();
 assertJwtSecretOrExit();
 import Fastify from 'fastify';
-import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import { dirname, join } from 'node:path';
 import { prisma } from './utils/prisma.js';
-import { BACKEND_ROOT } from './utils/paths.js';
+import { runMigrateDeploy } from './utils/prismaMigrate.js';
+import { resolveTrustProxy } from './utils/trustProxy.js';
 import { isInstalled, loadInstallState } from './utils/install.js';
 import { logEvent } from './utils/logEvent.js';
 import { registerSecurity } from './bootstrap/security.js';
@@ -20,6 +18,7 @@ import { initNotifications, startScheduler } from './bootstrap/jobs.js';
 import { refreshVerboseRequestLogFlag, registerVerboseRequestLog } from './utils/verboseRequestLog.js';
 import { runLegacySupportExport } from './services/supportLegacyExport.js';
 import { adoptLegacyEmailProviderConfig } from './services/mailer.js';
+import { encryptSecretsAtRest } from './services/secretsMigration.js';
 
 // Process-level guards: log the error to AppLog (so an admin can share it from the Logs tab)
 // then exit hard — a process that's already thrown an unhandled exception is in undefined state
@@ -35,8 +34,15 @@ process.on('unhandledRejection', (reason) => {
   exitAfterLog('UnhandledRejection', reason instanceof Error ? reason : new Error(String(reason)));
 });
 
-// Default on — set TRUST_PROXY=false only when exposed directly (no reverse proxy).
-const trustProxy = process.env.TRUST_PROXY !== 'false';
+const trustProxy = resolveTrustProxy(process.env.TRUST_PROXY);
+if (trustProxy === false && process.env.NODE_ENV === 'production' && !process.env.TRUST_PROXY) {
+  process.stderr.write(
+    '[TRUST_PROXY] Not set — X-Forwarded-* headers are ignored and rate limits key on the direct\n'
+    + '              peer address. Correct when Oscarr is exposed directly. Behind a reverse proxy,\n'
+    + '              set TRUST_PROXY to the proxy IP/CIDR (e.g. TRUST_PROXY=172.18.0.0/16) so client\n'
+    + '              IPs are read correctly.\n',
+  );
+}
 const app = Fastify({
   logger: {
     redact: {
@@ -60,19 +66,9 @@ const app = Fastify({
   trustProxy,
 });
 
-/** Always apply pending Prisma migrations at boot. Idempotent — zero-ops when the DB is
- *  already current. Resolves the prisma CLI via Node's module resolution so it works both in
- *  dev (npm workspaces hoist to <root>/node_modules) and in the prod image (deps live under
- *  packages/backend/node_modules) — without depending on `npx`. */
+/** Always apply pending Prisma migrations at boot, then drop the connection the CLI raced with. */
 async function ensureMigrated() {
-  const requireFn = createRequire(import.meta.url);
-  const pkgPath = requireFn.resolve('prisma/package.json');
-  const pkg = requireFn('prisma/package.json') as { bin: Record<string, string> };
-  const prismaCli = join(dirname(pkgPath), pkg.bin.prisma);
-  execFileSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
-    cwd: BACKEND_ROOT,
-    stdio: 'inherit',
-  });
+  runMigrateDeploy();
   await prisma.$disconnect();
 }
 
@@ -85,6 +81,8 @@ async function start() {
   // Runs after migrations so MailConfig exists, and before routes so the admin panel never
   // shows the pre-0.8.9 split configuration.
   await adoptLegacyEmailProviderConfig().catch((err) => logEvent('warn', 'Mail', `Legacy mail config adoption skipped: ${String(err)}`));
+  // Runs before routes so no request can read — or rewrite — a credential still in plaintext.
+  await encryptSecretsAtRest().catch((err) => logEvent('error', 'Security', `Secret encryption sweep failed: ${String(err)}`));
   await refreshVerboseRequestLogFlag();
   await registerSecurity(app);
   registerVerboseRequestLog(app);

@@ -1,0 +1,47 @@
+# Cadence and grouping for dependency updates.
+#
+# Without this file Dependabot runs on its defaults: no schedule of our own, one PR per security
+# advisory, and no cooldown. That is how seven unrelated PRs piled up in August, one of which
+# (#219) was a major disguised as a patch bump.
+#
+# `cooldown` is the deliberate part. The keyv-shai-hulud worm (2026-08-04) published malicious
+# versions that were pulled shortly after; waiting a few days before proposing a brand-new
+# release is what keeps us from merging one during that window.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 5
+      semver-major-days: 14
+    groups:
+      # One PR for the routine noise, reviewed as a batch.
+      minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+      # Security fixes stay grouped too, but land on their own PR so they are not held behind
+      # a routine bump under review.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    # Majors are evaluated one at a time — see issue #196.
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3

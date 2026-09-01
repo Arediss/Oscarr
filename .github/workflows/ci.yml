@@ -52,6 +52,11 @@ jobs:
       - name: Frontend tests
         run: npm run test --workspace=packages/frontend
 
+      # Fails the build on any critical advisory. Lower severities are triaged out of band rather
+      # than pinned here, so this file never has to say which advisory is open.
+      - name: Dependency audit
+        run: npm audit --audit-level=critical
+
   react-doctor:
     name: React Doctor
     runs-on: ubuntu-latest

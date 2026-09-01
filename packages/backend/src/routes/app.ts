@@ -11,6 +11,7 @@ import { isQualityAllowedForRole } from '../utils/qualityAccess.js';
 import { PROJECT_PACKAGE_JSON } from '../utils/paths.js';
 import { getHomepageLayout } from './admin/homepage.js';
 import { isResetEnabled } from '../services/passwordReset.js';
+import { isUpdateAvailable } from '../utils/updateCheck.js';
 
 const APP_VERSION = JSON.parse(
   readFileSync(PROJECT_PACKAGE_JSON, 'utf-8')
@@ -36,7 +37,7 @@ export async function appRoutes(app: FastifyInstance) {
         timeout: 5000,
       });
       result.latest = data.latest;
-      result.updateAvailable = data.latest !== APP_VERSION;
+      result.updateAvailable = isUpdateAvailable(data.latest, APP_VERSION);
       result.releaseUrl = data.releaseUrl;
     } catch {
       // GitHub unreachable

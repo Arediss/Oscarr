@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
+import { getNsfwKeywordIds } from '../../utils/nsfwKeywords.js';
 import { parsePage } from '../../utils/params.js';
 import { getMovieDetails, getTvDetails, isMatureRating } from '../../services/tmdb.js';
 import { trackKeywordsFromDetails } from '../../services/sync/keywordSync.js';
@@ -48,8 +49,7 @@ export async function flagNsfwFromDb(
     }));
   if (items.length === 0) return [];
 
-  const nsfwKeywords = await prisma.keyword.findMany({ where: { tag: 'nsfw' }, select: { tmdbId: true } });
-  const nsfwKwSet = new Set(nsfwKeywords.map(k => k.tmdbId));
+  const nsfwKwSet = await getNsfwKeywordIds();
 
   const METADATA_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
   const mediaRows = await prisma.media.findMany({

@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../utils/prisma.js';
+import { getNsfwKeywordIds, invalidateNsfwKeywordIds } from '../utils/nsfwKeywords.js';
 import { getArrClientForMedia } from '../providers/index.js';
 import { parseId, parsePage, VALID_MEDIA_TYPES } from '../utils/params.js';
 import { isMatureRating } from '../services/tmdb.js';
@@ -314,13 +315,10 @@ export async function mediaRoutes(app: FastifyInstance) {
       if (isMatureRating(m.contentRating)) nsfwIds.add(m.tmdbId);
     }
 
-    const nsfwKeywords = await prisma.keyword.findMany({
-      where: { tag: 'nsfw' },
-      select: { tmdbId: true },
-    });
-    if (nsfwKeywords.length > 0) {
+    const nsfwKeywordIds = await getNsfwKeywordIds();
+    if (nsfwKeywordIds.size > 0) {
       // Integer IDs from a trusted DB column — safe to interpolate.
-      const idList = nsfwKeywords.map((k) => k.tmdbId).join(',');
+      const idList = [...nsfwKeywordIds].join(',');
       const matching = await prisma.$queryRawUnsafe<{ tmdbId: number }[]>(
         `SELECT DISTINCT m.tmdbId
          FROM Media m, json_each(m.keywordIds)
@@ -349,6 +347,7 @@ function setNsfwIdsCache(data: number[]): void {
 }
 
 export function invalidateNsfwIdsCache(): void {
+  invalidateNsfwKeywordIds();
   nsfwIdsCache = null;
 }
 

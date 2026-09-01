@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
+import { useModal } from '@/hooks/useModal';
 import { DynamicIcon } from '@/plugins/DynamicIcon';
 import { usePluginUI } from '@/plugins/usePlugins';
 import { BUILT_IN_WIDGETS } from './builtInCatalog';
@@ -23,8 +26,12 @@ interface Props {
 type Filter = 'all' | 'built-in' | 'plugin';
 
 export function WidgetPickerModal({ open, onClose, onPick, alreadyOnDashboard }: Readonly<Props>) {
+  const { t } = useTranslation();
   const { contributions } = usePluginUI('admin.dashboard.widget');
   const [filter, setFilter] = useState<Filter>('all');
+  // Escape-to-close, focus trap and focus return — the same contract every other modal in the
+  // app already honours through this hook.
+  const { dialogRef, titleId } = useModal({ open, onClose });
 
   const entries = useMemo<PickerEntry[]>(() => {
     const builtIn: PickerEntry[] = Object.values(BUILT_IN_WIDGETS).map((w) => ({
@@ -53,15 +60,19 @@ export function WidgetPickerModal({ open, onClose, onPick, alreadyOnDashboard }:
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onMouseDown={onClose}>
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className="card w-full max-w-lg max-h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-white/5 px-4 py-3">
-          <h3 className="text-base font-semibold text-ndp-text">Add widget</h3>
-          <button onClick={onClose} className="rounded p-1 text-ndp-text-dim hover:bg-white/5 hover:text-ndp-text" aria-label="Close">
+          <h3 id={titleId} className="text-base font-semibold text-ndp-text">{t('admin.dashboard.add_widget')}</h3>
+          <button onClick={onClose} className="rounded p-1 text-ndp-text-dim hover:bg-white/5 hover:text-ndp-text" aria-label={t('common.close')}>
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -72,7 +83,7 @@ export function WidgetPickerModal({ open, onClose, onPick, alreadyOnDashboard }:
               onClick={() => setFilter(f)}
               className={`rounded-full px-3 py-1 text-xs font-medium ${filter === f ? 'bg-ndp-accent text-white' : 'bg-white/5 text-ndp-text-dim hover:text-ndp-text'}`}
             >
-              {f === 'all' ? 'All' : f === 'built-in' ? 'Built-in' : 'Plugins'}
+              {t(`admin.dashboard.widget_filter.${f === 'built-in' ? 'built_in' : f}`)}
             </button>
           ))}
         </div>
@@ -90,19 +101,20 @@ export function WidgetPickerModal({ open, onClose, onPick, alreadyOnDashboard }:
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm text-ndp-text">{e.title}</p>
                     <p className="text-[11px] text-ndp-text-dim">
-                      {e.source === 'built-in' ? 'Built-in' : 'Plugin'} · {e.defaultSize.w}×{e.defaultSize.h}
+                      {t(`admin.dashboard.widget_source.${e.source === 'built-in' ? 'built_in' : 'plugin'}`)} · {e.defaultSize.w}×{e.defaultSize.h}
                     </p>
                   </div>
-                  {taken && <span className="text-[11px] text-ndp-text-dim">On dashboard</span>}
+                  {taken && <span className="text-[11px] text-ndp-text-dim">{t('admin.dashboard.widget_already_added')}</span>}
                 </button>
               </li>
             );
           })}
           {filtered.length === 0 && (
-            <li className="px-3 py-6 text-center text-xs text-ndp-text-dim">No widgets available.</li>
+            <li className="px-3 py-6 text-center text-xs text-ndp-text-dim">{t('admin.dashboard.no_widgets')}</li>
           )}
         </ul>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

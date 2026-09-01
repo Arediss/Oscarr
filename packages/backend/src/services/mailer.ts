@@ -3,6 +3,7 @@ import { Resend } from 'resend';
 import { prisma } from '../utils/prisma.js';
 import { encryptServiceConfig, decryptServiceConfig } from '../utils/secrets.js';
 import { logEvent } from '../utils/logEvent.js';
+import { parseNotificationSettings, serializeNotificationSettings } from '../notifications/providerConfig.js';
 
 /**
  * Transactional mail. Distinct from the notification providers on purpose: those broadcast to one
@@ -198,12 +199,7 @@ export async function adoptLegacyEmailProviderConfig(): Promise<void> {
   const legacy = await prisma.notificationProviderConfig.findUnique({ where: { providerId: 'email' } });
   if (!legacy) return;
 
-  let settings: Record<string, unknown>;
-  try {
-    settings = JSON.parse(legacy.settings) as Record<string, unknown>;
-  } catch {
-    return;
-  }
+  const settings: Record<string, unknown> = parseNotificationSettings(legacy.settings);
   const apiKey = typeof settings.apiKey === 'string' ? settings.apiKey : '';
   const fromEmail = typeof settings.fromEmail === 'string' ? settings.fromEmail : '';
   if (!apiKey && !fromEmail) return;
@@ -232,7 +228,7 @@ export async function adoptLegacyEmailProviderConfig(): Promise<void> {
   const { apiKey: _dropKey, fromEmail: _dropFrom, ...rest } = settings;
   await prisma.notificationProviderConfig.update({
     where: { providerId: 'email' },
-    data: { settings: JSON.stringify(rest) },
+    data: { settings: serializeNotificationSettings(rest as Record<string, string>) },
   });
   logEvent('info', 'Mail', alreadyConfigured
     ? 'Removed the legacy plaintext Resend credential from the email notification provider'

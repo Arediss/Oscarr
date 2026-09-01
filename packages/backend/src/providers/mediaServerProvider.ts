@@ -5,6 +5,7 @@ import { parseServiceConfig } from '../utils/services.js';
 import type { Provider, AuthProvider } from './types.js';
 import { isProviderEnabled } from './authSettings.js';
 import { refreshUserAvatar } from '../utils/avatarSource.js';
+import { encryptSecretValue } from '../utils/secrets.js';
 
 // Emby and Jellyfin speak the same MediaBrowser API (Jellyfin is an Emby fork): identical
 // /Users/AuthenticateByName endpoint and X-Emby-* headers. One factory serves both.
@@ -146,8 +147,8 @@ export function createMediaServerProvider(server: MediaServerConfig): Provider {
       const avatar = getAvatarUrl(serverUrl, auth.user.id, auth.user.primaryImageTag);
       await prisma.userProvider.upsert({
         where: { userId_provider: { userId, provider: id } },
-        update: { providerId: auth.userId, providerToken: auth.token, providerUsername: auth.user.name, providerAvatar: avatar ?? null },
-        create: { userId, provider: id, providerId: auth.userId, providerToken: auth.token, providerUsername: auth.user.name, providerAvatar: avatar ?? null },
+        update: { providerId: auth.userId, providerToken: encryptSecretValue(auth.token), providerUsername: auth.user.name, providerAvatar: avatar ?? null },
+        create: { userId, provider: id, providerId: auth.userId, providerToken: encryptSecretValue(auth.token), providerUsername: auth.user.name, providerAvatar: avatar ?? null },
       });
       await refreshUserAvatar(userId);
 

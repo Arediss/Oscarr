@@ -205,7 +205,10 @@ model AppSettings {
   plexMachineId         String?   // Plex server machine identifier for access verification
   lastRadarrSync        DateTime? // Last Radarr sync timestamp
   lastSonarrSync        DateTime? // Last Sonarr sync timestamp
-  syncIntervalHours     Int       @default(6) // Auto-sync interval in hours
+  /// Deprecated — cron schedules live in CronJob, one row per job, and nothing reads this.
+  /// Kept only so an existing database doesn't need a column drop mid-release; remove it with a
+  /// migration on the next schema change.
+  syncIntervalHours     Int       @default(6)
   notificationMatrix    String?
   incidentBanner        String?   // Global incident banner text (null = no banner)
   disabledLoginMode     String    @default("friendly") // "block" | "friendly" — how to reject login for User.disabled=true

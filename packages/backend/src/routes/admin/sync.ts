@@ -9,10 +9,11 @@ export async function syncRoutes(app: FastifyInstance) {
   app.get('/sync/status', async (request, reply) => {
 
     const settings = await getAppSettings();
+    // syncIntervalHours is no longer read by anything — cron schedules own the cadence, per job,
+    // in the CronJob table. Reporting it here advertised a setting that changed nothing.
     return {
       lastRadarrSync: settings?.lastRadarrSync,
       lastSonarrSync: settings?.lastSonarrSync,
-      syncIntervalHours: settings?.syncIntervalHours ?? 6,
     };
   });
 

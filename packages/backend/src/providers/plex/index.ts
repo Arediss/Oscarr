@@ -9,6 +9,7 @@ import type { Provider, AuthProvider } from '../types.js';
 import { isProviderEnabled } from '../authSettings.js';
 import { refreshUserAvatar } from '../../utils/avatarSource.js';
 import { resolvePublicBaseUrl } from '../../utils/publicUrl.js';
+import { encryptSecretValue, decryptSecretValue } from '../../utils/secrets.js';
 
 const PLEX_CLIENT_ID = 'oscarr-client';
 
@@ -57,7 +58,7 @@ export async function getPlexToken(adminUserId?: number): Promise<string | null>
     const provider = await prisma.userProvider.findUnique({
       where: { userId_provider: { userId: adminUserId, provider: 'plex' } },
     });
-    if (provider?.providerToken) return provider.providerToken;
+    if (provider?.providerToken) return decryptSecretValue(provider.providerToken);
   }
   return null;
 }
@@ -228,8 +229,8 @@ const plexAuth: AuthProvider = {
 
     await prisma.userProvider.upsert({
       where: { userId_provider: { userId, provider: 'plex' } },
-      update: { providerId: String(plexAccount.id), providerToken: authToken, providerUsername: plexAccount.username, providerEmail: plexAccount.email.toLowerCase(), providerAvatar: plexAccount.thumb ?? null },
-      create: { userId, provider: 'plex', providerId: String(plexAccount.id), providerToken: authToken, providerUsername: plexAccount.username, providerEmail: plexAccount.email.toLowerCase(), providerAvatar: plexAccount.thumb ?? null },
+      update: { providerId: String(plexAccount.id), providerToken: encryptSecretValue(authToken), providerUsername: plexAccount.username, providerEmail: plexAccount.email.toLowerCase(), providerAvatar: plexAccount.thumb ?? null },
+      create: { userId, provider: 'plex', providerId: String(plexAccount.id), providerToken: encryptSecretValue(authToken), providerUsername: plexAccount.username, providerEmail: plexAccount.email.toLowerCase(), providerAvatar: plexAccount.thumb ?? null },
     });
 
     await refreshUserAvatar(userId);

@@ -1,4 +1,5 @@
 import { prisma } from '../utils/prisma.js';
+import { encryptSecretFields, decryptSecretFields } from '../utils/secrets.js';
 
 /**
  * Auth provider settings are stored in AuthProviderSettings (migration 20260418203028).
@@ -50,27 +51,47 @@ export async function updateProviderSettings(
   providerId: string,
   patch: { enabled?: boolean; config?: Record<string, unknown> }
 ): Promise<void> {
-  const current = await getProviderSettings(providerId);
-  const nextConfig = patch.config ? { ...current.config, ...patch.config } : current.config;
+  // Merge onto the blob as stored, not as decrypted. Decryption failures collapse to '' by
+  // design (so ciphertext never lands in an admin form), and merging that back would let a
+  // `{ enabled: false }` toggle silently erase a credential this instance simply can't read —
+  // after a key rotation or a cross-environment restore. Untouched fields are carried over
+  // verbatim; only what the caller actually sent is re-encrypted.
+  const row = await prisma.authProviderSettings.upsert({
+    where: { provider: providerId },
+    update: {},
+    create: { provider: providerId, enabled: false, config: '{}' },
+  });
+  const storedConfig = parseRawConfig(row.config);
+  const nextConfig = patch.config ? { ...storedConfig, ...encryptSecretFields(patch.config) } : storedConfig;
+  const stored = JSON.stringify(nextConfig);
   await prisma.authProviderSettings.upsert({
     where: { provider: providerId },
     update: {
       ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}),
-      config: JSON.stringify(nextConfig),
+      config: stored,
     },
     create: {
       provider: providerId,
       enabled: patch.enabled ?? false,
-      config: JSON.stringify(nextConfig),
+      config: stored,
     },
   });
 }
 
-function safeParseConfig(raw: string): Record<string, unknown> {
+/** Parse without decrypting — the write path merges at this level so it never has to round-trip
+ *  a value it couldn't read. */
+function parseRawConfig(raw: string): Record<string, unknown> {
   try {
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
   } catch {
     return {};
   }
+}
+
+/** Parse + decrypt. The blob holds OAuth client secrets (Discord's above all), which used to sit
+ *  here as plaintext JSON — readable in the database file and in every backup archive. Sensitive
+ *  fields are AES-256-GCM at rest now, on the same field-name convention as Service configs. */
+function safeParseConfig(raw: string): Record<string, unknown> {
+  return decryptSecretFields(parseRawConfig(raw));
 }

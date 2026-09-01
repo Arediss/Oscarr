@@ -3,6 +3,7 @@ import { getAppSettings, parseInstanceLanguages } from '../utils/appSettings.js'
 import { logEvent } from '../utils/logEvent.js';
 import { renderNotificationTemplate, toNotificationLocale } from '@oscarr/shared';
 import type { NotificationProvider, NotificationEventType, NotificationPayload } from './types.js';
+import { parseNotificationSettings } from './providerConfig.js';
 
 export class NotificationRegistry {
   private readonly providers = new Map<string, NotificationProvider>();
@@ -101,9 +102,7 @@ export class NotificationRegistry {
         const config = configMap.get(providerId);
         if (!config?.enabled) continue;
 
-        const providerSettings: Record<string, string> = config.settings
-          ? JSON.parse(config.settings)
-          : {};
+        const providerSettings = parseNotificationSettings(config.settings);
 
         promises.push(
           provider.send(providerSettings, payload)

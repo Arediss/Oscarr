@@ -15,10 +15,24 @@ const ALGO = 'aes-256-gcm';
 const IV_BYTES = 12;
 const KEY_BYTES = 32;
 
-/** Field-name convention. Keys matching this regex are treated as secrets and encrypted on
- *  write / decrypted on read. Url, machineId, etc. stay plaintext so admins can debug services
- *  without unlocking. */
-const SENSITIVE_KEY_RE = /(^|_)(key|token|secret|password|apikey)s?$/i;
+/** Field-name convention. A key is a secret when any of its words is one of these. Url,
+ *  machineId, clientId, chatId etc. stay plaintext so admins can debug services without
+ *  unlocking.
+ *
+ *  Word-splitting matters: the previous regex anchored on `(^|_)…$`, so it caught `apiKey`,
+ *  `token` and `client_secret` but silently missed every camelCase compound — `clientSecret`
+ *  (Discord OAuth), `botToken` (Telegram) and `webhookUrl` (Discord) all read as non-sensitive
+ *  and would have been written back in plaintext by the encryption path itself. */
+const SENSITIVE_WORDS = new Set(['key', 'keys', 'token', 'tokens', 'secret', 'secrets', 'password', 'passwords', 'apikey', 'apikeys', 'credential', 'credentials', 'webhook', 'webhooks']);
+
+function keyWords(key: string): string[] {
+  return key
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+}
 
 let _serviceConfigKey: Buffer | null = null;
 
@@ -69,7 +83,7 @@ export function isEncrypted(value: unknown): boolean {
 }
 
 export function isSensitiveKey(key: string): boolean {
-  return SENSITIVE_KEY_RE.test(key);
+  return keyWords(key).some((word) => SENSITIVE_WORDS.has(word));
 }
 
 export function encryptField(plain: string): string {
@@ -93,6 +107,86 @@ export function decryptField(stored: string): string {
   const decipher = crypto.createDecipheriv(ALGO, _serviceConfigKey, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+
+/** Encrypt every sensitive field of an arbitrary JSON blob. Same field-name convention as
+ *  services, so `AuthProviderSettings.config` (Discord client secret), a notification
+ *  provider's `settings` (Discord webhook, Telegram bot token) and any future blob are covered
+ *  by one rule. Non-string values (toggles, numbers) pass through untouched. Idempotent. */
+export function encryptSecretFields<T extends Record<string, unknown>>(blob: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(blob)) {
+    out[key] = (typeof value === 'string' && value && !isEncrypted(value) && isSensitiveKey(key))
+      ? encryptField(value)
+      : value;
+  }
+  return out as T;
+}
+
+/** Inverse of `encryptSecretFields`. Values that fail to decrypt collapse to '' rather than
+ *  leaking ciphertext into an admin form — same contract as `decryptServiceConfig`. */
+export function decryptSecretFields<T extends Record<string, unknown>>(blob: T): T {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(blob)) {
+    if (typeof value !== 'string' || !isEncrypted(value)) {
+      out[key] = value;
+      continue;
+    }
+    try {
+      out[key] = decryptField(value);
+    } catch (err) {
+      console.error(`[secrets] decrypt failed for key "${key}":`, (err as Error).message);
+      out[key] = '';
+    }
+  }
+  return out as T;
+}
+
+/** Encrypt a standalone secret column (no field name to key off). Idempotent; empty stays empty. */
+/**
+ * Merge an incoming settings blob onto the one already stored, refusing the one write that cannot
+ * be undone: an empty incoming secret replacing a non-empty stored one.
+ *
+ * `decryptSecretFields` collapses an undecryptable value to `''` so ciphertext never reaches an
+ * admin form, and the admin panel posts every field back on save. After a key rotation or a
+ * cross-environment restore that combination turned one click on Save into permanent credential
+ * loss. The UI cannot distinguish "cleared on purpose" from "unreadable here", and the two are not
+ * symmetric — so the destructive reading is refused (R9). Non-sensitive fields stay clearable, and
+ * fields the caller omitted are carried over untouched.
+ *
+ * Takes and returns the blob as stored (encrypted); the incoming patch is plaintext.
+ */
+export function mergeSecretFields(
+  stored: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const incoming: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    const clearingASecret = isSensitiveKey(key) && (value === '' || value == null);
+    const hasStoredValue = typeof stored[key] === 'string' && stored[key] !== '';
+    if (clearingASecret && hasStoredValue) continue;
+    incoming[key] = value;
+  }
+  return { ...stored, ...encryptSecretFields(incoming) };
+}
+
+export function encryptSecretValue(plain: string | null | undefined): string | null {
+  if (!plain) return plain ?? null;
+  return isEncrypted(plain) ? plain : encryptField(plain);
+}
+
+/** Read a standalone secret column. Plaintext (pre-migration rows) passes through; an
+ *  undecryptable value collapses to null so callers treat it as "no credential" instead of
+ *  comparing against ciphertext. */
+export function decryptSecretValue(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  if (!isEncrypted(stored)) return stored;
+  try {
+    return decryptField(stored);
+  } catch (err) {
+    console.error('[secrets] decrypt failed for a standalone secret:', (err as Error).message);
+    return null;
+  }
 }
 
 /** Encrypt every sensitive field that isn't already encrypted. Idempotent — fields already

@@ -191,23 +191,29 @@ function NotifCard({ notif, t, markAsRead, dismiss, onAction, actionsAlwaysVisib
   const ActionIcon = action?.icon === 'reply' ? Reply : action?.icon === 'shield' ? Shield : Eye;
 
   return (
+    // The card used to be role="button" with three more buttons inside it. Nesting interactive
+    // controls is invalid: a screen reader announces one button and swallows the others, and the
+    // outer keydown handler competed with the inner ones. The row is a plain container now, with
+    // a single overlay button carrying the card action and the real buttons stacked above it.
     <div
-      onClick={handleClick}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleClick(); } }}
-      role="button"
-      tabIndex={0}
       className={clsx(
-        'group relative flex gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors cursor-pointer border-b border-white/5 last:border-0',
+        'group relative flex gap-3 px-4 py-3 hover:bg-white/[0.04] transition-colors border-b border-white/5 last:border-0',
         isUnread && 'bg-ndp-accent/[0.04]',
       )}
     >
+      <button
+        type="button"
+        onClick={handleClick}
+        aria-label={titleText}
+        className="absolute inset-0 z-0 cursor-pointer rounded-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ndp-accent"
+      />
       {isUnread && <span className="absolute left-0 top-3 bottom-3 w-0.5 bg-ndp-accent rounded-r" />}
 
       <div className={clsx('w-9 h-9 rounded-full flex items-center justify-center text-base flex-shrink-0', visual.bg, visual.color)}>
         {visual.icon}
       </div>
 
-      <div className="flex-1 min-w-0">
+      <div className="pointer-events-none relative z-10 flex-1 min-w-0">
         <p className={clsx('text-sm leading-snug truncate', isUnread ? 'text-ndp-text font-semibold' : 'text-ndp-text-muted')}>
           {titleText}
         </p>
@@ -219,7 +225,7 @@ function NotifCard({ notif, t, markAsRead, dismiss, onAction, actionsAlwaysVisib
           {action && (
             <button
               onClick={handleAction}
-              className="flex items-center gap-1 text-[11px] font-medium text-ndp-accent hover:text-ndp-accent/80 transition-colors"
+              className="pointer-events-auto relative z-10 flex items-center gap-1 text-[11px] font-medium text-ndp-accent hover:text-ndp-accent/80 transition-colors"
             >
               <ActionIcon className="w-3 h-3" />
               {t(action.labelKey, action.fallback)}
@@ -235,16 +241,18 @@ function NotifCard({ notif, t, markAsRead, dismiss, onAction, actionsAlwaysVisib
         {isUnread && (
           <button
             onClick={(e) => { e.stopPropagation(); markAsRead(notif.id); }}
-            className="p-1 text-ndp-text-dim hover:text-ndp-accent rounded hover:bg-white/5"
+            className="relative z-10 p-1 text-ndp-text-dim hover:text-ndp-accent rounded hover:bg-white/5"
             title={t('notifications.mark_read')}
+            aria-label={t('notifications.mark_read')}
           >
             <Check className="w-3.5 h-3.5" />
           </button>
         )}
         <button
           onClick={(e) => { e.stopPropagation(); dismiss(notif.id); }}
-          className="p-1 text-ndp-text-dim hover:text-ndp-danger rounded hover:bg-white/5"
+          className="relative z-10 p-1 text-ndp-text-dim hover:text-ndp-danger rounded hover:bg-white/5"
           title={t('notifications.dismiss')}
+          aria-label={t('notifications.dismiss')}
         >
           <Trash2 className="w-3.5 h-3.5" />
         </button>

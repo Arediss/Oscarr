@@ -13,6 +13,7 @@ import type { RequestStatusKind } from '@oscarr/shared';
 import { safeNotify, safeUserNotify, buildSiteLink } from '../utils/safeNotify.js';
 import { pluginEngine } from '../plugins/engine.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
+import { Prisma } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -69,6 +70,10 @@ export async function findOrCreateMedia(tmdbId: number, mediaType: 'movie' | 'tv
     }
   }
 
+  // Two users asking for the same trending title at the same moment both get here with nothing
+  // in the table, and the second create trips the `(tmdbId, mediaType)` unique index — a raw
+  // P2002 surfaced as a 500. The row the winner created is exactly what the loser wanted, so
+  // take it and move on.
   const media = await prisma.$transaction(async (tx) => {
     const created = await tx.media.create({
       data: {
@@ -98,6 +103,12 @@ export async function findOrCreateMedia(tmdbId: number, mediaType: 'movie' | 'tv
     }
 
     return created;
+  }).catch(async (err) => {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      const winner = await prisma.media.findUnique({ where: { tmdbId_mediaType: { tmdbId, mediaType } } });
+      if (winner) return winner;
+    }
+    throw err;
   });
 
   return media;
@@ -340,7 +351,8 @@ export type CreateRequestResult =
   | { ok: false; status: 403; code: 'BLOCKED_BY_GUARD'; error: string }
   | { ok: false; status: 403; code: 'BLACKLISTED'; error: string }
   | { ok: false; status: 409; code: 'DUPLICATE'; error: string }
-  | { ok: false; status: 403; code: 'QUALITY_NOT_ALLOWED'; error: string };
+  | { ok: false; status: 403; code: 'QUALITY_NOT_ALLOWED'; error: string }
+  | { ok: false; status: 403; code: 'REQUESTS_DISABLED'; error: string };
 
 export interface CreateRequestInput {
   userId: number;
@@ -367,6 +379,14 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   });
   if (!user) {
     return { ok: false, status: 400, code: 'INVALID_INPUT', error: `User ${input.userId} not found` };
+  }
+
+  // `requestsEnabled` used to live in the frontend alone — the nav entry and the route were
+  // hidden, but POST /api/requests kept working for anyone who called it directly. It gates the
+  // whole pipeline now, admins and plugin `ctx.requests.create` included: "requests are off"
+  // has to mean one thing, and an admin who wants one flips the toggle back.
+  if ((await getAppSettings())?.requestsEnabled === false) {
+    return { ok: false, status: 403, code: 'REQUESTS_DISABLED', error: 'The request system is disabled.' };
   }
 
   const validation = validateRequestBody({ tmdbId: input.tmdbId, mediaType: input.mediaType, seasons: input.seasons });
@@ -499,6 +519,8 @@ export async function requestCollectionMovie(
   movieTmdbId: number,
   user: { id: number; role: string },
 ): Promise<boolean> {
+  if ((await getAppSettings())?.requestsEnabled === false) return false;
+
   const bl = await isBlacklisted(movieTmdbId, 'movie');
   if (bl.blacklisted) return false;
 

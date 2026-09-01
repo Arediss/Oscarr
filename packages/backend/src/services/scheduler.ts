@@ -3,7 +3,7 @@ import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import { runFullSync, runNewMediaSync } from './sync/index.js';
 import { cleanupOrphanedRequests } from './requestCleanup.js';
-import { retryFailedRequests } from './requestService.js';
+import { retryFailedRequests, promoteStaleStatuses } from './requestService.js';
 import { getGenreBackdrops } from './tmdb.js';
 import { syncMissingKeywords } from './sync/keywordSync.js';
 import { runAutoBackup } from './backupService.js';
@@ -27,6 +27,9 @@ const JOB_HANDLERS: Record<string, () => Promise<unknown>> = {
     const orphans = await cleanupOrphanedRequests();
     // Spent and expired reset tokens have no further use; sweeping them here avoids a second job.
     await purgeExpiredResets();
+    // Safety net for requests left behind by a cascade that didn't run. It used to fire from
+    // GET /api/requests — a global updateMany on every page of every list, triggered by a read.
+    await promoteStaleStatuses();
     return orphans;
   },
   retry_failed_requests: async () => retryFailedRequests(),
@@ -177,6 +180,27 @@ async function startAllJobs() {
     }
   }
   logEvent('debug', 'Job', `${jobs.filter((j) => j.enabled).length}/${jobs.length} jobs active`);
+}
+
+/** Cancel every cron schedule. Used before a restore swaps the database file — a job firing
+ *  mid-swap would query a disconnected client. `restartJobs()` brings them back afterwards.
+ *  A job already executing keeps running; `runningJobKeys()` lets the caller see that. */
+export function stopAllJobs(): void {
+  for (const [key, task] of activeTasks) {
+    task.stop();
+    activeTasks.delete(key);
+  }
+  logEvent('debug', 'Job', 'All cron schedules stopped');
+}
+
+/** Re-arm every enabled schedule after a maintenance window. */
+export async function restartJobs(): Promise<void> {
+  await startAllJobs();
+}
+
+/** Keys of jobs currently mid-execution. */
+export function runningJobKeys(): string[] {
+  return [...runningJobs];
 }
 
 export async function initScheduler(pluginEngine?: PluginEngine) {

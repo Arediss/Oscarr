@@ -6,6 +6,7 @@ import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { MediaStateCategory, RequestStatus } from '@oscarr/shared';
 import { getTvDetails } from './tmdb.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
+import { sendAvailabilityNotifications, findAvailabilityRecipients } from './sync/helpers.js';
 import { Prisma, type Media } from '@prisma/client';
 
 // ---------------------------------------------------------------------------
@@ -308,6 +309,8 @@ export async function refreshMediaCategory(media: {
   mediaType: string;
   tmdbId: number;
   tvdbId: number | null;
+  title: string;
+  posterPath: string | null;
   statusCategory: string;
   radarrId: number | null;
   sonarrId: number | null;
@@ -342,7 +345,13 @@ export async function refreshMediaCategory(media: {
     });
 
     if (becameAvailable) {
+      // Same trap as the webhook path: the cascade consumes the very rows the notifier looks
+      // for, so the requesters are captured first. Without this, a media promoted by a live
+      // check notified nobody — and the sync pass afterwards saw it already AVAILABLE, so it
+      // never notified either.
+      const recipients = await findAvailabilityRecipients(media.id);
       await cascadeRequestsForCategory(media.id, 'AVAILABLE');
+      sendAvailabilityNotifications(media.title, media.mediaType as 'movie' | 'tv', media.posterPath ?? null, media.id, media.tmdbId, recipients);
     } else if (cat === 'PROCESSING' && media.statusCategory !== 'PROCESSING') {
       await cascadeRequestsForCategory(media.id, 'PROCESSING');
     }

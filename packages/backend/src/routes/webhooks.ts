@@ -4,7 +4,7 @@ import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import { getArrClient, getServiceDefinition, arrIdFieldForService } from '../providers/index.js';
 import { promoteMediaToAvailable, findMediaByExternalId, cascadeRequestsForCategory } from '../services/mediaService.js';
-import { sendAvailabilityNotifications } from '../services/sync/helpers.js';
+import { sendAvailabilityNotifications, findAvailabilityRecipients } from '../services/sync/helpers.js';
 import { logEvent } from '../utils/logEvent.js';
 
 function sanitize(input: string): string {
@@ -189,6 +189,11 @@ async function handleDownload(serviceType: string, client: ArrClient, event: Web
   }
 
   if (media.statusCategory !== 'AVAILABLE') {
+    // Order matters: promoteMediaToAvailable cascades every approved/processing/failed request
+    // to `available`, which is exactly the set the notifier looks for. Reading the requesters
+    // afterwards returned an empty list, so nobody — in-app, push, plugins or Discord/Telegram —
+    // ever heard that their media had landed.
+    const recipients = await findAvailabilityRecipients(media.id);
     await promoteMediaToAvailable(media.id, !!media.availableAt);
     sendAvailabilityNotifications(
       media.title || sanitize(event.title),
@@ -196,6 +201,7 @@ async function handleDownload(serviceType: string, client: ArrClient, event: Web
       media.posterPath,
       media.id,
       media.tmdbId,
+      recipients,
     );
     logEvent('info', 'Webhook', `"${sanitize(event.title)}" is now available (via ${sanitize(serviceType)} webhook)`);
     logEvent('debug', 'Webhook', `${sanitize(serviceType)}: "${sanitize(event.title)}" now available`);

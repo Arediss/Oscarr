@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { parseId, parsePage } from '../../utils/params.js';
 import { REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
-import { promoteStaleStatuses, resolveServiceContext } from '../../services/requestService.js';
+import { resolveServiceContext } from '../../services/requestService.js';
 import { getServiceTypeForMedia } from '../../providers/index.js';
 
 const VALID_STATUSES = new Set<string>(REQUEST_STATUSES);
@@ -47,8 +47,6 @@ export async function requestListRoutes(app: FastifyInstance) {
       const qid = parseId(qualityOptionId);
       if (qid) where.qualityOptionId = qid;
     }
-
-    await promoteStaleStatuses();
 
     const [requests, total] = await Promise.all([
       prisma.mediaRequest.findMany({

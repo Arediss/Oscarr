@@ -13,24 +13,36 @@ export interface SyncResult {
   duration: number;
 }
 
+/** Users whose request a transition to available would complete.
+ *
+ *  Read this BEFORE promoting the media: the promotion cascade flips exactly those rows to
+ *  `available`, so asking afterwards returns nobody and every channel goes quiet. */
+export async function findAvailabilityRecipients(mediaId: number): Promise<number[]> {
+  const requests = await prisma.mediaRequest.findMany({
+    where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
+    select: { userId: true },
+  });
+  return [...new Set(requests.map((r) => r.userId))];
+}
+
+/** Fan out "it's here" across in-app, push, plugin and external channels.
+ *
+ *  `recipientUserIds` is for callers that promote the media first — they must capture the
+ *  requesters beforehand and hand them over, otherwise the lookup here comes back empty. */
 export function sendAvailabilityNotifications(
   title: string,
   mediaType: 'movie' | 'tv',
   posterPath: string | null,
   mediaId: number,
   tmdbId: number,
+  recipientUserIds?: number[],
 ): void {
   // Skip when no Oscarr user has an active request — direct *arr imports shouldn't trigger
   // external channels for media nobody asked for.
-  prisma.mediaRequest.findMany({
-    where: { mediaId, status: { in: [...COMPLETABLE_REQUEST_STATUSES] } },
-    select: { userId: true },
-  }).then(async requests => {
-    if (requests.length === 0) return;
+  (recipientUserIds ? Promise.resolve(recipientUserIds) : findAvailabilityRecipients(mediaId)).then(async userIds => {
+    if (userIds.length === 0) return;
 
     safeNotify('media_available', { title, mediaType, posterPath });
-
-    const userIds = [...new Set(requests.map(r => r.userId))];
 
     const event: PluginMediaAvailableV1 = {
       v: 1,

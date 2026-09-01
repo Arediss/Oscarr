@@ -62,10 +62,15 @@ function trim(url: string): string {
   return url.slice(0, end);
 }
 
+/** `fetch` has no default timeout: a source that accepts the connection then stalls would hang
+ *  the config probe — and the import wizard behind it — with nothing to cancel. */
+const PROBE_TIMEOUT_MS = 15_000;
+
 async function getJson<T>(creds: SourceCreds, path: string): Promise<T | null> {
   try {
     const res = await fetch(`${trim(creds.url)}${path}`, {
       headers: { Accept: 'application/json', 'X-Api-Key': creds.apiKey },
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     return (await res.json()) as T;

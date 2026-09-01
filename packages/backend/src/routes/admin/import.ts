@@ -20,8 +20,6 @@ function pickAdapter(source: ImportSource): ImportAdapter {
       return jellyseerrAdapter;
     case 'seerr':
       return seerrAdapter;
-    case 'ombi':
-      throw new Error('Ombi importer not implemented yet.');
     default: {
       const _exhaustive: never = source;
       void _exhaustive;
@@ -34,7 +32,7 @@ const credsSchema = {
   type: 'object',
   required: ['source', 'url', 'apiKey'],
   properties: {
-    source: { type: 'string', enum: ['overseerr', 'jellyseerr', 'seerr', 'ombi'] },
+    source: { type: 'string', enum: ['overseerr', 'jellyseerr', 'seerr'] },
     url: { type: 'string', minLength: 1 },
     apiKey: { type: 'string', minLength: 1 },
   },

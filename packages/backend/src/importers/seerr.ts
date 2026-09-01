@@ -5,6 +5,8 @@ import type {
   ImportAdapter,
   ImportSource,
 } from './types.js';
+import { paginate, limitsFromEnv } from './paginate.js';
+import { logEvent } from '../utils/logEvent.js';
 
 /**
  * Adapter for the Seerr family (Overseerr / Jellyseerr / Seerr). All three
@@ -55,8 +57,6 @@ interface PageEnvelope<T> {
   pageInfo?: { page: number; pages: number; results: number };
 }
 
-const PAGE_SIZE = 100;
-
 function buildUrl(base: string, path: string): string {
   // Same polynomial backtracking as seerrConfig.trim — reached via /import/preview and
   // /import/execute, so it has to be fixed here too.
@@ -65,12 +65,17 @@ function buildUrl(base: string, path: string): string {
   return `${base.slice(0, end)}${path}`;
 }
 
+/** Per-request ceiling. Without one, a Seerr instance that accepts the connection and then goes
+ *  quiet parks the import forever — `fetch` has no default timeout. */
+const REQUEST_TIMEOUT_MS = 20_000;
+
 async function seerrFetch<T>(creds: AdapterCredentials, path: string): Promise<T> {
   const res = await fetch(buildUrl(creds.url, path), {
     headers: {
       Accept: 'application/json',
       'X-Api-Key': creds.apiKey,
     },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new Error(`Seerr ${path} failed: HTTP ${res.status} ${res.statusText}`);
@@ -79,20 +84,19 @@ async function seerrFetch<T>(creds: AdapterCredentials, path: string): Promise<T
 }
 
 async function fetchAllPages<T>(creds: AdapterCredentials, path: string): Promise<T[]> {
-  const out: T[] = [];
-  let skip = 0;
-  // Hard cap iterations so a malformed pageInfo can't loop forever.
-  for (let i = 0; i < 1000; i++) {
-    const sep = path.includes('?') ? '&' : '?';
-    const page = await seerrFetch<PageEnvelope<T>>(
-      creds,
-      `${path}${sep}take=${PAGE_SIZE}&skip=${skip}`,
-    );
-    out.push(...page.results);
-    if (page.results.length < PAGE_SIZE) break;
-    skip += PAGE_SIZE;
-  }
-  return out;
+  const rows = await paginate<T>(
+    (skip, take) => {
+      const sep = path.includes('?') ? '&' : '?';
+      return seerrFetch<PageEnvelope<T>>(creds, `${path}${sep}take=${take}&skip=${skip}`);
+    },
+    limitsFromEnv(),
+    path,
+  );
+  // The volume is the number nobody had before a migration, and the one every ceiling should be
+  // set against. Cheap to record, and it turns "did it all come across?" into a lookup.
+  logEvent('info', 'Import', `Seerr ${path}: ${rows.length} rows fetched`)
+    .catch(() => { /* never fail an import over its own breadcrumb */ });
+  return rows;
 }
 
 /** Map Overseerr's MediaRequestStatus enum to Oscarr's request status. The enum has grown

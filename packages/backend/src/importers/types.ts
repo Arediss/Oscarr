@@ -4,7 +4,10 @@
  * payloads into these types so the runner stays source-agnostic.
  */
 
-export type ImportSource = 'overseerr' | 'jellyseerr' | 'seerr' | 'ombi';
+/** Ombi was listed here and accepted by the route's schema, but `pickAdapter` answered
+ *  "Ombi importer not implemented yet" — an option that validated and then failed. Add it back
+ *  together with its adapter. */
+export type ImportSource = 'overseerr' | 'jellyseerr' | 'seerr';
 
 export interface CanonicalUser {
   /** Stable id from the source (e.g. Overseerr user.id). Used to deduplicate

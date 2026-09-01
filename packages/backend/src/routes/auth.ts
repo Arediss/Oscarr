@@ -10,8 +10,11 @@ import { getPermissionsForRole } from '../middleware/rbac.js';
 import { refreshUserAvatar } from '../utils/avatarSource.js';
 import { setAuthCookie } from '../utils/authCookie.js';
 import { requestReset, consumeReset, isResetEnabled } from '../services/passwordReset.js';
+import { encryptSecretValue } from '../utils/secrets.js';
 
-function buildHelpers(app: FastifyInstance): AuthHelpers {
+/** Session issuing + provider find-or-create, shared by the auth routes and by the install
+ *  wizard's first-admin route (`/api/setup/admin`) so both mint sessions the same way. */
+export function buildHelpers(app: FastifyInstance): AuthHelpers {
   return {
     async signAndSend(reply, userId) {
       const user = await prisma.user.findUnique({
@@ -65,31 +68,29 @@ function buildHelpers(app: FastifyInstance): AuthHelpers {
         }
       }
 
-      const userCount = await prisma.user.count();
-      const isFirstUser = userCount === 0;
-
       if (!user) {
         // Per-provider signup gate, secure-by-default: each AuthProvider has its own
         // `allowSignup` toggle (including email). Admin opts-in explicitly per channel, no
-        // global master switch to reason about. Bootstrapping bypasses so a fresh install
-        // can create its first admin.
-        if (!isFirstUser) {
-          const providerCfg = await getProviderConfig(opts.provider);
-          if (providerCfg.allowSignup !== true) {
-            throw new Error('SIGNUP_NOT_ALLOWED');
-          }
+        // global master switch to reason about.
+        //
+        // This used to be skipped while the user table was empty, to let a fresh install
+        // bootstrap. Bootstrapping now happens on POST /api/setup/admin behind SETUP_SECRET, so
+        // the exemption only left every enabled provider wide open on an un-installed instance.
+        const providerCfg = await getProviderConfig(opts.provider);
+        if (providerCfg.allowSignup !== true) {
+          throw new Error('SIGNUP_NOT_ALLOWED');
         }
         user = await prisma.user.create({
           data: {
             email: opts.email,
             displayName: opts.displayName,
             avatar: opts.avatar,
-            role: isFirstUser ? 'admin' : 'user',
+            role: 'user',
             providers: {
               create: {
                 provider: opts.provider,
                 providerId: opts.providerId,
-                providerToken: opts.providerToken,
+                providerToken: encryptSecretValue(opts.providerToken),
                 providerUsername: opts.providerUsername,
                 providerEmail: opts.providerEmail,
                 providerAvatar: opts.avatar ?? null,
@@ -105,7 +106,7 @@ function buildHelpers(app: FastifyInstance): AuthHelpers {
         where: { userId_provider: { userId: user.id, provider: opts.provider } },
         update: {
           providerId: opts.providerId,
-          providerToken: opts.providerToken,
+          providerToken: encryptSecretValue(opts.providerToken),
           providerUsername: opts.providerUsername,
           providerEmail: opts.providerEmail,
           providerAvatar: opts.avatar ?? null,
@@ -114,7 +115,7 @@ function buildHelpers(app: FastifyInstance): AuthHelpers {
           userId: user.id,
           provider: opts.provider,
           providerId: opts.providerId,
-          providerToken: opts.providerToken,
+          providerToken: encryptSecretValue(opts.providerToken),
           providerUsername: opts.providerUsername,
           providerEmail: opts.providerEmail,
           providerAvatar: opts.avatar ?? null,
@@ -163,21 +164,25 @@ export async function authRoutes(app: FastifyInstance) {
   }, async (request, reply) => {
     const { email, password, displayName } = request.body as { email: string; password: string; displayName: string };
 
-    const userCount = await prisma.user.count();
-    const isFirstUser = userCount === 0;
+    // The very first account is the instance owner. Minting it here — on a public route — let
+    // anyone who could reach the port before the operator finished the wizard take the instance
+    // over. Bootstrap now lives on POST /api/setup/admin, which proves possession of
+    // SETUP_SECRET; this route never creates an admin and never creates the first user.
+    if ((await prisma.user.count()) === 0) {
+      logEvent('warn', 'Auth', `Registration refused on an empty instance (${email}) — the first account must come from the install wizard`);
+      return reply.status(403).send({ error: 'SETUP_REQUIRED' });
+    }
 
-    if (!isFirstUser) {
-      // Provider enablement: an admin who flips Email off should fully shut down email-based
-      // registration, not just hide the button on the login page.
-      if (!(await isProviderEnabled('email'))) {
-        return reply.status(403).send({ error: 'PROVIDER_DISABLED' });
-      }
-      // Email signup is gated by email's own allowSignup toggle (same per-provider model as
-      // Plex/Jellyfin/Emby/Discord). Admin manages it from Authentication → Email.
-      const emailCfg = await getProviderConfig('email');
-      if (emailCfg.allowSignup !== true) {
-        return reply.status(403).send({ error: 'SIGNUP_NOT_ALLOWED' });
-      }
+    // Provider enablement: an admin who flips Email off should fully shut down email-based
+    // registration, not just hide the button on the login page.
+    if (!(await isProviderEnabled('email'))) {
+      return reply.status(403).send({ error: 'PROVIDER_DISABLED' });
+    }
+    // Email signup is gated by email's own allowSignup toggle (same per-provider model as
+    // Plex/Jellyfin/Emby/Discord). Admin manages it from Authentication → Email.
+    const emailCfg = await getProviderConfig('email');
+    if (emailCfg.allowSignup !== true) {
+      return reply.status(403).send({ error: 'SIGNUP_NOT_ALLOWED' });
     }
 
     try {
@@ -187,12 +192,12 @@ export async function authRoutes(app: FastifyInstance) {
           email: result.email,
           displayName: result.displayName,
           passwordHash: result.providerData.passwordHash as string,
-          role: isFirstUser ? 'admin' : 'user',
+          role: 'user',
           providers: { create: { provider: 'email', providerId: result.email, providerUsername: result.displayName, providerEmail: result.email } },
         },
       });
 
-      logEvent('info', 'Auth', `New email account created: ${result.displayName} (${isFirstUser ? 'admin' : 'user'})`);
+      logEvent('info', 'Auth', `New email account created: ${result.displayName} (user)`);
       return helpers.signAndSend(reply, user.id);
     } catch (err) {
       const msg = (err as Error).message;

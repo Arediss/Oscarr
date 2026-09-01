@@ -27,7 +27,10 @@ export default function AdminStep({ adminExists, onComplete }: Readonly<Props>) 
     setSaving(true);
     setError('');
     try {
-      const { data } = await api.post('/auth/register', { email, password, displayName });
+      // Bootstrap goes through the setup router, not the public /auth/register: creating the
+      // account that owns the instance has to prove possession of SETUP_SECRET, which the api
+      // interceptor attaches to every /setup/* call.
+      const { data } = await api.post('/setup/admin', { email, password, displayName });
       await login('', data.user);
       const detectedLang = i18n.language.split('-')[0];
       if (detectedLang && detectedLang !== 'en') {

@@ -9,6 +9,8 @@ import { isInstalled, markInstalled } from '../utils/install.js';
 import { classifyTestError } from '../utils/serviceTestError.js';
 import { assertPublicUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { isSensitiveKey } from '../utils/secrets.js';
+import { registerEmail } from '../providers/email/index.js';
+import { buildHelpers } from './auth.js';
 
 // Strength is checked once at boot by assertSetupSecretOrExit (utils/envSecret.ts), which refuses
 // to start a not-yet-installed instance on a weak value. The old warning here fired before that
@@ -53,6 +55,65 @@ export async function setupRoutes(app: FastifyInstance) {
   app.post('/verify-secret', async () => {
     const adminExists = (await prisma.user.count({ where: { role: 'admin' } })) > 0;
     return { ok: true, adminExists };
+  });
+
+  // ─── First admin ────────────────────────────────────────────────
+  // The instance owner is created here, not on the public /api/auth/register, so minting the
+  // one account that owns the instance requires proving possession of SETUP_SECRET (enforced by
+  // this router's preHandler). /api/auth/register refuses outright while the user table is empty.
+  //
+  // Single-flight: two concurrent calls must not both read "no users" and both create an admin.
+  // SQLite gives us no lock that spans a read-then-write, but the process is single-threaded, so
+  // chaining every attempt onto one promise is a real mutex here.
+  let bootstrapChain: Promise<unknown> = Promise.resolve();
+
+  app.post('/admin', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+    schema: {
+      body: {
+        type: 'object' as const,
+        required: ['email', 'password', 'displayName'],
+        properties: {
+          email: { type: 'string' },
+          password: { type: 'string' },
+          displayName: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { email, password, displayName } = request.body as { email: string; password: string; displayName: string };
+
+    const attempt = bootstrapChain.then(async (): Promise<{ status: number; error: string } | { userId: number }> => {
+      if ((await prisma.user.count()) > 0) {
+        return { status: 409, error: 'ADMIN_EXISTS' };
+      }
+      try {
+        const result = await registerEmail(email, password, displayName);
+        const user = await prisma.user.create({
+          data: {
+            email: result.email,
+            displayName: result.displayName,
+            passwordHash: result.providerData.passwordHash as string,
+            role: 'admin',
+            providers: { create: { provider: 'email', providerId: result.email, providerUsername: result.displayName, providerEmail: result.email } },
+          },
+        });
+        logEvent('info', 'Setup', `Instance admin created during installation: ${result.displayName}`);
+        return { userId: user.id };
+      } catch (err) {
+        const msg = (err as Error).message;
+        if (msg === 'EMAIL_EXISTS') return { status: 409, error: 'EMAIL_EXISTS' };
+        if (msg === 'PASSWORD_TOO_SHORT') return { status: 400, error: 'PASSWORD_TOO_SHORT' };
+        if (msg === 'DISPLAY_NAME_REQUIRED') return { status: 400, error: 'DISPLAY_NAME_REQUIRED' };
+        throw err;
+      }
+    });
+    // Keep the chain alive whatever happens, so one failure doesn't wedge later attempts.
+    bootstrapChain = attempt.catch(() => undefined);
+
+    const outcome = await attempt;
+    if ('error' in outcome) return reply.status(outcome.status).send({ error: outcome.error });
+    return buildHelpers(app).signAndSend(reply, outcome.userId);
   });
 
   // Service schemas — used by wizard to build dynamic forms
@@ -215,6 +276,13 @@ export async function setupRoutes(app: FastifyInstance) {
     });
     if (!arrService) {
       return reply.status(400).send({ error: 'Configure at least one Radarr or Sonarr service' });
+    }
+
+    // Without this the wizard could be driven API-side straight to /sync, marking the instance
+    // installed with no admin — /api/setup/* would then be unmounted, leaving no guarded path to
+    // create one.
+    if ((await prisma.user.count({ where: { role: 'admin' } })) === 0) {
+      return reply.status(400).send({ error: 'ADMIN_REQUIRED' });
     }
 
     try {

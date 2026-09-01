@@ -16,6 +16,8 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 import '@fontsource/inter/800.css';
 import './index.css';
+import { registerSW } from 'virtual:pwa-register';
+import { showUpdatePrompt } from './pwa/updatePrompt';
 
 // Expose React globally for plugin ESM modules (shim pattern). `react-dom/client` only carries
 // createRoot/hydrateRoot — plugins that import { createPortal, flushSync } from 'react-dom'
@@ -24,19 +26,15 @@ import './index.css';
 (globalThis as any).__OSCARR_REACT_DOM__ = ReactDOM;
 (globalThis as any).__OSCARR_JSX_RUNTIME__ = jsxRuntime;
 
-// Auto-reload when a new service worker takes control of the page. Combined with workbox's
-// skipWaiting + clientsClaim, this means a deploy reaches every open tab without a hard
-// refresh. The `hadController` guard suppresses the spurious reload that would otherwise
-// fire on first install (controller goes null → SW once, naturally).
-if ('serviceWorker' in navigator) {
-  const hadController = !!navigator.serviceWorker.controller;
-  let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (!hadController || reloading) return;
-    reloading = true;
-    globalThis.location.reload();
-  });
-}
+// A new build reaches open tabs as an offer, not as an interruption. The worker registers with
+// `registerType: 'prompt'`, so it stays in `waiting` until `updateSW(true)` lets it through —
+// the page keeps running against the assets it started with, and nothing typed into a form is
+// lost to a reload nobody asked for.
+const updateSW = registerSW({
+  onNeedRefresh() {
+    showUpdatePrompt(() => { void updateSW(true); });
+  },
+});
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

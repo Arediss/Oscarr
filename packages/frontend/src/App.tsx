@@ -8,21 +8,21 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
-import ForgotPasswordPage from '@/pages/ForgotPasswordPage';
-import ResetPasswordPage from '@/pages/ResetPasswordPage';
-import PlexReturnPage from '@/pages/PlexReturnPage';
-import InstallPage from '@/pages/InstallPage';
-import SearchPage from '@/pages/SearchPage';
-import MediaDetailPage from '@/pages/MediaDetailPage';
-import PersonPage from '@/pages/PersonPage';
-import RequestsPage from '@/pages/RequestsPage';
 
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
+const SearchPage = lazy(() => import('@/pages/SearchPage'));
+const MediaDetailPage = lazy(() => import('@/pages/MediaDetailPage'));
+const PersonPage = lazy(() => import('@/pages/PersonPage'));
+const RequestsPage = lazy(() => import('@/pages/RequestsPage'));
+const DiscoverGenrePage = lazy(() => import('@/pages/DiscoverGenrePage'));
+const CategoryPage = lazy(() => import('@/pages/CategoryPage'));
+const CalendarPage = lazy(() => import('@/pages/CalendarPage'));
+const InstallPage = lazy(() => import('@/pages/InstallPage'));
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
+const PlexReturnPage = lazy(() => import('@/pages/PlexReturnPage'));
 const AdminLayout = lazy(() => import('@/components/layouts/AdminLayout'));
 import NoAccessPage from '@/pages/NoAccessPage';
-import DiscoverGenrePage from '@/pages/DiscoverGenrePage';
-import CategoryPage from '@/pages/CategoryPage';
-import CalendarPage from '@/pages/CalendarPage';
 import { PluginPage } from '@/plugins/PluginPage';
 import { NsfwFilterContext, useNsfwFilterProvider } from '@/hooks/useNsfwFilter';
 
@@ -81,16 +81,19 @@ export default function App() {
 
   if (!installed) {
     return (
-      <Routes>
-        <Route path="/install" element={<InstallPage />} />
-        <Route path="*" element={<Navigate to="/install" replace />} />
-      </Routes>
+      <Suspense fallback={<LoadingScreen />}>
+        <Routes>
+          <Route path="/install" element={<InstallPage />} />
+          <Route path="*" element={<Navigate to="/install" replace />} />
+        </Routes>
+      </Suspense>
     );
   }
 
   return (
     <>
     <SkipLink />
+    <Suspense fallback={<LoadingScreen />}>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       {/* Public by necessity: the visitor has lost the only credential they had. */}
@@ -134,6 +137,7 @@ export default function App() {
         }
       />
     </Routes>
+    </Suspense>
     </>
   );
 }

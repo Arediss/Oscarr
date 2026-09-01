@@ -7,7 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['logo.png'],
       manifest: {
         name: 'Oscarr',
@@ -41,10 +41,12 @@ export default defineConfig({
       workbox: {
         importScripts: ['/sw-push.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
-        // skipWaiting + clientsClaim makes a new SW take over immediately on next page load
-        // (no need to close all tabs). Combined with the controllerchange listener in main.tsx,
-        // open tabs auto-reload to the new build instead of needing a hard refresh.
-        skipWaiting: true,
+        // No skipWaiting: a new worker waits until the person accepts the update banner
+        // (main.tsx → registerSW.onNeedRefresh). Taking over immediately meant an open tab was
+        // running one build's JavaScript against another build's precached assets, so main.tsx
+        // reloaded every tab on the spot to resync — discarding whatever was being typed.
+        // clientsClaim stays: it only matters on the very first install, where there is no
+        // previous build to disagree with.
         clientsClaim: true,
         runtimeCaching: [
           {

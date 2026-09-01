@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { extract as tarExtract } from 'tar';
 import { Agent, fetch as undiciFetch } from 'undici';
 import { parseManifest } from './manifestSchema.js';
+import { parseSha256File, digestMatches } from './checksum.js';
 import { getPluginsDir } from './loader.js';
 import type { PluginManifest } from './types.js';
 import { isPrivateIPv4, isPrivateIPv6, isPrivateAddress, normalizeHost } from '../utils/ssrfGuard.js';
@@ -17,6 +18,9 @@ const DOWNLOAD_TIMEOUT_MS = 60_000;
 // Hard cap on plugin tarballs. Oscarr plugins are small (a few hundred KB once bundled); 50 MB
 // is generous and still keeps a misconfigured / malicious registry entry from filling /tmp.
 const MAX_DOWNLOAD_BYTES = 50 * 1024 * 1024;
+// A sha256sum line is ~70 bytes. This is only here so a hostile or misconfigured host can't answer
+// the checksum request with a body big enough to matter.
+const MAX_CHECKSUM_BYTES = 4096;
 
 /**
  * Resolve the hostname once ourselves, pick a public address, and pin undici's connection to it.
@@ -76,7 +80,9 @@ function makeAgent(pinnedIp: string, family: number): Agent {
 
 const MAX_REDIRECTS = 5;
 
-async function downloadToFile(url: string, destPath: string): Promise<void> {
+/** Fetch through the pinned-agent redirect chain. Every caller must go through here — a plain
+ *  `fetch` would bypass the SSRF guard this whole file exists to enforce. */
+async function fetchPinned(url: string, label: string): Promise<Awaited<ReturnType<typeof undiciFetch>>> {
   // Manual redirect handling: each hop gets a freshly pinned agent for its hostname. With
   // `redirect: 'follow'` undici reuses the *initial* pinned IP across redirects, so a hop to a
   // different host (github.com → codeload.github.com) hits the wrong server and 400s.
@@ -99,7 +105,7 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
         throw Object.assign(new Error(`Upstream ${r.status}`), { response: { status: r.status } });
       }
       return r;
-    }, { label: 'PluginDownload' });
+    }, { label });
     if (hopRes.status >= 300 && hopRes.status < 400) {
       const location = hopRes.headers.get('location');
       if (!location) throw new Error(`Redirect ${hopRes.status} without Location header`);
@@ -110,6 +116,60 @@ async function downloadToFile(url: string, destPath: string): Promise<void> {
     break;
   }
   if (!res) throw new Error(`Too many redirects (>${MAX_REDIRECTS})`);
+  return res;
+}
+
+/**
+ * Check the downloaded archive against the `.sha256` sidecar every Oscarr plugin release
+ * publishes next to its tarball.
+ *
+ * Policy, deliberate: a checksum that is present and does not match **blocks** the install; a
+ * checksum that is absent (404) only warns. Requiring it would break every third-party plugin
+ * and the source-tarball fallback, which have no sidecar. This raises the cost of serving a
+ * swapped asset — it is not a signature, and it does not help if the release itself is
+ * compromised at the source.
+ */
+async function verifyChecksum(archiveUrl: string, archivePath: string): Promise<void> {
+  const filename = archiveUrl.split('/').pop()?.split('?')[0] ?? '';
+  let res: Awaited<ReturnType<typeof undiciFetch>>;
+  try {
+    res = await fetchPinned(`${archiveUrl}.sha256`, 'PluginChecksum');
+  } catch (err) {
+    console.warn(`[PluginInstall] checksum unreachable for ${filename}: ${String(err)} — installing unverified`);
+    return;
+  }
+  if (!res.ok) {
+    // Drain the body, or undici keeps the connection parked for the life of the process.
+    await res.body?.cancel().catch(() => { /* nothing to release */ });
+    console.warn(`[PluginInstall] no .sha256 published for ${filename} (HTTP ${res.status}) — installing unverified`);
+    return;
+  }
+
+  // A checksum file is 70-ish bytes. Anything larger is a host answering 200 with something else
+  // entirely, and `res.text()` would buffer all of it into memory before we could reject it.
+  const declared = Number(res.headers.get('content-length') ?? '0');
+  if (declared > MAX_CHECKSUM_BYTES) {
+    await res.body?.cancel().catch(() => { /* nothing to release */ });
+    console.warn(`[PluginInstall] .sha256 for ${filename} is implausibly large (${declared} bytes) — installing unverified`);
+    return;
+  }
+  const body = (await res.text()).slice(0, MAX_CHECKSUM_BYTES);
+
+  const expected = parseSha256File(body, filename);
+  if (!expected) {
+    console.warn(`[PluginInstall] .sha256 for ${filename} is not a usable checksum — installing unverified`);
+    return;
+  }
+  if (!digestMatches(await readFile(archivePath), expected)) {
+    throw new Error(
+      `Checksum mismatch for ${filename}: the archive does not match the .sha256 published with it. `
+      + 'Refusing to install.',
+    );
+  }
+}
+
+async function downloadToFile(url: string, destPath: string): Promise<void> {
+  const res = await fetchPinned(url, 'PluginDownload');
   if (!res.ok) throw new Error(`Download failed (${res.status}): ${res.statusText}`);
   if (!res.body) throw new Error('Download returned empty body');
 
@@ -185,6 +245,7 @@ export async function installPluginFromUrl(url: string): Promise<InstalledPlugin
   try {
     await mkdir(extractDir, { recursive: true });
     await downloadToFile(url, downloadPath);
+    await verifyChecksum(url, downloadPath);
     await tarExtract({
       file: downloadPath,
       cwd: extractDir,

@@ -60,6 +60,16 @@ export function closePluginStorage(pluginId: string): void {
   kvByPlugin.delete(pluginId);
 }
 
+/** Close every plugin's SQLite handles. Used before a restore swaps the plugin data directory
+ *  underneath the process — a handle left open would keep writing into the replaced files
+ *  (and hold WAL/SHM locks on them). Handles are reopened lazily on next use. */
+export function closeAllPluginStorage(): void {
+  for (const pluginId of [...dbByPlugin.keys()]) {
+    closePluginStorage(pluginId);
+  }
+  kvByPlugin.clear();
+}
+
 /** Wipe the on-disk data directory. Caller must call closePluginStorage first. */
 export async function rmPluginDataDir(pluginId: string): Promise<void> {
   await rm(pluginDataDirPath(pluginId), { recursive: true, force: true });

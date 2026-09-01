@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import api from '@/lib/api';
 import { toastApiError, extractApiError } from '@/utils/toast';
 import { invalidatePluginUICache } from '@/plugins/usePlugins';
+import { invalidate as invalidatePluginModules } from '@/plugins/pluginModuleCache';
 import { refreshPluginUpdatesCount } from '@/hooks/usePluginUpdatesCount';
 import type { PluginInfo } from '@/plugins/types';
 import type { RegistryPlugin, SubTab } from './constants';
@@ -86,8 +87,9 @@ export function usePluginsTab() {
     setUpdating(id);
     try {
       const { data } = await api.post(`/plugins/${id}/update`);
-      setInstallMessage({ kind: 'success', text: `Updated to v${data.plugin.version}` });
+      setInstallMessage({ kind: 'success', text: t('admin.plugins.updated_to', { version: data.plugin.version }) });
       await fetchPlugins();
+      invalidatePluginModules(id);
       invalidatePluginUICache();
       refreshPluginUpdatesCount();
       // Longer than the old 6s: this one asks the admin to go and do something.
@@ -99,13 +101,14 @@ export function usePluginsTab() {
     } finally {
       setUpdating(null);
     }
-  }, [fetchPlugins]);
+  }, [fetchPlugins, t]);
 
   const toggle = useCallback(async (plugin: PluginInfo) => {
     setToggling(plugin.id);
     try {
       await api.put(`/plugins/${plugin.id}/toggle`, { enabled: !plugin.enabled });
       setPlugins((prev) => prev.map((p) => (p.id === plugin.id ? { ...p, enabled: !plugin.enabled } : p)));
+      invalidatePluginModules(plugin.id);
       invalidatePluginUICache();
     } catch (err) {
       toastApiError(err, t('admin.plugins.toggle_failed', { name: plugin.name }));
@@ -140,23 +143,24 @@ export function usePluginsTab() {
     } finally {
       setInstalling(null);
     }
-  }, [fetchPlugins]);
+  }, [fetchPlugins, t]);
 
   const uninstall = useCallback(async (id: string) => {
     setUninstalling(id);
     try {
       await api.post(`/plugins/${id}/uninstall`);
       await fetchPlugins();
+      invalidatePluginModules(id);
       invalidatePluginUICache();
       refreshPluginUpdatesCount();
     } catch (err) {
-      setInstallMessage({ kind: 'error', text: `Uninstall failed: ${extractApiError(err, String((err as Error).message))}` });
+      setInstallMessage({ kind: 'error', text: t('admin.plugins.uninstall_failed_detail', { detail: extractApiError(err, String((err as Error).message)) }) });
       // Longer than the old 6s: this one asks the admin to go and do something.
       setTimeout(() => setInstallMessage(null), 12000);
     } finally {
       setUninstalling(null);
     }
-  }, [fetchPlugins]);
+  }, [fetchPlugins, t]);
 
   const restart = useCallback(async () => {
     setRestarting(true);

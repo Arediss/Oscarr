@@ -9,6 +9,24 @@ const cache = new Map<string, CacheEntry>();
 
 const cssStyles = new Map<string, HTMLStyleElement>();
 
+/** Per-plugin cache-busting token, bumped by `invalidate()`.
+ *
+ *  Clearing the Map above is not enough: `import()` and `fetch()` both go through the browser's
+ *  own cache, keyed by URL. An updated, toggled or reinstalled plugin served from the same
+ *  `/api/plugins/<id>/frontend/index.js` came back byte-identical from that cache, so the admin
+ *  kept seeing the previous build until a hard refresh. A changing query string is a different
+ *  URL, which is the only lever the page has here. */
+const assetVersion = new Map<string, string>();
+
+function versionedUrl(pluginId: string, path: string): string {
+  const token = assetVersion.get(pluginId);
+  return token ? `${path}?v=${token}` : path;
+}
+
+function bumpAssetVersion(pluginId: string): void {
+  assetVersion.set(pluginId, Date.now().toString(36));
+}
+
 /** Attribute that plugin containers must carry — matches the scope prefix applied to their CSS. */
 export const PLUGIN_SCOPE_ATTR = 'data-oscarr-plugin';
 
@@ -19,18 +37,58 @@ function pluginIdFromUrl(url: string): string | null {
   return match ? (match[1] ?? null) : null;
 }
 
-/** Prefix every rule selector with the scope attribute. Skips keyframe step selectors. */
-function scopePluginCss(css: string, scope: string): string {
-  return css.replaceAll(/([^{}@]+)\{/g, (match, selectorList: string) => {
+/** Prefix every rule selector with the scope attribute. Skips keyframe step selectors and
+ *  at-rule preludes.
+ *
+ *  The prelude of `@media (min-width:1024px)` is not a selector. Excluding `@` from the match
+ *  did not skip those preludes — it merely started the match one character later, so the rule
+ *  became `@<scope> media (min-width:1024px){`: an invalid at-rule that browsers drop along with
+ *  everything inside it. Every responsive utility and every plugin @keyframes silently died. */
+export function scopePluginCss(css: string, scope: string): string {
+  return css.replaceAll(/([^{}]+)\{/g, (match, selectorList: string) => {
     const trimmed = selectorList.trim();
     if (!trimmed) return match;
-    if (/^(\d+(\.\d+)?%|from|to)(\s*,\s*(\d+(\.\d+)?%|from|to))*$/.test(trimmed)) return match;
-    const scoped = trimmed
-      .split(',')
-      .map((s) => `${scope} ${s.trim()}`)
-      .join(',');
-    return `${scoped}{`;
+    // Leave the at-rule itself alone; its inner rules are scoped by later iterations.
+    if (trimmed.startsWith('@')) return match;
+    const parts = splitSelectorList(trimmed);
+    if (parts.length === 0) return match;
+    if (parts.every((part) => /^(\d+(\.\d+)?%|from|to)$/.test(part))) return match;
+    return `${parts.map((part) => `${scope} ${part}`).join(',')}{`;
   });
+}
+
+/** Split a selector list on its top-level commas only.
+ *
+ *  A plain `.split(',')` cuts inside functional pseudo-classes and attribute values:
+ *  `.card:is(.compact,.wide)` came out as `<scope> .card:is(.compact` + `<scope> .wide)`, which
+ *  is both invalid and silently different from what the plugin author wrote. Depth counting over
+ *  `()` / `[]` — and skipping quoted strings — keeps those commas where they belong.
+ *
+ *  Still regex-driven at the rule level, so a `{` inside a declaration string (`content: "{"`)
+ *  would confuse the outer pass. Plugin bundles are Tailwind output in practice; a real CSS
+ *  parser is the fix if that ever stops being true. */
+function splitSelectorList(list: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let quote: string | null = null;
+  let start = 0;
+
+  for (let i = 0; i < list.length; i++) {
+    const ch = list[i];
+    if (quote) {
+      if (ch === quote && list[i - 1] !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'") quote = ch;
+    else if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth--;
+    else if (ch === ',' && depth === 0) {
+      parts.push(list.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(list.slice(start));
+  return parts.map((part) => part.trim()).filter(Boolean);
 }
 
 /** Fetch + scope + inject the plugin's compiled CSS bundle. One-shot per pluginId. */
@@ -44,7 +102,7 @@ async function ensurePluginCss(pluginId: string): Promise<void> {
   }
 
   try {
-    const res = await fetch(`/api/plugins/${pluginId}/frontend/index.css`);
+    const res = await fetch(versionedUrl(pluginId, `/api/plugins/${pluginId}/frontend/index.css`));
     if (!res.ok) {
       if (import.meta.env.DEV && res.status === 404) {
         console.warn(
@@ -109,7 +167,11 @@ export function getCached(url: string): ComponentType<any> | null {
 export function invalidate(pluginId?: string): void {
   if (!pluginId) {
     cache.clear();
-    for (const id of Array.from(cssStyles.keys())) removePluginCss(id);
+    for (const id of Array.from(cssStyles.keys())) {
+      removePluginCss(id);
+      bumpAssetVersion(id);
+    }
+    for (const id of Array.from(assetVersion.keys())) bumpAssetVersion(id);
     return;
   }
   const prefix = `/api/plugins/${pluginId}/`;
@@ -117,14 +179,15 @@ export function invalidate(pluginId?: string): void {
     if (key.startsWith(prefix)) cache.delete(key);
   }
   removePluginCss(pluginId);
+  bumpAssetVersion(pluginId);
 }
 
 /** Build the standard URL for a plugin's main frontend module. */
 export function pluginFrontendUrl(pluginId: string): string {
-  return `/api/plugins/${pluginId}/frontend/index.js`;
+  return versionedUrl(pluginId, `/api/plugins/${pluginId}/frontend/index.js`);
 }
 
 /** Build the standard URL for a plugin's hook component. */
 export function pluginHookUrl(pluginId: string, hookPoint: string): string {
-  return `/api/plugins/${pluginId}/frontend/hooks/${hookPoint}.js`;
+  return versionedUrl(pluginId, `/api/plugins/${pluginId}/frontend/hooks/${hookPoint}.js`);
 }

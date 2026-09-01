@@ -19,6 +19,19 @@ services:
       - FRONTEND_URL=http://localhost:3456
       - SETUP_SECRET=${SETUP_SECRET}
       - INSTALL_FILE_PATH=/data/install.json
+      # Behind a reverse proxy, set this to the proxy's IP or CIDR (e.g. 127.0.0.1 or
+      # 172.18.0.0/16). Left empty, X-Forwarded-* is ignored — which is correct for a directly
+      # exposed instance, and wrong behind a proxy in two ways: every client is seen as the proxy,
+      # so one rate-limit bucket is shared by everyone (five failed logins locks out the whole
+      # instance), and the request reads as plain http, which drops the Secure flag on the auth
+      # cookie unless COOKIE_SECURE is forced below.
+      - TRUST_PROXY=${TRUST_PROXY:-}
+      # Set to true when the proxy terminates TLS: enables HSTS, and marks the auth cookie Secure
+      # even if the internal hop is plain http.
+      - FORCE_HTTPS=${FORCE_HTTPS:-false}
+      # Only needed to override the two settings above — `true` forces the Secure flag on, `false`
+      # forces it off (useful for a plain-http LAN instance that still sets FORCE_HTTPS).
+      - COOKIE_SECURE=${COOKIE_SECURE:-}
 
 volumes:
   oscarr-data:

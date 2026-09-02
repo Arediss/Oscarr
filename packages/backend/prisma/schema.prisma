@@ -426,6 +426,10 @@ model Patchnote {
   titleEn String
   titleFr String
   entries String   // JSON: [{ type: "feat"|"fix"|"perf", titleEn, titleFr, descEn?, descFr? }]
+  /// Long-form note, rendered as a document instead of the entry list. Nullable: releases seeded
+  /// before this existed keep their list. See frontend utils/releaseNotes.ts for the subset.
+  bodyEn  String?
+  bodyFr  String?
 }
 
 model PushSubscription {

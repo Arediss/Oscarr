@@ -821,6 +821,7 @@
   "changelog.type_major": "Major",
   "changelog.type_minor": "Minor",
   "changelog.type_patch": "Patch",
+  "changelog.installed": "Installed",
   "admin.instance.update_check_failed": "Unable to check for updates",
   "admin.instance.maintenance_banner": "Maintenance banner",
   "admin.instance.maintenance_desc": "Displayed at the top of all pages. Leave empty to hide.",

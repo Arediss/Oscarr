@@ -821,6 +821,7 @@
   "changelog.type_major": "Majeure",
   "changelog.type_minor": "Mineure",
   "changelog.type_patch": "Correctif",
+  "changelog.installed": "Installée",
   "admin.instance.update_check_failed": "Impossible de vérifier les mises à jour",
   "admin.instance.maintenance_banner": "Bandeau de maintenance",
   "admin.instance.maintenance_desc": "Affiché en haut de toutes les pages. Laissez vide pour masquer.",

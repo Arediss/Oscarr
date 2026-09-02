@@ -57,6 +57,9 @@ export async function appRoutes(app: FastifyInstance) {
           version: p.version,
           type: p.type,
           title: lang === 'fr' ? p.titleFr : p.titleEn,
+          // Long-form note when the release has one; the client falls back to `entries` otherwise,
+          // so releases seeded before bodies existed keep rendering as they always did.
+          body: (lang === 'fr' ? p.bodyFr : p.bodyEn) || null,
           date: p.date.toISOString(),
           entries: entries.map(e => ({
             type: e.type,

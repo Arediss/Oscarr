@@ -56,13 +56,10 @@ interface PageEnvelope<T> {
   results: T[];
   pageInfo?: { page: number; pages: number; results: number };
 }
+import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 
 function buildUrl(base: string, path: string): string {
-  // Same polynomial backtracking as seerrConfig.trim — reached via /import/preview and
-  // /import/execute, so it has to be fixed here too.
-  let end = base.length;
-  while (end > 0 && base.charCodeAt(end - 1) === 47) end--;
-  return `${base.slice(0, end)}${path}`;
+  return `${trimTrailingSlashes(base)}${path}`;
 }
 
 /** Per-request ceiling. Without one, a Seerr instance that accepts the connection and then goes

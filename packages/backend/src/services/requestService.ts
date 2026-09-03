@@ -14,6 +14,7 @@ import { safeNotify, safeUserNotify, buildSiteLink } from '../utils/safeNotify.j
 import { pluginEngine } from '../plugins/engine.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
 import { Prisma } from '@prisma/client';
+import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -213,7 +214,7 @@ async function resolveRootFolder(
     return requested || client.defaultRootFolder;
   }
 
-  const strip = (p: string) => p.replace(/\/+$/, '');
+  const strip = (p: string) => trimTrailingSlashes(p);
   if (requested) {
     const match = available.find((f) => strip(f.path) === strip(requested));
     if (match) return match.path;

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Provider } from '../types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export const jackettProvider: Provider = {
   service: {
@@ -12,7 +13,7 @@ export const jackettProvider: Provider = {
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },
     ],
     async test(config) {
-      const baseUrl = config.url?.replace(/\/+$/, '') ?? '';
+      const baseUrl = trimTrailingSlashes(config.url ?? '');
       const apiKey = config.apiKey ?? '';
 
       // Torznab caps endpoint accepts the apikey (whereas /server/config and /indexers require

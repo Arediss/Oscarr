@@ -5,6 +5,7 @@
  * Pure read — never writes. The Plex token is not exposed by the Seerr API surface, so
  * Plex shows up only as a `plexHint` (URL) and lands in `manualFollowUps`.
  */
+import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 
 interface SourceCreds {
   url: string;
@@ -54,21 +55,13 @@ export interface DerivedConfig {
   manualFollowUps: string[];
 }
 
-function trim(url: string): string {
-  // Backwards scan rather than /\/+$/: the regex backtracks polynomially on a long run of
-  // trailing slashes, which an admin-supplied URL can contain.
-  let end = url.length;
-  while (end > 0 && url.charCodeAt(end - 1) === 47) end--;
-  return url.slice(0, end);
-}
-
 /** `fetch` has no default timeout: a source that accepts the connection then stalls would hang
  *  the config probe — and the import wizard behind it — with nothing to cancel. */
 const PROBE_TIMEOUT_MS = 15_000;
 
 async function getJson<T>(creds: SourceCreds, path: string): Promise<T | null> {
   try {
-    const res = await fetch(`${trim(creds.url)}${path}`, {
+    const res = await fetch(`${trimTrailingSlashes(creds.url)}${path}`, {
       headers: { Accept: 'application/json', 'X-Api-Key': creds.apiKey },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });

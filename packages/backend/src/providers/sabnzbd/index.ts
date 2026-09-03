@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Provider } from '../types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export const sabnzbdProvider: Provider = {
   service: {
@@ -13,7 +14,7 @@ export const sabnzbdProvider: Provider = {
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },
     ],
     async test(config) {
-      const baseUrl = config.url?.replace(/\/+$/, '') ?? '';
+      const baseUrl = trimTrailingSlashes(config.url ?? '');
       const apiKey = config.apiKey ?? '';
 
       // SAB returns 200 even on bad keys — the body carries `{ "error": "API Key Required" }`.

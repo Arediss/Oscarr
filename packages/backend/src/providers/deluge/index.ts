@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Provider } from '../types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export const delugeProvider: Provider = {
   service: {
@@ -13,7 +14,7 @@ export const delugeProvider: Provider = {
       { key: 'password', labelKey: 'common.password', type: 'password' },
     ],
     async test(config) {
-      const baseUrl = config.url?.replace(/\/+$/, '') ?? '';
+      const baseUrl = trimTrailingSlashes(config.url ?? '');
       const password = config.password ?? '';
 
       const url = `${baseUrl}/json`;

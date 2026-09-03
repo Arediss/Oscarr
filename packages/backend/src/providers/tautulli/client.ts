@@ -8,12 +8,13 @@ import type {
   TautulliUsersTable,
   TautulliUserWatchTime,
 } from './types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export class TautulliClient {
   private readonly api: AxiosInstance;
 
   constructor(url: string, apiKey: string) {
-    const cleanUrl = url.replace(/\/+$/, '');
+    const cleanUrl = trimTrailingSlashes(url);
     this.api = axios.create({
       baseURL: `${cleanUrl}/api/v2`,
       params: { apikey: apiKey },

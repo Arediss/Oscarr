@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Provider } from '../types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export const nzbgetProvider: Provider = {
   service: {
@@ -14,7 +15,7 @@ export const nzbgetProvider: Provider = {
       { key: 'password', labelKey: 'common.password', type: 'password' },
     ],
     async test(config) {
-      const baseUrl = config.url?.replace(/\/+$/, '') ?? '';
+      const baseUrl = trimTrailingSlashes(config.url ?? '');
       const username = config.username ?? '';
       const password = config.password ?? '';
 

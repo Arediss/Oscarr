@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Provider } from '../types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export const qbittorrentProvider: Provider = {
   service: {
@@ -12,7 +13,7 @@ export const qbittorrentProvider: Provider = {
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },
     ],
     async test(config) {
-      const baseUrl = config.url?.replace(/\/+$/, '') ?? '';
+      const baseUrl = trimTrailingSlashes(config.url ?? '');
       const apiKey = config.apiKey ?? '';
 
       const res = await axios.get<string>(`${baseUrl}/api/v2/app/version`, {

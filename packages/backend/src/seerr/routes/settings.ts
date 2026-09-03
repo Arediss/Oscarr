@@ -3,6 +3,7 @@ import { prisma } from '../../utils/prisma.js';
 import { getArrClientForService } from '../../providers/index.js';
 import { parseServiceConfig } from '../../utils/services.js';
 import { logEvent } from '../../utils/logEvent.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 const ARR_TYPES = ['radarr', 'sonarr'] as const;
 type ArrType = typeof ARR_TYPES[number];
@@ -56,7 +57,7 @@ function buildArrSettingsResponse(service: ServiceWithRelations): SeerrArrConfig
     hostname = u.hostname;
     port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
     useSsl = u.protocol === 'https:';
-    baseUrl = u.pathname.replace(/\/+$/, '');
+    baseUrl = trimTrailingSlashes(u.pathname);
   } catch { /* malformed url — leave defaults so the response stays well-shaped */ }
 
   // Oscarr decides routing via QualityMapping + FolderRule, not a single "active" pair like

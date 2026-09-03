@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma.js';
 import { parseServiceConfig } from '../utils/services.js';
 import { logEvent } from '../utils/logEvent.js';
+import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 
 /**
  * Reads what is actually present in the user's media server library.
@@ -53,7 +54,7 @@ function parseGuids(guids: PlexGuid[] | undefined): { tmdbId: number | null; tvd
 }
 
 async function plexGet(baseUrl: string, token: string, path: string, params: Record<string, string | number> = {}) {
-  const url = new URL(path, baseUrl.replace(/\/+$/, '') + '/');
+  const url = new URL(path, trimTrailingSlashes(baseUrl) + '/');
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, String(v));
 
   const controller = new AbortController();

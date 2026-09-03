@@ -1,5 +1,6 @@
 import axios from 'axios';
 import type { Provider } from '../types.js';
+import { trimTrailingSlashes } from '../../utils/trimTrailingSlashes.js';
 
 export const prowlarrProvider: Provider = {
   service: {
@@ -13,7 +14,7 @@ export const prowlarrProvider: Provider = {
       { key: 'apiKey', labelKey: 'common.api_key', type: 'password' },
     ],
     async test(config) {
-      const baseUrl = config.url?.replace(/\/+$/, '') ?? '';
+      const baseUrl = trimTrailingSlashes(config.url ?? '');
       const apiKey = config.apiKey ?? '';
 
       const { data } = await axios.get<{ appName?: string; version?: string }>(

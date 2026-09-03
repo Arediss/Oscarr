@@ -2,6 +2,7 @@ import { randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { prisma } from '../utils/prisma.js';
 import { hashPassword } from '../utils/password.js';
 import { getAppSettings } from '../utils/appSettings.js';
+import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 import { isProviderEnabled } from '../providers/authSettings.js';
 import { isMailReady, sendMail } from './mailer.js';
 import { logEvent } from '../utils/logEvent.js';
@@ -95,7 +96,8 @@ export async function requestReset(email: string): Promise<void> {
   const siteName = settings?.siteName || 'Oscarr';
   // Configuration only — isResetEnabled already refused when siteUrl is unset, and this re-read
   // keeps the guarantee local to the line that builds the link.
-  const base = settings?.siteUrl?.trim().replace(/\/+$/, '');
+  const trimmed = settings?.siteUrl?.trim();
+  const base = trimmed ? trimTrailingSlashes(trimmed) : trimmed;
   if (!base) return;
   const link = `${base}/reset-password?token=${encodeURIComponent(token)}`;
 

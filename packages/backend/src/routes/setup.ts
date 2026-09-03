@@ -11,6 +11,7 @@ import { assertPublicUrl, SsrfBlockedError } from '../utils/ssrfGuard.js';
 import { isSensitiveKey } from '../utils/secrets.js';
 import { registerEmail } from '../providers/email/index.js';
 import { buildHelpers } from './auth.js';
+import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 
 // Strength is checked once at boot by assertSetupSecretOrExit (utils/envSecret.ts), which refuses
 // to start a not-yet-installed instance on a weak value. The old warning here fired before that
@@ -308,10 +309,10 @@ async function findServiceByTypeAndUrl(type: string, url: string | undefined) {
   const candidates = await prisma.service.findMany({ where: { type } });
   if (candidates.length === 0) return null;
   if (!url) return candidates[0];
-  const target = url.replace(/\/+$/, '');
+  const target = trimTrailingSlashes(url);
   return candidates.find((c) => {
     try {
-      return (parseServiceConfig(c.config).url ?? '').replace(/\/+$/, '') === target;
+      return trimTrailingSlashes(parseServiceConfig(c.config).url ?? '') === target;
     } catch {
       return false;
     }

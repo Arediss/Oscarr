@@ -8,7 +8,7 @@ import { normalizeLanguages } from '../utils/languages.js';
 import { performLiveCheckWithTimeout, cacheLanguageData, refreshMediaCategory, canSkipLiveCheck } from '../services/mediaService.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { Availability } from '@oscarr/shared';
-import { buildAvailability, loadBlacklistedKeys, loadLibraryGate, gateCategory, recentLibraryFilter } from '../services/availability.js';
+import { buildAvailability, loadBlacklistedKeys, loadLibraryGate, loadFreeQualityMediaIds, gateCategory, recentLibraryFilter } from '../services/availability.js';
 import { mediaKey } from '../utils/mediaKey.js';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
@@ -198,6 +198,22 @@ export async function mediaRoutes(app: FastifyInstance) {
     }));
   });
 
+  /**
+   * The criteria a requester may pick from.
+   *
+   * Only those the admin marked visible: the others exist purely to drive folder rules and are
+   * none of a user's business. Values come along so the picker needs a single call.
+   */
+  app.get('/request-criteria', async () => prisma.requestCriterion.findMany({
+    where: { showOnRequest: true },
+    orderBy: { position: 'asc' },
+    select: {
+      id: true,
+      name: true,
+      values: { orderBy: { position: 'asc' }, select: { id: true, label: true } },
+    },
+  }));
+
   // Batch lookup: check availability for multiple TMDB IDs
   app.post('/batch-status', {
     schema: {
@@ -253,11 +269,12 @@ export async function mediaRoutes(app: FastifyInstance) {
       },
     });
 
-    // Resolved once per batch rather than per row — it is the same setting for every media here.
+    // Both resolved once per batch rather than per row.
     const gate = await loadLibraryGate();
+    const freeQuality = await loadFreeQualityMediaIds(media.map((m) => m.id));
     for (const m of media) {
       const key = mediaKey(m);
-      results[key] = buildAvailability(m, m.requests[0] ?? null, blacklistedKeys, gate);
+      results[key] = buildAvailability(m, m.requests[0] ?? null, blacklistedKeys, gate, freeQuality);
     }
 
     return results;

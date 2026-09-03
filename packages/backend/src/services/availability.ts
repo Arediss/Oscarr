@@ -1,10 +1,12 @@
 import type { Availability } from '@oscarr/shared';
-import { toMediaStateCategory } from '@oscarr/shared';
+import { toMediaStateCategory, ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
 import { prisma } from '../utils/prisma.js';
 import { mediaKey } from '../utils/mediaKey.js';
 import { getServiceDefinition } from '../providers/index.js';
 
 interface MediaRow {
+  /** Optional: only the batch endpoint has it, and only it needs the free-option lookup. */
+  id?: number;
   tmdbId: number;
   mediaType: string;
   statusCategory: string;
@@ -91,6 +93,7 @@ export function buildAvailability(
   userRequest: RequestRow | null,
   blacklistedKeys: ReadonlySet<string>,
   gate: LibraryGate = NO_LIBRARY_GATE,
+  freeQualityMediaIds: ReadonlySet<number> = EMPTY_IDS,
 ): Availability {
   const key = mediaKey(media);
   const statusCategory = blacklistedKeys.has(key)
@@ -100,7 +103,52 @@ export function buildAvailability(
     statusCategory,
     requestStatus: (userRequest?.status as Availability['requestStatus']) ?? null,
     requestId: userRequest?.id ?? null,
+    hasFreeQualityOption: media.id != null && freeQualityMediaIds.has(media.id),
   };
+}
+
+const EMPTY_IDS: ReadonlySet<number> = new Set();
+
+/**
+ * Which of these media still have a quality option nobody has asked for.
+ *
+ * Two queries for the whole batch rather than one per title: the configured options, and the
+ * options taken by any active request on these media. A title counts when at least one option is
+ * untaken — and never when no option is configured at all, since there would be nothing to pick.
+ *
+ * Deliberately ignores who made the request: the point of discussion #228 is that someone else
+ * already asking must not hide the options they did not take.
+ */
+export async function loadFreeQualityMediaIds(mediaIds: number[]): Promise<Set<number>> {
+  if (mediaIds.length === 0) return new Set();
+
+  const options = await prisma.qualityOption.findMany({ select: { id: true } });
+  if (options.length === 0) return new Set();
+
+  const taken = await prisma.mediaRequest.findMany({
+    where: {
+      mediaId: { in: mediaIds },
+      status: { in: [...ACTIVE_REQUEST_STATUSES] },
+      qualityOptionId: { not: null },
+    },
+    select: { mediaId: true, qualityOptionId: true },
+    distinct: ['mediaId', 'qualityOptionId'],
+  });
+
+  const takenByMedia = new Map<number, Set<number>>();
+  for (const row of taken) {
+    if (row.qualityOptionId == null) continue;
+    let set = takenByMedia.get(row.mediaId);
+    if (!set) { set = new Set(); takenByMedia.set(row.mediaId, set); }
+    set.add(row.qualityOptionId);
+  }
+
+  const free = new Set<number>();
+  for (const id of mediaIds) {
+    const takenHere = takenByMedia.get(id);
+    if (!takenHere || options.some((o) => !takenHere.has(o.id))) free.add(id);
+  }
+  return free;
 }
 
 /** Reads the configured threshold. Defaults to "no gate", i.e. the historical behaviour. */

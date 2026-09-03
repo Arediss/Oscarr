@@ -1,9 +1,9 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Star, CheckCircle, Film, Tv, Plus, Loader2, EyeOff } from 'lucide-react';
 import api, { posterUrl } from '@/lib/api';
-import { canRequest, type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
+import { canRequest, MEDIA_STATE_DISPLAY, type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
 import type { TmdbMedia } from '@/types';
 import { clsx } from 'clsx';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
@@ -13,12 +13,18 @@ import { toastApiError } from '@/utils/toast';
 interface MediaCardProps {
   media: TmdbMedia;
   className?: string;
-  availability?: { statusCategory: MediaStateCategory; requestStatus?: RequestStatus } | null;
+  availability?: {
+    statusCategory: MediaStateCategory;
+    requestStatus?: RequestStatus;
+    /** Set by the batch endpoint: an option nobody has taken is still on offer for this title. */
+    hasFreeQualityOption?: boolean;
+  } | null;
   index?: number;
 }
 
 export default function MediaCard({ media, className, availability, index = 0 }: Readonly<MediaCardProps>) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { isNsfw } = useNsfwFilter();
   const [loaded, setLoaded] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -31,12 +37,25 @@ export default function MediaCard({ media, className, availability, index = 0 }:
   const type = media.media_type || (media.title ? 'movie' : 'tv');
   const link = `/${type}/${media.id}`;
 
-  const showRequest = !availability || canRequest(availability.statusCategory, availability.requestStatus ?? null);
+  const showRequest = !availability
+    || canRequest(
+      availability.statusCategory,
+      availability.requestStatus ?? null,
+      availability.hasFreeQualityOption ?? false,
+    );
+
+  // True when the only reason to offer anything is a free quality option. A card has no picker, and
+  // posting blind would send the default option, not the one this person came for — which is the
+  // whole point of asking again. So the click opens the page that does have the picker.
+  const needsQualityChoice = !!availability
+    && (availability.hasFreeQualityOption ?? false)
+    && !MEDIA_STATE_DISPLAY[availability.statusCategory].showsRequestCTA;
 
   const handleRequest = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (requesting || requested) return;
+    if (needsQualityChoice) { navigate(link); return; }
     setRequesting(true);
     try {
       await api.post('/requests', { tmdbId: media.id, mediaType: type });

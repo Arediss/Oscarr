@@ -144,6 +144,7 @@ export async function resolveServiceContext(
   tmdbId: number,
   userId: number | null,
   qualityOptionId?: number,
+  criterionValueIds: number[] = [],
 ): Promise<ServiceContext> {
   const settings = await getAppSettings();
   const defaultProfileId = settings?.defaultQualityProfile ?? null;
@@ -152,7 +153,7 @@ export async function resolveServiceContext(
     ? await getMovieDetails(tmdbId)
     : await getTvDetails(tmdbId);
 
-  const ruleMatch = await matchFolderRule(mediaType, tmdbData, userId, qualityOptionId);
+  const ruleMatch = await matchFolderRule(mediaType, tmdbData, userId, qualityOptionId, criterionValueIds);
   const defaultFolder = mediaType === 'movie' ? settings?.defaultMovieFolder : settings?.defaultTvFolder;
 
   let targetServiceId: number | null = ruleMatch?.serviceId ?? null;
@@ -287,9 +288,11 @@ export async function sendToService(
   seasons?: number[],
   qualityOptionId?: number,
   rootFolderOverride?: string | null,
+  /** Last, so the three callers that have no criteria to pass stay untouched. */
+  criterionValueIds: number[] = [],
 ): Promise<boolean> {
   try {
-    const ctx = await resolveServiceContext(mediaType as 'movie' | 'tv', media.tmdbId, userId, qualityOptionId);
+    const ctx = await resolveServiceContext(mediaType as 'movie' | 'tv', media.tmdbId, userId, qualityOptionId, criterionValueIds);
 
     // Resolve tvdbId from TMDB if missing
     let resolvedMedia = media;
@@ -353,6 +356,8 @@ export type CreateRequestResult =
   | { ok: false; status: 403; code: 'BLACKLISTED'; error: string }
   | { ok: false; status: 409; code: 'DUPLICATE'; error: string }
   | { ok: false; status: 403; code: 'QUALITY_NOT_ALLOWED'; error: string }
+  | { ok: false; status: 400; code: 'UNKNOWN_CRITERION_VALUE'; error: string }
+  | { ok: false; status: 400; code: 'CRITERION_CONFLICT'; error: string }
   | { ok: false; status: 403; code: 'REQUESTS_DISABLED'; error: string };
 
 export interface CreateRequestInput {
@@ -362,6 +367,8 @@ export interface CreateRequestInput {
   seasons?: unknown;
   rootFolder?: string;
   qualityOptionId?: number;
+  /** One value per admin-defined criterion the requester picked. Order is irrelevant. */
+  criterionValueIds?: number[];
   /** When true, the pluginGuard pass is skipped even for non-admins. Used by
    *  `ctx.requests.create` when the plugin author explicitly wants to avoid triggering other
    *  plugins' `request.create` guards (which could loop if the calling plugin is itself a
@@ -423,14 +430,52 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
     else if (qualityOpt?.approvalMode === 'manual') shouldAutoApprove = user.role === 'admin';
   }
 
+  // Criterion values, checked before anything is written. Two guards, both about a request that
+  // could never be served: an id that does not exist, and two values of the same criterion — a
+  // title cannot be wanted in French *and* subtitled at once, and a folder rule matching on that
+  // criterion would have to pick one arbitrarily.
+  const criterionValueIds = [...new Set(input.criterionValueIds ?? [])];
+  if (criterionValueIds.length > 0) {
+    const values = await prisma.requestCriterionValue.findMany({
+      where: { id: { in: criterionValueIds } },
+      select: { id: true, criterionId: true },
+    });
+    if (values.length !== criterionValueIds.length) {
+      return { ok: false, status: 400, code: 'UNKNOWN_CRITERION_VALUE', error: 'UNKNOWN_CRITERION_VALUE' };
+    }
+    const perCriterion = new Set(values.map((v) => v.criterionId));
+    if (perCriterion.size !== values.length) {
+      return { ok: false, status: 400, code: 'CRITERION_CONFLICT', error: 'CRITERION_CONFLICT' };
+    }
+  }
+
   // Dedup + create in one transaction so two concurrent calls by the same user can't both pass
   // the dedup check and both insert (SQLite serializes writes, but defensive against future
   // backends and intent-clarity for the reader).
   const initialStatus: RequestStatusKind = shouldAutoApprove ? 'approved' : 'pending';
   const mediaRequest = await prisma.$transaction(async (tx) => {
-    const dup = await tx.mediaRequest.findFirst({
-      where: { mediaId: media.id, userId: user.id, status: { in: [...ACTIVE_REQUEST_STATUSES] } },
-      select: { id: true },
+    // The unit of uniqueness is (media, user, quality option, criterion values) — not (media,
+    // user). Two variants are two different asks: the option decides the profile, the criteria
+    // decide which *arr instance a folder rule sends it to, which is the whole point of discussion
+    // #228. Without them the interface offered a second variant on an available title and this
+    // answered 409, because `resolveButtonState` reads the variant path before the user's own
+    // request. Absent is its own value: the default is not the same ask as a named one.
+    //
+    // Compared in memory rather than in SQL: the candidates are one user's active requests on one
+    // title, so a handful of rows, and set equality is clearer here than a counting subquery.
+    const candidates = await tx.mediaRequest.findMany({
+      where: {
+        mediaId: media.id,
+        userId: user.id,
+        status: { in: [...ACTIVE_REQUEST_STATUSES] },
+        qualityOptionId: input.qualityOptionId ?? null,
+      },
+      select: { id: true, criteria: { select: { valueId: true } } },
+    });
+    const wanted = new Set(criterionValueIds);
+    const dup = candidates.find((c) => {
+      if (c.criteria.length !== wanted.size) return false;
+      return c.criteria.every((row) => wanted.has(row.valueId));
     });
     if (dup) throw new DuplicateRequestError();
     return transitionRequestStatus(
@@ -445,6 +490,9 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
           qualityOptionId: input.qualityOptionId ?? null,
           status: initialStatus,
           approvedById: shouldAutoApprove ? user.id : null,
+          criteria: criterionValueIds.length > 0
+            ? { create: criterionValueIds.map((valueId) => ({ valueId })) }
+            : undefined,
         },
         include: { media: true, user: { select: { id: true, displayName: true, avatar: true } } },
       }),
@@ -460,7 +508,7 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   let sendFailed = false;
   if (shouldAutoApprove) {
     const tagName = await getUserTagName(user.id);
-    const sent = await sendToService(media, mediaType, tagName, user.id, validSeasons, input.qualityOptionId);
+    const sent = await sendToService(media, mediaType, tagName, user.id, validSeasons, input.qualityOptionId, undefined, criterionValueIds);
 
     // Post-send writes go through a single transaction so the request status and the media
     // status flip can't drift if the process crashes between them.
@@ -592,7 +640,12 @@ export async function promoteStaleStatuses(): Promise<void> {
 export async function retryFailedRequests(): Promise<{ retried: number; succeeded: number }> {
   const failed = await prisma.mediaRequest.findMany({
     where: { status: 'failed' },
-    include: { media: true, user: { select: { id: true, displayName: true, email: true } } },
+    include: {
+      media: true,
+      user: { select: { id: true, displayName: true, email: true } },
+      // Without these a retry would route on quality alone and land in the wrong folder.
+      criteria: { select: { valueId: true } },
+    },
   });
 
   if (failed.length === 0) return { retried: 0, succeeded: 0 };
@@ -601,7 +654,10 @@ export async function retryFailedRequests(): Promise<{ retried: number; succeede
   for (const req of failed) {
     const tagName = req.user.displayName || req.user.email || `user-${req.userId}`;
     const seasons = req.seasons ? JSON.parse(req.seasons) : undefined;
-    const sent = await sendToService(req.media, req.mediaType, tagName, req.userId, seasons, req.qualityOptionId ?? undefined);
+    const sent = await sendToService(
+      req.media, req.mediaType, tagName, req.userId, seasons, req.qualityOptionId ?? undefined,
+      undefined, req.criteria?.map((c) => c.valueId) ?? [],
+    );
     if (sent) {
       await transitionRequestStatus(
         { requestId: req.id, from: req.status as RequestStatusKind, to: 'approved', why: 'scheduler-retry' },

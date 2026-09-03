@@ -39,13 +39,20 @@ export function resolveButtonState(inputs: ButtonStateInputs): ButtonState {
   if (isAvailable && hasRequestableSeasons && !userHasRequest) return 'can_request_seasons';
   if (isAvailable && !canRequestNewQuality) return 'available';
   if (isAvailable && canRequestNewQuality) return 'can_request_quality';
-  // Note: canRequestNewQuality is intentionally checked AFTER isDownloading/isUpcoming/isSearching
-  // to match the original behavior. A future improvement could allow quality requests during these states.
+  // A free quality option now outranks the transient states, where it used to be read after them.
+  //
+  // That order was the bug in discussion #228: the moment one person asked for a title, everyone
+  // else saw "upcoming" or "downloading" and no button, however many options were untaken. Those
+  // three states describe what is happening to *a* request, not to the title, and they said
+  // nothing about whether another option was still free.
+  //
+  // Only reachable when an option really is untaken: `canRequestNewQuality` is computed from the
+  // set of options already requested, so a title being fetched in the only configured option
+  // still reads as `downloading`.
+  if (canRequestNewQuality) return 'can_request_quality';
   if (isDownloading) return 'downloading';
   if (isUpcoming) return 'upcoming';
   if (isSearching) return 'searching';
-  if (canRequestNewQuality) return 'can_request_quality';
-  // canRequestNewQuality is always false here (already returned above if true)
   if (userHasRequest && !isPartiallyAvailable) return 'already_requested';
   if (isPartiallyAvailable) {
     if (searchMissingState === 'searching') return 'partially_searching';

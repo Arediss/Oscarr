@@ -190,7 +190,9 @@ export async function matchFolderRule(
   criterionValueIds: number[] = [],
 ): Promise<RuleMatch | null> {
   const rules = await prisma.folderRule.findMany({
-    where: { mediaType, enabled: true },
+    // `any` rules sit in the same priority order as the typed ones: first match still wins, so a
+    // generic rule placed high deliberately shadows a specific one placed low.
+    where: { mediaType: { in: [mediaType, 'any'] }, enabled: true },
     orderBy: [{ priority: 'asc' }, { id: 'asc' }], // M4: deterministic winner on equal priority
   });
 

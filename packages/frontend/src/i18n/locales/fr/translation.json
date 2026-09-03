@@ -1209,7 +1209,8 @@
       "section_then": "Alors",
       "builtin_fields": "Champs intégrés",
       "criteria_fields": "Critères",
-      "language": "Langue d'origine"
+      "language": "Langue d'origine",
+      "any_media_type": "Peu importe"
     }
   }
 }

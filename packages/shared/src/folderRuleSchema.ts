@@ -20,7 +20,15 @@ export const RULE_FIELD_OPERATORS: Record<RuleField, readonly RuleOperator[]> = 
   quality: ['is', 'in'],
 };
 
-export const RULE_MEDIA_TYPES = ['movie', 'tv'] as const;
+/**
+ * `any` matches both. Stored as a plain string like the other two, so existing rules keep their
+ * value untouched and nothing had to migrate — the matcher simply widens its lookup.
+ *
+ * Worth knowing before using it: a rule still targets exactly one folder, and a Radarr root folder
+ * is rarely a sensible destination for a series. `any` earns its place when the *condition* is
+ * type-agnostic, not as a way to share a path between the two.
+ */
+export const RULE_MEDIA_TYPES = ['movie', 'tv', 'any'] as const;
 export type RuleMediaType = (typeof RULE_MEDIA_TYPES)[number];
 
 export const RULE_SERIES_TYPES = ['standard', 'anime', 'daily'] as const;

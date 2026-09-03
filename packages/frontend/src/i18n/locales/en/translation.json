@@ -1209,7 +1209,8 @@
       "section_then": "Then",
       "builtin_fields": "Built-in fields",
       "criteria_fields": "Criteria",
-      "language": "Original language"
+      "language": "Original language",
+      "any_media_type": "Any type"
     }
   }
 }

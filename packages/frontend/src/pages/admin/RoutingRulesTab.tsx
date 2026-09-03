@@ -296,7 +296,7 @@ export function RoutingRulesTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-ndp-text">{rule.name}</span>
-                    <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{rule.mediaType === 'movie' ? t('common.movie') : rule.mediaType === 'tv' ? t('common.series') : t('common.all')}</span>
+                    <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{rule.mediaType === 'movie' ? t('common.movie') : rule.mediaType === 'tv' ? t('common.series') : t('admin.paths.any_media_type')}</span>
                     {rule.seriesType && <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded">{rule.seriesType}</span>}
                     {service && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">{service.name}{service.config?.url ? ` · ${service.config.url}` : ''}</span>}
                     {rule.enabled && rule.serviceStatus && BROKEN_SERVICE_STATUSES.has(rule.serviceStatus) && (
@@ -348,7 +348,9 @@ export function RoutingRulesTab() {
               <div>
                 <label htmlFor={`${fieldId}-type`} className="mb-1 block text-xs text-ndp-text-dim">{t('common.type')}</label>
                 <select id={`${fieldId}-type`} value={newMediaType} onChange={(e) => { setNewMediaType(e.target.value); setNewFolder(''); setNewServiceId(''); setNewSeriesType(''); }} className="input w-full text-sm">
-                  <option value="tv">{t('common.series')}</option><option value="movie">{t('common.movie')}</option>
+                  <option value="tv">{t('common.series')}</option>
+                  <option value="movie">{t('common.movie')}</option>
+                  <option value="any">{t('admin.paths.any_media_type')}</option>
                 </select>
               </div>
             </div>
@@ -375,7 +377,9 @@ export function RoutingRulesTab() {
                   <option value="">{t('common.choose')}</option>
                   {labeledFolders
                     .filter(f => {
-                      if (!f.serviceId) return true;
+                      // An `any` rule can land on either side, so nothing is filtered out — the
+                      // admin picks, and a Radarr folder for a series is their call to make.
+                      if (newMediaType === 'any' || !f.serviceId) return true;
                       const svc = services.find(s => s.id === f.serviceId);
                       return svc ? (newMediaType === 'movie' ? svc.type === 'radarr' : svc.type === 'sonarr') : true;
                     })
@@ -383,8 +387,9 @@ export function RoutingRulesTab() {
                 </select>
               </div>
 
-              {/* Sonarr-only: a movie has no series type, and offering one was pure noise. */}
-              {newMediaType === 'tv' && (
+              {/* A movie has no series type, so offering one was pure noise. Kept for `any`: the
+                  engine only applies it when the media actually is a series. */}
+              {newMediaType !== 'movie' && (
                 <div>
                   <label htmlFor={`${fieldId}-sonarr-type`} className="mb-1 block text-xs text-ndp-text-dim">{t('admin.paths.sonarr_type')}</label>
                   <select id={`${fieldId}-sonarr-type`} value={newSeriesType} onChange={(e) => setNewSeriesType(e.target.value)} className="input w-full text-sm">

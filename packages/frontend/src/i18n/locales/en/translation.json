@@ -1202,6 +1202,14 @@
       "add_failed": "Could not add this criterion",
       "add_value_failed": "Could not add this value",
       "delete_failed": "Cannot delete: rules still use it"
+    },
+    "paths": {
+      "section_info": "Details",
+      "section_when": "Conditions",
+      "section_then": "Then",
+      "builtin_fields": "Built-in fields",
+      "criteria_fields": "Criteria",
+      "language": "Original language"
     }
   }
 }

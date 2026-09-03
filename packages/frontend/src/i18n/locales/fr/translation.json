@@ -1202,6 +1202,14 @@
       "add_failed": "Impossible d'ajouter ce critère",
       "add_value_failed": "Impossible d'ajouter cette valeur",
       "delete_failed": "Impossible de supprimer : des règles l'utilisent encore"
+    },
+    "paths": {
+      "section_info": "Informations",
+      "section_when": "Conditions",
+      "section_then": "Alors",
+      "builtin_fields": "Champs intégrés",
+      "criteria_fields": "Critères",
+      "language": "Langue d'origine"
     }
   }
 }

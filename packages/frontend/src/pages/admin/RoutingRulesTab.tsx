@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useId } from 'react';
+import { useState, useEffect, useRef, useId, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, XCircle, Pencil, Copy, Power, GripVertical, AlertTriangle } from 'lucide-react';
-import { RULE_FIELDS, operatorsForField, isRuleField, criterionField, operatorsForAnyField } from '@oscarr/shared';
+import { RULE_FIELDS, criterionField, criterionIdOf, operatorsForAnyField } from '@oscarr/shared';
 import api from '@/lib/api';
 import { Spinner } from './Spinner';
 import type { RootFolder } from '@/types';
@@ -226,12 +226,21 @@ export function RoutingRulesTab() {
   const renderConditionRow = (cond: RuleCondition, i: number) => (
     <div key={`cond-${i}`} className="flex items-center gap-2">
       <select value={cond.field} onChange={(e) => updateConditionField(i, e.target.value)} className="input text-sm py-1.5 w-36">
-        {RULE_FIELDS.map(f => (
-          <option key={f} value={f}>{t(`admin.paths.${f}`)}</option>
-        ))}
-        {criteria.map(c => (
-          <option key={c.id} value={criterionField(c.id)}>{c.name}</option>
-        ))}
+        {/* Two families, kept visibly apart: the seven built-ins read a fact about the title or
+            the requester, a criterion reads what the person asked for. Without the divider a
+            criterion named "Langue" sat next to the built-in one with no way to tell them apart. */}
+        <optgroup label={t('admin.paths.builtin_fields')}>
+          {RULE_FIELDS.map(f => (
+            <option key={f} value={f}>{t(`admin.paths.${f}`)}</option>
+          ))}
+        </optgroup>
+        {criteria.length > 0 && (
+          <optgroup label={t('admin.paths.criteria_fields')}>
+            {criteria.map(c => (
+              <option key={c.id} value={criterionField(c.id)}>{c.name}</option>
+            ))}
+          </optgroup>
+        )}
       </select>
       <select value={cond.operator} onChange={(e) => { const c = [...newConditions]; c[i].operator = e.target.value; setNewConditions(c); }} className="input text-sm py-1.5 w-32">
         {getOperatorsForField(cond.field).map(op => (
@@ -300,7 +309,7 @@ export function RoutingRulesTab() {
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     {conds.map((c, i) => (
                       <span key={`tag-${i}`} className="text-xs text-ndp-text-dim">
-                        {formatConditionLabel(c, users, roles)} {i < conds.length - 1 && ' +'}
+                        {formatConditionLabel(c, users, roles, criteria)} {i < conds.length - 1 && ' +'}
                       </span>
                     ))}
                     <span className="text-xs text-ndp-text-dim">→ {rule.folderPath || (rule.seriesType === 'anime' ? defaultAnimeFolder : rule.mediaType === 'tv' ? defaultTvFolder : defaultMovieFolder) || <span className="italic">{t('admin.paths.defaults_title')}</span>}</span>
@@ -329,52 +338,64 @@ export function RoutingRulesTab() {
 
       {/* New rule form */}
       {showForm && (
-        <div className="card p-5 mt-4 border border-ndp-accent/20 space-y-4 animate-fade-in">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label htmlFor={`${fieldId}-name`} className="text-xs text-ndp-text-dim block mb-1">{t('common.name')}</label>
-              <input id={`${fieldId}-name`} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t('admin.paths.rule_name_placeholder')} className="input text-sm w-full" />
+        <div className="card mt-4 space-y-5 border border-ndp-accent/20 p-5 animate-fade-in">
+          <FormSection step={1} title={t('admin.paths.section_info')}>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor={`${fieldId}-name`} className="mb-1 block text-xs text-ndp-text-dim">{t('common.name')}</label>
+                <input id={`${fieldId}-name`} value={newName} onChange={(e) => setNewName(e.target.value)} placeholder={t('admin.paths.rule_name_placeholder')} className="input w-full text-sm" />
+              </div>
+              <div>
+                <label htmlFor={`${fieldId}-type`} className="mb-1 block text-xs text-ndp-text-dim">{t('common.type')}</label>
+                <select id={`${fieldId}-type`} value={newMediaType} onChange={(e) => { setNewMediaType(e.target.value); setNewFolder(''); setNewServiceId(''); setNewSeriesType(''); }} className="input w-full text-sm">
+                  <option value="tv">{t('common.series')}</option><option value="movie">{t('common.movie')}</option>
+                </select>
+              </div>
             </div>
-            <div>
-              <label htmlFor={`${fieldId}-type`} className="text-xs text-ndp-text-dim block mb-1">{t('common.type')}</label>
-              <select id={`${fieldId}-type`} value={newMediaType} onChange={(e) => { setNewMediaType(e.target.value); setNewFolder(''); setNewServiceId(''); }} className="input text-sm w-full">
-                <option value="tv">{t('common.series')}</option><option value="movie">{t('common.movie')}</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor={`${fieldId}-sonarr-type`} className="text-xs text-ndp-text-dim block mb-1">{t('admin.paths.sonarr_type')}</label>
-              <select id={`${fieldId}-sonarr-type`} value={newSeriesType} onChange={(e) => setNewSeriesType(e.target.value)} className="input text-sm w-full">
-                <option value="">{t('admin.paths.standard')}</option><option value="anime">{t('admin.paths.anime_rule')}</option><option value="daily">{t('admin.paths.daily')}</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label htmlFor={`${fieldId}-folder`} className="text-xs text-ndp-text-dim block mb-1">{t('admin.paths.target_folder')}</label>
-            <select id={`${fieldId}-folder`} value={newFolder} onChange={(e) => handleFolderChange(e.target.value)} className="input text-sm w-full">
-              <option value="">{t('common.choose')}</option>
-              {labeledFolders
-                .filter(f => {
-                  if (!f.serviceId) return true;
-                  const svc = services.find(s => s.id === f.serviceId);
-                  return svc ? (newMediaType === 'movie' ? svc.type === 'radarr' : svc.type === 'sonarr') : true;
-                })
-                .map(f => <option key={f.path} value={f.path}>{f.label}</option>)}
-            </select>
-          </div>
+          </FormSection>
 
           {/* Conditions — not a single input, so label the group via aria-labelledby. */}
-          <div role="group" aria-labelledby={`${fieldId}-conditions`}>
-            <span id={`${fieldId}-conditions`} className="text-xs text-ndp-text-dim block mb-2">{t('admin.paths.conditions_help')}</span>
-            <div className="space-y-2">
-              {newConditions.map((cond, i) => renderConditionRow(cond, i))}
+          <FormSection step={2} title={t('admin.paths.section_when')}>
+            <div role="group" aria-labelledby={`${fieldId}-conditions`}>
+              <span id={`${fieldId}-conditions`} className="mb-2 block text-xs text-ndp-text-dim">{t('admin.paths.conditions_help')}</span>
+              <div className="space-y-2">
+                {newConditions.map((cond, i) => renderConditionRow(cond, i))}
+              </div>
+              <button onClick={() => setNewConditions(prev => [...prev, { field: 'genre', operator: 'contains', value: '' }])} className="mt-2 flex items-center gap-1 text-xs text-ndp-accent hover:text-ndp-accent-hover">
+                <Plus className="h-3 w-3" /> {t('admin.paths.add_condition')}
+              </button>
             </div>
-            <button onClick={() => setNewConditions(prev => [...prev, { field: 'genre', operator: 'contains', value: '' }])} className="text-xs text-ndp-accent hover:text-ndp-accent-hover mt-2 flex items-center gap-1">
-              <Plus className="w-3 h-3" /> {t('admin.paths.add_condition')}
-            </button>
-          </div>
+          </FormSection>
 
-          <div className="flex gap-2 pt-2">
+          <FormSection step={3} title={t('admin.paths.section_then')}>
+            <div className="space-y-3">
+              <div>
+                <label htmlFor={`${fieldId}-folder`} className="mb-1 block text-xs text-ndp-text-dim">{t('admin.paths.target_folder')}</label>
+                <select id={`${fieldId}-folder`} value={newFolder} onChange={(e) => handleFolderChange(e.target.value)} className="input w-full text-sm">
+                  <option value="">{t('common.choose')}</option>
+                  {labeledFolders
+                    .filter(f => {
+                      if (!f.serviceId) return true;
+                      const svc = services.find(s => s.id === f.serviceId);
+                      return svc ? (newMediaType === 'movie' ? svc.type === 'radarr' : svc.type === 'sonarr') : true;
+                    })
+                    .map(f => <option key={f.path} value={f.path}>{f.label}</option>)}
+                </select>
+              </div>
+
+              {/* Sonarr-only: a movie has no series type, and offering one was pure noise. */}
+              {newMediaType === 'tv' && (
+                <div>
+                  <label htmlFor={`${fieldId}-sonarr-type`} className="mb-1 block text-xs text-ndp-text-dim">{t('admin.paths.sonarr_type')}</label>
+                  <select id={`${fieldId}-sonarr-type`} value={newSeriesType} onChange={(e) => setNewSeriesType(e.target.value)} className="input w-full text-sm">
+                    <option value="">{t('admin.paths.standard')}</option><option value="anime">{t('admin.paths.anime_rule')}</option><option value="daily">{t('admin.paths.daily')}</option>
+                  </select>
+                </div>
+              )}
+            </div>
+          </FormSection>
+
+          <div className="flex gap-2 border-t border-white/5 pt-4">
             <button onClick={saveRule} disabled={!newName || newConditions.some(c => !c.value)} className="btn-primary text-sm">{editingId ? t('common.save') : t('admin.paths.create_rule')}</button>
             <button onClick={resetForm} className="btn-secondary text-sm">{t('common.cancel')}</button>
           </div>
@@ -448,6 +469,27 @@ export function RoutingRulesTab() {
   }
 }
 
+/**
+ * One numbered step of the rule form.
+ *
+ * The three sections read as a sentence: what this rule is, when it applies, what it then does.
+ * They used to be one flat stack where the target folder — a result — sat above the conditions
+ * that decide whether it is ever used.
+ */
+function FormSection({ step, title, children }: Readonly<{ step: number; title: string; children: ReactNode }>) {
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-ndp-accent/15 font-mono text-[11px] font-semibold text-ndp-accent">
+          {step}
+        </span>
+        <h3 className="text-sm font-semibold text-ndp-text">{title}</h3>
+      </div>
+      <div className="pl-8">{children}</div>
+    </section>
+  );
+}
+
 // Operators come from the shared field×operator matrix (@oscarr/shared) — the same source the
 // backend matcher and validator use, so the UI can no longer offer a dead combo nor hide a valid
 // one (e.g. role/quality "in" are now selectable, matching the backend).
@@ -464,6 +506,7 @@ function formatConditionLabel(
   c: RuleCondition,
   users: UserOption[],
   roles: RoleOption[],
+  criteria: { id: number; name: string }[] = [],
 ): string {
   let displayValue = c.value;
   if (c.field === 'user') {
@@ -473,5 +516,14 @@ function formatConditionLabel(
     const role = roles.find(r => r.name === c.value);
     if (role) displayValue = role.name;
   }
-  return `${c.field} ${c.operator} ${displayValue}`;
+
+  // A criterion is stored by id, so the summary would otherwise read "criterion:12 is VOSTFR".
+  // Falls back to the raw field when the criterion has been deleted — which the delete guard makes
+  // rare, but a rule imported from elsewhere could still carry one.
+  const criterionId = criterionIdOf(c.field);
+  const label = criterionId !== null
+    ? (criteria.find(x => x.id === criterionId)?.name ?? c.field)
+    : c.field;
+
+  return `${label} ${c.operator} ${displayValue}`;
 }

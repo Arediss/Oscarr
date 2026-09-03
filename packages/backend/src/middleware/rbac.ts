@@ -103,6 +103,9 @@ const ROUTE_PERMISSIONS: Record<string, RouteRule> = {
   'POST:/api/media/batch-status':        { permission: AUTH },
   'GET:/api/media/episodes':             { permission: AUTH },
   'GET:/api/media/nsfw-ids':             { permission: AUTH },
+  // The criteria a requester may pick from. Reads only what the admin marked visible, so it is
+  // the same audience as the rest of /api/media: any authenticated user.
+  'GET:/api/media/request-criteria':     { permission: AUTH },
 
   // ── Services status (any user) ──
   'GET:/api/services/radarr/status':     { permission: AUTH },

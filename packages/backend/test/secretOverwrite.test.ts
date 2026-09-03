@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { loadMasterKeyOrExit, mergeSecretFields, encryptSecretFields } from '../src/utils/secrets.js';
+import {
+  loadMasterKeyOrExit, mergeSecretFields, encryptSecretFields, decryptSecretFields,
+  encryptServiceConfig, decryptServiceConfig,
+} from '../src/utils/secrets.js';
 
 loadMasterKeyOrExit();
 
@@ -49,5 +52,47 @@ describe('mergeSecretFields', () => {
   it('adds a field the stored blob never had', () => {
     const merged = mergeSecretFields({}, { botToken: 'fresh' });
     expect(merged.botToken).toMatch(/^enc:/);
+  });
+});
+
+/**
+ * These blobs are rebuilt key by key from a request body, so a field named `__proto__` would
+ * reshape the object being built instead of being stored in it. No setting is ever called that,
+ * and the guard is invisible in normal use — which is exactly why it needs a test to survive.
+ *
+ * Built with JSON.parse, not an object literal: in a literal `__proto__:` is special-cased by the
+ * language and sets the prototype instead of creating a property, so a literal would test nothing.
+ * JSON.parse creates a real own property, and it is also how a request body actually arrives.
+ */
+describe('prototype-shaped field names', () => {
+  const hostile = () => JSON.parse(
+    String.raw`{"__proto__":"x","constructor":"y","prototype":"z","apiKey":"real"}`,
+  ) as Record<string, string>;
+
+  it('is built with a real own __proto__ property', () => {
+    expect(Object.hasOwn(hostile(), '__proto__')).toBe(true);
+  });
+
+  it('drops them when merging a patch, and keeps the real fields', () => {
+    const merged = mergeSecretFields({}, hostile());
+    expect(Object.keys(merged)).toEqual(['apiKey']);
+    expect(Object.getPrototypeOf(merged)).toBe(Object.prototype);
+  });
+
+  it('drops them when encrypting and decrypting a blob', () => {
+    const encrypted = encryptSecretFields(hostile());
+    expect(Object.keys(encrypted)).toEqual(['apiKey']);
+    expect(Object.keys(decryptSecretFields(encrypted))).toEqual(['apiKey']);
+  });
+
+  it('drops them when encrypting and decrypting a service config', () => {
+    const encrypted = encryptServiceConfig(hostile());
+    expect(Object.keys(encrypted)).toEqual(['apiKey']);
+    expect(Object.keys(decryptServiceConfig(encrypted))).toEqual(['apiKey']);
+  });
+
+  it('still round-trips the real secret it kept', () => {
+    const encrypted = encryptSecretFields(hostile());
+    expect(decryptSecretFields(encrypted).apiKey).toBe('real');
   });
 });

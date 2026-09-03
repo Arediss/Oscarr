@@ -86,6 +86,19 @@ export function isSensitiveKey(key: string): boolean {
   return keyWords(key).some((word) => SENSITIVE_WORDS.has(word));
 }
 
+/**
+ * Keys that rewrite an object's prototype instead of sitting on it as data.
+ *
+ * Every function below rebuilds a blob key by key, and those blobs arrive from request bodies:
+ * a field literally named `__proto__` would reshape the accumulator rather than be stored in it.
+ * No real setting is ever called one of these, so dropping them costs nothing.
+ */
+const PROTOTYPE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isSafeKey(key: string): boolean {
+  return !PROTOTYPE_KEYS.has(key);
+}
+
 export function encryptField(plain: string): string {
   if (!_serviceConfigKey) throw new Error('Master key not loaded — call loadMasterKeyOrExit() first');
   const iv = crypto.randomBytes(IV_BYTES);
@@ -116,6 +129,7 @@ export function decryptField(stored: string): string {
 export function encryptSecretFields<T extends Record<string, unknown>>(blob: T): T {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(blob)) {
+    if (!isSafeKey(key)) continue;
     out[key] = (typeof value === 'string' && value && !isEncrypted(value) && isSensitiveKey(key))
       ? encryptField(value)
       : value;
@@ -128,6 +142,7 @@ export function encryptSecretFields<T extends Record<string, unknown>>(blob: T):
 export function decryptSecretFields<T extends Record<string, unknown>>(blob: T): T {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(blob)) {
+    if (!isSafeKey(key)) continue;
     if (typeof value !== 'string' || !isEncrypted(value)) {
       out[key] = value;
       continue;
@@ -162,6 +177,7 @@ export function mergeSecretFields(
 ): Record<string, unknown> {
   const incoming: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
+    if (!isSafeKey(key)) continue;
     const clearingASecret = isSensitiveKey(key) && (value === '' || value == null);
     const hasStoredValue = typeof stored[key] === 'string' && stored[key] !== '';
     if (clearingASecret && hasStoredValue) continue;
@@ -194,6 +210,7 @@ export function decryptSecretValue(stored: string | null | undefined): string | 
 export function encryptServiceConfig(config: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
+    if (!isSafeKey(key)) continue;
     if (typeof value !== 'string' || !value || isEncrypted(value) || !isSensitiveKey(key)) {
       out[key] = value;
       continue;
@@ -212,6 +229,7 @@ export function encryptServiceConfig(config: Record<string, string>): Record<str
 export function decryptServiceConfig(config: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(config)) {
+    if (!isSafeKey(key)) continue;
     if (typeof value !== 'string' || !isEncrypted(value)) {
       out[key] = value;
       continue;

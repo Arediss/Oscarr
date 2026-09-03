@@ -91,6 +91,8 @@ export interface UIContribution {
 /** UIContribution enriched with the owning plugin's id (returned by engine) */
 export interface LoadedUIContribution extends UIContribution {
   pluginId: string;
+  /** Appended to this plugin's asset URLs by the page, so a redeploy is not served from cache. */
+  assetVersion: string;
 }
 
 // ─── Plugin Context (V1 API passed to plugins) ──────────────────────
@@ -286,6 +288,9 @@ export interface LoadedPlugin {
   error?: string;
   /** True when `plugins/<dir>/` is a symlink (dev workflow). Resolved at boot via lstat. */
   isSymlink?: boolean;
+  /** Changes when the plugin's frontend files change. Appended to every asset URL so a redeploy
+   *  is not hidden behind the browser cache. Computed at load; a reload recomputes it. */
+  assetVersion: string;
 }
 
 // ─── Plugin source / runtime status ─────────────────────────────────

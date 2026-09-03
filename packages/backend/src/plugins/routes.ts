@@ -489,7 +489,15 @@ export async function pluginRoutes(app: FastifyInstance) {
       '.map': 'application/json',
     };
     reply.header('content-type', contentTypes[ext] || 'text/plain');
-    reply.header('cache-control', process.env.NODE_ENV === 'production' ? 'public, max-age=3600' : 'no-cache');
+    // A URL carrying ?v= is unique to one build, so it can be cached hard: the page asks for a
+    // different URL the moment the files change. Without the token the answer may be stale at any
+    // moment, and an hour of blind caching is what made a redeploy invisible until a hard refresh.
+    const versioned = typeof (request.query as Record<string, unknown>)?.v === 'string';
+    const production = process.env.NODE_ENV === 'production';
+    reply.header(
+      'cache-control',
+      !production ? 'no-cache' : versioned ? 'public, max-age=31536000, immutable' : 'no-cache',
+    );
     return reply.send(createReadStream(fullPath));
   });
 

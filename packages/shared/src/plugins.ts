@@ -12,6 +12,9 @@ export interface PluginUIContribution {
   hookPoint: string;
   props: Record<string, unknown>;
   order?: number;
+  /** Changes when the plugin's frontend files change. The page appends it to every asset URL for
+   *  that plugin, so a redeploy is not served from the browser cache for another hour. */
+  assetVersion?: string;
 }
 
 /** Public plugin info as returned by `GET /api/plugins`. Consumed by the admin plugins tab,

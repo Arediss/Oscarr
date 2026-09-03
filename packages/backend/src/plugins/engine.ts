@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { computeAssetVersion } from './assetVersion.js';
 import { pathToFileURL } from 'node:url';
 import { readFile, rm, lstat } from 'node:fs/promises';
 import type { FastifyInstance, FastifyBaseLogger } from 'fastify';
@@ -124,6 +125,7 @@ export class PluginEngine {
       dir,
       enabled: state.enabled,
       isSymlink: opts.isSymlink ?? false,
+      assetVersion: computeAssetVersion(dir),
     };
     this.plugins.set(manifest.id, loaded);
     return loaded;
@@ -244,6 +246,7 @@ export class PluginEngine {
           manifest,
           registration: { manifest } as PluginRegistration,
           dir,
+          assetVersion: computeAssetVersion(dir),
           enabled: false,
           error: String(err),
           isSymlink,
@@ -324,7 +327,9 @@ export class PluginEngine {
       if (!plugin.enabled || plugin.error) continue;
       for (const ui of plugin.manifest.hooks?.ui || []) {
         if (ui.hookPoint === hookPoint) {
-          contributions.push({ ...ui, pluginId: id });
+          // The page appends this to every asset URL for this plugin. Without it a redeploy done
+          // outside the browser stayed invisible behind the one-hour cache.
+          contributions.push({ ...ui, pluginId: id, assetVersion: plugin.assetVersion });
         }
       }
     }

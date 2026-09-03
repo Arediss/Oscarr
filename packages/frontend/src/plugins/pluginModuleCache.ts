@@ -27,6 +27,28 @@ function bumpAssetVersion(pluginId: string): void {
   assetVersion.set(pluginId, Date.now().toString(36));
 }
 
+/**
+ * Adopt the token the server computed from the files on disk.
+ *
+ * `bumpAssetVersion` only ever fired for the browser that performed an install or a toggle, so a
+ * plugin redeployed from anywhere else stayed invisible behind the one-hour asset cache until a
+ * hard refresh. The server derives this from file size and mtime, which move on every build — the
+ * manifest version does not, and a fork rebuilt in place is exactly where a stale bundle hides
+ * longest.
+ *
+ * Changing it drops the cached component so the next render re-imports from the new URL.
+ */
+export function adoptAssetVersion(pluginId: string, token: string | undefined): void {
+  if (!token || assetVersion.get(pluginId) === token) return;
+  assetVersion.set(pluginId, token);
+  // Same shape as invalidate(): this map is keyed by URL, not by plugin id.
+  const prefix = `/api/plugins/${pluginId}/`;
+  for (const key of Array.from(cache.keys())) {
+    if (key.startsWith(prefix)) cache.delete(key);
+  }
+  removePluginCss(pluginId);
+}
+
 /** Attribute that plugin containers must carry — matches the scope prefix applied to their CSS. */
 export const PLUGIN_SCOPE_ATTR = 'data-oscarr-plugin';
 

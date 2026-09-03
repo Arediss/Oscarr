@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../lib/api';
 import type { PluginUIContribution } from './types';
+import { adoptAssetVersion } from './pluginModuleCache';
 
 const cache = new Map<string, { data: PluginUIContribution[]; fetchedAt: number }>();
 const CACHE_TTL = 60_000;
@@ -57,6 +58,9 @@ export function usePluginUI(hookPoint: string) {
     api.get<PluginUIContribution[]>(`/plugins/ui/${hookPoint}`)
       .then((res) => {
         if (cancelled) return;
+        // Do this before rendering: the hook components below build their import URLs from it, and
+        // a contribution that arrives with a new token must not be loaded from the old one.
+        for (const c of res.data) adoptAssetVersion(c.pluginId, c.assetVersion);
         cache.set(hookPoint, { data: res.data, fetchedAt: Date.now() });
         setContributions(res.data);
       })

@@ -201,6 +201,12 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
       req('users:write', 'setUserRole');
       const role = await prisma.role.findUnique({ where: { name: roleName } });
       if (!role) throw new Error(`Role "${roleName}" does not exist`);
+      // Same reasoning as setUserDisabled below: an instance whose last admin has been demoted by
+      // plugin code has no way back through the interface, only through the database.
+      const target = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      if (target?.role === 'admin' && roleName !== 'admin') {
+        throw new Error(`Refusing to change role of user ${userId}: admins cannot be demoted from plugin code`);
+      }
       await prisma.user.update({ where: { id: userId }, data: { role: roleName } });
     },
     async setUserDisabled(userId: number, disabled: boolean) {

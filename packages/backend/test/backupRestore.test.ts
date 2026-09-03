@@ -148,6 +148,61 @@ describe('restore', () => {
   });
 });
 
+/**
+ * Plugin files travel inside the archive as `{ path, data }` pairs, so the path is attacker-chosen
+ * the moment someone can hand an admin a backup to restore. `resolvePluginEntry` is the only thing
+ * confining those writes to the plugins directory, and nothing was pinning it down.
+ *
+ * CodeQL flags the two `writeFileSync` calls as network data written to file, which is what a
+ * restore *is*. The finding is only acceptable while this guard holds — hence this test.
+ */
+describe('restore of plugin files', () => {
+  const dataRoot = () => dirname(getDbPath());
+
+  it('rejects every path that escapes the plugins directory, and writes nothing outside it', async () => {
+    const archive = readFileSync(snapshot());
+    const payload = Buffer.from('owned').toString('base64');
+
+    const hostile = [
+      'plugins/../../../etc/passwd',   // classic traversal
+      'plugins/../outside.txt',         // one level up, still inside the data root
+      'plugins/../pluginsEvil/x.txt',   // sibling with the same prefix — the `root + sep` case
+      '../outside.txt',                 // no plugins/ prefix at all
+      '/etc/passwd',                    // absolute
+      'plugins/',                       // directory, not a file
+      'plugins/nul\u0000.txt',          // null byte
+    ];
+
+    const result = await restoreDatabase(archive, hostile.map((path) => ({ path, data: payload })));
+
+    expect(result.ok).toBe(true);
+    expect(result.pluginFilesRestored).toBe(0);
+    expect(result.pluginFilesRejected).toHaveLength(hostile.length);
+
+    for (const stray of ['outside.txt', 'pluginsEvil']) {
+      expect(existsSync(resolve(dataRoot(), stray))).toBe(false);
+    }
+  });
+
+  it('still restores a legitimate plugin file', async () => {
+    const archive = readFileSync(snapshot());
+    const name = `probe-${randomUUID()}.json`;
+
+    const result = await restoreDatabase(archive, [
+      { path: `plugins/demo/${name}`, data: Buffer.from('{"ok":true}').toString('base64') },
+    ]);
+
+    expect(result.ok).toBe(true);
+    expect(result.pluginFilesRestored).toBe(1);
+    // The key is only present when something was rejected, so its absence is the success signal.
+    expect(result.pluginFilesRejected).toBeUndefined();
+
+    const written = resolve(dataRoot(), 'plugins', 'demo', name);
+    expect(existsSync(written)).toBe(true);
+    expect(readFileSync(written, 'utf8')).toBe('{"ok":true}');
+  });
+});
+
 /** Guard the safety copy: it must be a usable database, not a half-written file. */
 describe('restore safety copy', () => {
   it('leaves a readable pre-restore copy behind', async () => {

@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyServerOptions } from 'fastify';
 
 /**
  * Fastify's `trustProxy`, resolved from the environment.
@@ -21,18 +21,23 @@ import Fastify from 'fastify';
  * The check is a throwaway Fastify construction rather than a parser of our own: it is the same
  * code that will consume the value seconds later, so the two cannot disagree.
  */
-export function resolveTrustProxy(raw: string | undefined): boolean | number | string {
+export function resolveTrustProxy(raw: string | undefined): FastifyServerOptions['trustProxy'] {
   const value = raw?.trim();
   if (!value) return false;
 
   const lowered = value.toLowerCase();
   if (lowered === 'false') return false;
   if (lowered === 'true') return true;
-  if (/^\d+$/.test(value)) return Number(value);
+  // A hop count stays a number. Fastify 5.12 dropped `number` from the declared type but still
+  // forwards it to proxy-addr, so it keeps working; removing the branch would send an existing
+  // TRUST_PROXY=2 down the IP-list path, fail validation, and silently fall back to false, which
+  // puts every client back in one rate-limit bucket. Both forms go through the same check below,
+  // so the day Fastify does drop it, this degrades to a warning rather than a boot crash.
+  const candidate: unknown = /^\d+$/.test(value) ? Number(value) : value;
 
   try {
-    Fastify({ logger: false, trustProxy: value }).close();
-    return value;
+    Fastify({ logger: false, trustProxy: candidate as string }).close();
+    return candidate as FastifyServerOptions['trustProxy'];
   } catch {
     process.stderr.write(
       `[TRUST_PROXY] Ignoring "${value}": not true, false, a hop count, or an IP/CIDR list.\n`

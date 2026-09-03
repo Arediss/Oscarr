@@ -2,7 +2,10 @@ import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import type { TmdbMovie, TmdbTv } from './tmdb.js';
 import { logEvent } from '../utils/logEvent.js';
-import { isOperatorSupported, isRuleField, isRuleOperator, type RuleField, type RuleOperator } from '@oscarr/shared';
+import {
+  isOperatorSupported, isRuleField, isRuleOperator, isCriterionField, criterionIdOf,
+  CRITERION_OPERATORS, type RuleField, type RuleOperator,
+} from '@oscarr/shared';
 import { findServiceTypeForMedia } from '../providers/index.js';
 import { extractKeywords } from './tmdb.js';
 
@@ -28,6 +31,8 @@ interface MediaContext {
   userRole: string | null;
   keywordTags: string[];
   qualityLabel: string | null;
+  /** Criterion id → the label this request picked for it. Lower-cased, as the matcher compares. */
+  criterionLabels: Map<number, string>;
 }
 
 async function resolveUserRole(userId: number | null): Promise<string | null> {
@@ -86,6 +91,7 @@ async function buildContext(
   tmdbData: TmdbMovie | TmdbTv,
   userId: number | null,
   qualityOptionId?: number | null,
+  criterionValueIds: number[] = [],
 ): Promise<MediaContext> {
   const genres = tmdbData.genres?.map(g => g.name.toLowerCase()) ?? [];
   const originCountry = 'origin_country' in tmdbData ? (tmdbData.origin_country ?? []) : [];
@@ -95,10 +101,16 @@ async function buildContext(
   // Derive keyword ids from the freshly-fetched tmdbData so `tag` rules fire on the first dispatch
   // (H5), before the media row's keywordIds are synced.
   const tmdbKeywordIds = extractKeywords(tmdbData).map(k => k.id);
-  const [userRole, keywordTags, qualityOption] = await Promise.all([
+  const [userRole, keywordTags, qualityOption, criterionValues] = await Promise.all([
     resolveUserRole(userId),
     resolveKeywordTags(tmdbId, mediaType, tmdbKeywordIds),
     qualityOptionId ? prisma.qualityOption.findUnique({ where: { id: qualityOptionId }, select: { label: true } }) : null,
+    criterionValueIds.length > 0
+      ? prisma.requestCriterionValue.findMany({
+          where: { id: { in: criterionValueIds } },
+          select: { criterionId: true, label: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   return {
@@ -108,6 +120,7 @@ async function buildContext(
     userId, userRole,
     keywordTags: keywordTags.map(t => t.toLowerCase()),
     qualityLabel: qualityOption?.label ?? null,
+    criterionLabels: new Map(criterionValues.map(v => [v.criterionId, v.label.toLowerCase()])),
   };
 }
 
@@ -116,8 +129,15 @@ function evaluateCondition(condition: RuleCondition, ctx: MediaContext): boolean
   // before the split (a non-string value used to throw and take out the whole matcher — H2), and
   // gate the field/operator against the shared support matrix so a dead combo just returns false.
   if (typeof condition.value !== 'string') return false;
-  if (!isRuleField(condition.field) || !isRuleOperator(condition.operator)) return false;
-  if (!isOperatorSupported(condition.field, condition.operator)) return false;
+  if (!isRuleOperator(condition.operator)) return false;
+  // An admin-defined criterion is not an enum member, so it takes the other branch of the same
+  // support check rather than being rejected as an unknown field.
+  if (isCriterionField(condition.field)) {
+    if (!CRITERION_OPERATORS.includes(condition.operator)) return false;
+  } else {
+    if (!isRuleField(condition.field)) return false;
+    if (!isOperatorSupported(condition.field, condition.operator)) return false;
+  }
 
   const values = condition.value.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
   if (values.length === 0) return false;
@@ -131,7 +151,14 @@ function evaluateCondition(condition: RuleCondition, ctx: MediaContext): boolean
     case 'role': return ctx.userRole !== null && values.includes(ctx.userRole.toLowerCase());
     case 'tag': return values.some(v => ctx.keywordTags.includes(v));
     case 'quality': return ctx.qualityLabel !== null && values.includes(ctx.qualityLabel.toLowerCase());
-    default: return false;
+    default: {
+      // An admin-defined criterion. A request that picked nothing for it simply does not match,
+      // the same way a title with no genre does not match a genre rule.
+      const criterionId = criterionIdOf(condition.field as string);
+      if (criterionId === null) return false;
+      const chosen = ctx.criterionLabels.get(criterionId);
+      return chosen !== undefined && values.includes(chosen);
+    }
   }
 }
 
@@ -160,6 +187,7 @@ export async function matchFolderRule(
   tmdbData: TmdbMovie | TmdbTv,
   userId: number | null = null,
   qualityOptionId?: number | null,
+  criterionValueIds: number[] = [],
 ): Promise<RuleMatch | null> {
   const rules = await prisma.folderRule.findMany({
     where: { mediaType, enabled: true },
@@ -168,7 +196,7 @@ export async function matchFolderRule(
 
   if (rules.length === 0) return null;
 
-  const ctx = await buildContext(mediaType, tmdbData, userId, qualityOptionId);
+  const ctx = await buildContext(mediaType, tmdbData, userId, qualityOptionId, criterionValueIds);
 
   for (const rule of rules) {
     const conditions = parseRuleConditions(rule);

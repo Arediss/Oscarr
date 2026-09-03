@@ -57,6 +57,7 @@ export type AdminTabId =
   | 'api-keys'
   | 'services'
   | 'quality'
+  | 'criteria'
   | 'paths'
   | 'rules'
   | 'keywords'
@@ -98,6 +99,7 @@ export const ADMIN_GROUPS: AdminGroupDef[] = [
     icon: Film,
     tabs: [
       { id: 'quality', label: 'admin.tab.quality', icon: Star },
+      { id: 'criteria', label: 'admin.tab.criteria', icon: SlidersHorizontal },
       { id: 'paths', label: 'admin.tab.paths', icon: Folder },
       { id: 'rules', label: 'admin.tab.rules', icon: Workflow },
       { id: 'keywords', label: 'admin.tab.keywords', icon: Tag },

@@ -4,6 +4,7 @@ import { PluginSlot } from '@/plugins/PluginSlot';
 import ActionButton from '@/components/ActionButton';
 import { MediaMetaBar } from '@/components/media/MediaMetaBar';
 import { QualityPicker } from '@/components/media/QualityPicker';
+import CriteriaPicker from './CriteriaPicker';
 import { LanguageTags } from '@/components/media/LanguageTags';
 import { SeasonsPicker } from '@/components/media/SeasonsPicker';
 import type { ButtonState } from '@/utils/resolveButtonState';
@@ -32,6 +33,8 @@ interface Props {
   onRequest: () => void;
   onSearchMissing: () => void;
   qualityOptions: { id: number; label: string }[];
+  selectedCriteria: Record<number, number>;
+  setSelectedCriteria: (next: Record<number, number>) => void;
   takenQualityIds: Set<number>;
   selectedQuality: number | null;
   setSelectedQuality: (updater: (prev: number | null) => number | null) => void;
@@ -50,6 +53,7 @@ export function MediaInfoColumn({
   requesting, justRequested, requestError, download, blacklisted, searchMissingError,
   onRequest, onSearchMissing,
   qualityOptions, takenQualityIds, selectedQuality, setSelectedQuality,
+  selectedCriteria, setSelectedCriteria,
   audioLanguages, subtitleLanguages,
   sonarrSeasons, selectedSeasons, setSelectedSeasons, onOpenEpisodes,
 }: Readonly<Props>) {
@@ -140,6 +144,18 @@ export function MediaInfoColumn({
           onSelect={setSelectedQuality}
         />
 
+        <CriteriaPicker
+          selected={selectedCriteria}
+          onSelect={(criterionId, valueId) => {
+            const next = { ...selectedCriteria };
+            if (valueId === null) delete next[criterionId];
+            else next[criterionId] = valueId;
+            setSelectedCriteria(next);
+          }}
+        />
+
+        {/* What is actually on disk, read from the file after import. Descriptive, not a choice —
+            the pickers above are the choices. */}
         <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} />
 
 

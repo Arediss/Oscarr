@@ -1,6 +1,7 @@
 import { prisma } from '../utils/prisma.js';
 import {
   isRuleField, isRuleOperator, isOperatorSupported,
+  isCriterionField, criterionIdOf, CRITERION_OPERATORS,
   RULE_MEDIA_TYPES, RULE_SERIES_TYPES,
 } from '@oscarr/shared';
 import { checkRuleService } from './folderRules.js';
@@ -60,10 +61,33 @@ async function validateConditions(conditions: unknown): Promise<string | null> {
   for (const c of conditions) {
     if (!c || typeof c !== 'object') return 'each condition must be an object';
     const { field, operator, value } = c as { field?: unknown; operator?: unknown; value?: unknown };
-    if (!isRuleField(field)) return `unknown condition field "${String(field)}"`;
     if (!isRuleOperator(operator)) return `unknown operator "${String(operator)}"`;
+    if (typeof value !== 'string' || value.trim() === '') return `condition value for "${String(field)}" must be a non-empty string`;
+
+    if (isCriterionField(field)) {
+      // Same contract as quality below: a condition naming a criterion or a value that does not
+      // exist would sit in the rule matching nothing, and the admin would hunt for why routing
+      // stopped. Refuse at write time rather than fail silently at dispatch.
+      if (!CRITERION_OPERATORS.includes(operator)) {
+        return `operator "${operator}" does nothing for a criterion`;
+      }
+      const criterionId = criterionIdOf(field)!;
+      const criterion = await prisma.requestCriterion.findUnique({
+        where: { id: criterionId },
+        select: { name: true, values: { select: { label: true } } },
+      });
+      if (!criterion) return `criterion ${criterionId} does not exist`;
+      const known = new Set(criterion.values.map(v => v.label.toLowerCase()));
+      const vals = value.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
+      const unknown = vals.filter(v => !known.has(v));
+      if (unknown.length) {
+        return `value(s) not configured for criterion "${criterion.name}": ${unknown.join(', ')}`;
+      }
+      continue;
+    }
+
+    if (!isRuleField(field)) return `unknown condition field "${String(field)}"`;
     if (!isOperatorSupported(field, operator)) return `operator "${operator}" does nothing for field "${field}"`;
-    if (typeof value !== 'string' || value.trim() === '') return `condition value for "${field}" must be a non-empty string`;
 
     if (field === 'quality') {
       if (!qualityLabels) {

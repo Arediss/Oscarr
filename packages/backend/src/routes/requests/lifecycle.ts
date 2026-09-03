@@ -23,7 +23,12 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
 
     const mediaRequest = await prisma.mediaRequest.findUnique({
       where: { id: requestId },
-      include: { media: true, user: { select: { displayName: true, email: true, id: true } } },
+      include: {
+        media: true,
+        user: { select: { displayName: true, email: true, id: true } },
+        // Approving routes the request for real, so it needs what was asked for, criteria included.
+        criteria: { select: { valueId: true } },
+      },
     });
     if (!mediaRequest) return reply.status(404).send({ error: 'Request not found' });
     if (mediaRequest.status !== 'pending') return reply.status(400).send({ error: 'This request cannot be approved' });
@@ -50,7 +55,12 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
 
     const seasons = mediaRequest.seasons ? JSON.parse(mediaRequest.seasons) : undefined;
     const tagName = mediaRequest.user.displayName || mediaRequest.user.email || `user-${mediaRequest.user.id}`;
-    const sent = await sendToService(mediaRequest.media, mediaRequest.mediaType, tagName, mediaRequest.userId, seasons, effectiveQuality, mediaRequest.rootFolder);
+    const sent = await sendToService(
+      mediaRequest.media, mediaRequest.mediaType, tagName, mediaRequest.userId, seasons,
+      effectiveQuality, mediaRequest.rootFolder,
+      // Approving must route on what was actually asked for, criteria included.
+      mediaRequest.criteria?.map((c) => c.valueId) ?? [],
+    );
 
     if (!sent) {
       await transitionRequestStatus(

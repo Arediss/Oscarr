@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, XCircle, Pencil, Copy, Power, GripVertical, AlertTriangle } from 'lucide-react';
-import { RULE_FIELDS, operatorsForField, isRuleField } from '@oscarr/shared';
+import { RULE_FIELDS, operatorsForField, isRuleField, criterionField, operatorsForAnyField } from '@oscarr/shared';
 import api from '@/lib/api';
 import { Spinner } from './Spinner';
 import type { RootFolder } from '@/types';
@@ -65,6 +65,9 @@ export function RoutingRulesTab() {
   const [roles, setRoles] = useState<RoleOption[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [qualityOptions, setQualityOptions] = useState<{ id: number; label: string }[]>([]);
+  // Admin-defined axes. They are not enum members, so the field list is built at render time from
+  // whatever exists rather than being a constant like the seven built-ins.
+  const [criteria, setCriteria] = useState<{ id: number; name: string; values: { id: number; label: string }[] }[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
   const [defaultAnimeFolder, setDefaultAnimeFolder] = useState('');
   const [defaultMovieFolder, setDefaultMovieFolder] = useState('');
@@ -111,6 +114,12 @@ export function RoutingRulesTab() {
         const arrServices: ServiceOption[] = servicesRes.data.filter((s: ServiceOption) => s.type === 'radarr' || s.type === 'sonarr');
         setServices(arrServices);
         setQualityOptions(qualityRes.data);
+        // Fetched on its own rather than joining the batch above: an instance with no criterion is
+        // the normal case, and a failure here must not take the rules editor down with it.
+        try {
+          const criteriaRes = await api.get('/admin/request-criteria');
+          setCriteria(criteriaRes.data);
+        } catch { /* no criteria to offer, the seven built-in fields still work */ }
 
         const { folders, failed } = await fetchRootFolders(arrServices);
         setLabeledFolders(folders);
@@ -219,6 +228,9 @@ export function RoutingRulesTab() {
       <select value={cond.field} onChange={(e) => updateConditionField(i, e.target.value)} className="input text-sm py-1.5 w-36">
         {RULE_FIELDS.map(f => (
           <option key={f} value={f}>{t(`admin.paths.${f}`)}</option>
+        ))}
+        {criteria.map(c => (
+          <option key={c.id} value={criterionField(c.id)}>{c.name}</option>
         ))}
       </select>
       <select value={cond.operator} onChange={(e) => { const c = [...newConditions]; c[i].operator = e.target.value; setNewConditions(c); }} className="input text-sm py-1.5 w-32">
@@ -440,11 +452,12 @@ export function RoutingRulesTab() {
 // backend matcher and validator use, so the UI can no longer offer a dead combo nor hide a valid
 // one (e.g. role/quality "in" are now selectable, matching the backend).
 function getDefaultOperator(field: string): string {
-  return isRuleField(field) ? operatorsForField(field)[0] : 'contains';
+  return operatorsForAnyField(field)[0] ?? 'contains';
 }
 
 function getOperatorsForField(field: string): readonly string[] {
-  return isRuleField(field) ? operatorsForField(field) : ['contains'];
+  const ops = operatorsForAnyField(field);
+  return ops.length > 0 ? ops : ['contains'];
 }
 
 function formatConditionLabel(

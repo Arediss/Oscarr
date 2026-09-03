@@ -82,6 +82,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     requesting, justRequested, requestError,
     selectedSeasons, setSelectedSeasons,
     selectedQuality, setSelectedQuality,
+    selectedCriteria, setSelectedCriteria,
     searchMissingState, searchMissingError,
     handleRequest, handleSearchMissing,
     resetOnNavigation,
@@ -177,6 +178,8 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
             qualityOptions={qualityOptions}
             takenQualityIds={takenQualityIds}
             selectedQuality={selectedQuality}
+            selectedCriteria={selectedCriteria}
+            setSelectedCriteria={setSelectedCriteria}
             setSelectedQuality={setSelectedQuality}
             audioLanguages={audioLanguages}
             subtitleLanguages={subtitleLanguages}

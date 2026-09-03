@@ -17,6 +17,9 @@ export function useMediaRequestActions(
   const [requestError, setRequestError] = useState('');
   const [selectedSeasons, setSelectedSeasons] = useState<number[]>([]);
   const [selectedQuality, setSelectedQuality] = useState<number | null>(null);
+  // Criterion id → chosen value id. One value per criterion: a title cannot be wanted in French
+  // *and* subtitled at once, and the backend refuses the pair rather than picking for you.
+  const [selectedCriteria, setSelectedCriteria] = useState<Record<number, number>>({});
   const [searchMissingState, setSearchMissingState] = useState<'idle' | 'searching' | 'error'>('idle');
   const [searchMissingError, setSearchMissingError] = useState('');
 
@@ -30,6 +33,10 @@ export function useMediaRequestActions(
       }
       if (selectedQuality) {
         body.qualityOptionId = selectedQuality;
+      }
+      const criterionValueIds = Object.values(selectedCriteria);
+      if (criterionValueIds.length > 0) {
+        body.criterionValueIds = criterionValueIds;
       }
       const { data: reqData } = await api.post('/requests', body);
       if (reqData.sendError) {
@@ -67,6 +74,8 @@ export function useMediaRequestActions(
   const resetOnNavigation = () => {
     setSelectedSeasons([]);
     setSelectedQuality(null);
+    // Navigating to another title must not carry the previous one's choices over.
+    setSelectedCriteria({});
     setJustRequested(false);
   };
 
@@ -78,6 +87,8 @@ export function useMediaRequestActions(
     setSelectedSeasons,
     selectedQuality,
     setSelectedQuality,
+    selectedCriteria,
+    setSelectedCriteria,
     searchMissingState,
     searchMissingError,
     handleRequest,

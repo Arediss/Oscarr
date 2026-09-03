@@ -1185,5 +1185,23 @@
   "media.open_in_radarr": "Open in Radarr Manager",
   "media.open_in_sonarr": "Open in Sonarr Manager",
   "admin.plugins.update.now_explained": "{{capability}} — reason now documented",
-  "admin.plugins.update.no_longer_explained": "{{capability}} — reason no longer documented"
+  "admin.plugins.update.no_longer_explained": "{{capability}} — reason no longer documented",
+  "admin": {
+    "tab": {
+      "criteria": "Criteria"
+    },
+    "criteria": {
+      "title": "Request criteria",
+      "help": "Axes you define to describe how a title is wanted: a language, an edition, a source. Usable as a condition in routing rules.",
+      "name_placeholder": "Criterion name, e.g. Language",
+      "value_placeholder": "Add a value",
+      "add": "Add",
+      "empty": "No criteria yet. Create one to offer an extra choice when requesting.",
+      "show": "Offer it when requesting",
+      "hide": "Hide it from users",
+      "add_failed": "Could not add this criterion",
+      "add_value_failed": "Could not add this value",
+      "delete_failed": "Cannot delete: rules still use it"
+    }
+  }
 }

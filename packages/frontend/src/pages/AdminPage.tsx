@@ -15,6 +15,7 @@ import { DangerTab } from './admin/DangerTab';
 import { UsersTab } from './admin/UsersTab';
 import { ServicesTab } from './admin/ServicesTab';
 import { QualityTab } from './admin/QualityTab';
+import { CriteriaTab } from './admin/CriteriaTab';
 import { PathsTab } from './admin/PathsTab';
 import { RoutingRulesTab } from './admin/RoutingRulesTab';
 import { KeywordsTab } from './admin/KeywordsTab';
@@ -98,6 +99,7 @@ export default function AdminPage() {
       {activeTab === 'api-keys' && <ApiKeysTab />}
       {activeTab === 'services' && <ServicesTab />}
       {activeTab === 'quality' && <QualityTab />}
+      {activeTab === 'criteria' && <CriteriaTab />}
       {activeTab === 'paths' && <PathsTab />}
       {activeTab === 'rules' && <RoutingRulesTab />}
       {activeTab === 'keywords' && <KeywordsTab />}

@@ -23,12 +23,20 @@ export async function requestCreateRoutes(app: FastifyInstance) {
           seasons: { type: 'array', items: { type: 'number' }, description: 'Season numbers to request (TV only)' },
           rootFolder: { type: 'string', description: 'Root folder path override' },
           qualityOptionId: { type: 'number', description: 'Quality option ID for quality profile mapping' },
+          criterionValueIds: {
+            type: 'array',
+            items: { type: 'number' },
+            description: 'One value id per admin-defined criterion (language, edition…)',
+          },
         },
       },
     },
   }, async (request, reply) => {
     const user = request.user;
-    const body = request.body as { tmdbId: unknown; mediaType: unknown; seasons?: unknown; rootFolder?: string; qualityOptionId?: number };
+    const body = request.body as {
+      tmdbId: unknown; mediaType: unknown; seasons?: unknown;
+      rootFolder?: string; qualityOptionId?: number; criterionValueIds?: number[];
+    };
 
     const result = await createUserRequest({
       userId: user.id,
@@ -37,6 +45,7 @@ export async function requestCreateRoutes(app: FastifyInstance) {
       seasons: body.seasons,
       rootFolder: body.rootFolder,
       qualityOptionId: body.qualityOptionId,
+      criterionValueIds: body.criterionValueIds,
     });
 
     if (!result.ok) return reply.status(result.status).send({ error: result.error });

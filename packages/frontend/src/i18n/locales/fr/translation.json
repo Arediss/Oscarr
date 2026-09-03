@@ -1185,5 +1185,23 @@
   "media.open_in_radarr": "Ouvrir dans Radarr Manager",
   "media.open_in_sonarr": "Ouvrir dans Sonarr Manager",
   "admin.plugins.update.now_explained": "{{capability}} — justification désormais documentée",
-  "admin.plugins.update.no_longer_explained": "{{capability}} — justification retirée"
+  "admin.plugins.update.no_longer_explained": "{{capability}} — justification retirée",
+  "admin": {
+    "tab": {
+      "criteria": "Critères"
+    },
+    "criteria": {
+      "title": "Critères de demande",
+      "help": "Des axes que vous définissez pour décrire comment un titre est voulu : une langue, une édition, une source. Utilisables comme condition dans les règles de routage.",
+      "name_placeholder": "Nom du critère, par exemple Langue",
+      "value_placeholder": "Ajouter une valeur",
+      "add": "Ajouter",
+      "empty": "Aucun critère. Créez-en un pour proposer un choix supplémentaire au moment de la demande.",
+      "show": "Proposer au moment de la demande",
+      "hide": "Masquer aux utilisateurs",
+      "add_failed": "Impossible d'ajouter ce critère",
+      "add_value_failed": "Impossible d'ajouter cette valeur",
+      "delete_failed": "Impossible de supprimer : des règles l'utilisent encore"
+    }
+  }
 }

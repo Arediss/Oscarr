@@ -9,7 +9,14 @@ export function generatePlainKey(): string {
   return PLAIN_PREFIX + crypto.randomBytes(KEY_BYTES).toString('hex');
 }
 
-/** SHA-256 of the plaintext key. Mint and verify MUST share this so hashes match. */
+/**
+ * SHA-256 of the plaintext key. Mint and verify MUST share this so hashes match.
+ *
+ * A fast hash is the right choice here, and scanners will keep saying otherwise: bcrypt and
+ * argon2 exist to slow down guessing a human-chosen password. This input is 256 bits from
+ * `randomBytes` — there is no dictionary to try, and no hash speed makes 2^256 reachable. A slow
+ * KDF would only add latency to every authenticated API request.
+ */
 export function hashKey(plain: string): string {
   return crypto.createHash('sha256').update(plain).digest('hex');
 }

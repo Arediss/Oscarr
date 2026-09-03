@@ -190,10 +190,52 @@ model MediaRequest {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   approvedBy    User?     @relation("ApprovedBy", fields: [approvedById], references: [id])
   qualityOption QualityOption? @relation(fields: [qualityOptionId], references: [id], onDelete: SetNull)
+  criteria      MediaRequestCriterion[]
 
   @@index([userId])
   @@index([mediaId])
   @@index([status])
+}
+
+/// An axis the admin defines to describe *how* a title is wanted: language, edition, source —
+/// whatever this instance routes on. Quality is deliberately not one of these: it maps to a
+/// Radarr/Sonarr profile, where a criterion only ever feeds a folder rule.
+model RequestCriterion {
+  id            Int       @id @default(autoincrement())
+  name          String    @unique // "Langue"
+  position      Int       @default(0)
+  /// Offered as a picker on the request form. False makes it routing-only, invisible to users.
+  showOnRequest Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  values        RequestCriterionValue[]
+}
+
+/// One choice within a criterion: "VOSTFR" under "Langue".
+model RequestCriterionValue {
+  id            Int       @id @default(autoincrement())
+  criterionId   Int
+  label         String
+  position      Int       @default(0)
+  createdAt     DateTime  @default(now())
+
+  criterion     RequestCriterion @relation(fields: [criterionId], references: [id], onDelete: Cascade)
+  requests      MediaRequestCriterion[]
+
+  @@unique([criterionId, label])
+}
+
+/// What a request asked for, one row per criterion. A join table rather than a JSON column so the
+/// grids can ask "which values are already taken on these titles" in one query.
+model MediaRequestCriterion {
+  requestId     Int
+  valueId       Int
+
+  request       MediaRequest          @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  value         RequestCriterionValue @relation(fields: [valueId], references: [id], onDelete: Cascade)
+
+  @@id([requestId, valueId])
+  @@index([valueId])
 }
 
 model AppSettings {

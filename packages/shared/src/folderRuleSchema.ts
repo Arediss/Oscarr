@@ -43,3 +43,39 @@ export function isOperatorSupported(field: RuleField, operator: RuleOperator): b
 export function operatorsForField(field: RuleField): readonly RuleOperator[] {
   return RULE_FIELD_OPERATORS[field];
 }
+
+// ─── Admin-defined criteria ─────────────────────────────────────────
+//
+// The seven fields above are fixed: each one reads a known fact about the title or the requester.
+// A criterion is different — the admin creates it, so its field name cannot be an enum member. It
+// is addressed by id (`criterion:12`) rather than by name so that renaming "Langue" to "Piste
+// audio" never orphans a rule, which is exactly the failure `qualityRuleLinks` exists to undo for
+// quality labels.
+
+const CRITERION_FIELD = /^criterion:(\d+)$/;
+
+export function isCriterionField(v: unknown): v is `criterion:${number}` {
+  return typeof v === 'string' && CRITERION_FIELD.test(v);
+}
+
+export function criterionIdOf(field: string): number | null {
+  const m = CRITERION_FIELD.exec(field);
+  return m ? Number(m[1]) : null;
+}
+
+export function criterionField(id: number): string {
+  return `criterion:${id}`;
+}
+
+/** Same pair as `quality`: a criterion holds one value per request, so equality and membership. */
+export const CRITERION_OPERATORS: readonly RuleOperator[] = ['is', 'in'];
+
+/** Every field a rule may carry, built-in or admin-defined. */
+export function isAnyRuleField(v: unknown): boolean {
+  return isRuleField(v) || isCriterionField(v);
+}
+
+/** Operators to offer, for a built-in field or a criterion alike. */
+export function operatorsForAnyField(field: string): readonly RuleOperator[] {
+  return isCriterionField(field) ? CRITERION_OPERATORS : operatorsForField(field as RuleField);
+}

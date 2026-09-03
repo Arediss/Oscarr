@@ -8,6 +8,7 @@ import { jobsRoutes } from './jobs.js';
 import { syncRoutes } from './sync.js';
 import { notificationsAdminRoutes } from './notifications.js';
 import { qualityRoutes } from './quality.js';
+import { requestCriteriaRoutes } from './requestCriteria.js';
 import { dangerRoutes } from './danger.js';
 import { rolesRoutes } from './roles.js';
 import { keywordsRoutes } from './keywords.js';
@@ -35,6 +36,7 @@ export async function adminRoutes(app: FastifyInstance) {
   await syncRoutes(app);
   await notificationsAdminRoutes(app);
   await qualityRoutes(app);
+  await requestCriteriaRoutes(app);
   await dangerRoutes(app);
   await rolesRoutes(app);
   await keywordsRoutes(app);

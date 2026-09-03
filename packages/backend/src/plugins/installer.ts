@@ -130,12 +130,20 @@ async function fetchPinned(url: string, label: string): Promise<Awaited<ReturnTy
  * compromised at the source.
  */
 async function verifyChecksum(archiveUrl: string, archivePath: string): Promise<void> {
-  const filename = archiveUrl.split('/').pop()?.split('?')[0] ?? '';
+  // Echoed into the four warnings below, and it comes from a registry-supplied URL: a newline in
+  // it would forge log lines. KEEP the chained `.replace()` form — CodeQL's js/log-injection
+  // sanitizer recognition is method-name specific and does not follow `replaceAll`, same reason as
+  // the note in plugins/engine.ts.
+  const filename = (archiveUrl.split('/').pop()?.split('?')[0] ?? '')
+    .replace(/[\r\n]/g, ' ')
+    .replace(/\t/g, ' ')
+    .slice(0, 120);
   let res: Awaited<ReturnType<typeof undiciFetch>>;
   try {
     res = await fetchPinned(`${archiveUrl}.sha256`, 'PluginChecksum');
   } catch (err) {
-    console.warn(`[PluginInstall] checksum unreachable for ${filename}: ${String(err)} — installing unverified`);
+    const why = String(err).replace(/[\r\n]/g, ' ').replace(/\t/g, ' ').slice(0, 200);
+    console.warn(`[PluginInstall] checksum unreachable for ${filename}: ${why} — installing unverified`);
     return;
   }
   if (!res.ok) {

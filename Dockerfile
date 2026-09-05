@@ -2,7 +2,8 @@
 # dependency install-scripts by default — the vector supply-chain worms use. Every package
 # allowed to run one is named explicitly below, so a compromised transitive dep cannot execute
 # anything during the build.
-ARG WOLFI=cgr.dev/chainguard/wolfi-base:latest
+# Pin the multi-platform index; refresh deliberately to pick up base-image updates.
+ARG WOLFI=cgr.dev/chainguard/wolfi-base@sha256:918a593b8268c222afd4e2c4f06860ac984e60719b4697e4c71d796bc8fcd042
 
 # ── Stage 1: Build ──
 FROM ${WOLFI} AS builder
@@ -71,20 +72,20 @@ WORKDIR /app
 # Regenerate with: npm run lock:prod --workspace=packages/backend
 COPY --chown=oscarr:oscarr packages/backend/package.prod.json packages/backend/package.json
 COPY --chown=oscarr:oscarr packages/backend/package.prod-lock.json packages/backend/package-lock.json
-RUN cd packages/backend \
- && npm ci --omit=dev --no-audit --no-fund \
+WORKDIR /app/packages/backend
+RUN npm ci --omit=dev --no-audit --no-fund \
  && npm install-scripts approve --allow-scripts-pin prisma @prisma/client @prisma/engines better-sqlite3 bcrypt \
  && npm rebuild \
- && cd /app \
  # Prisma ships engines for every platform and query runtimes for every datasource; this app is
  # SQLite on Node, so the browser/edge/wasm builds and the other database runtimes are dead
  # weight. The download cache is a build artefact and is never read at runtime.
  && rm -rf /root/.cache/prisma /root/.npm \
- && find packages/backend/node_modules/@prisma/client/runtime -type f \
+ && find node_modules/@prisma/client/runtime -type f \
       \( -name '*edge*' -o -name '*browser*' -o -name '*react-native*' -o -name '*.wasm' \
          -o -name '*cockroachdb*' -o -name '*postgresql*' -o -name '*mysql*' -o -name '*sqlserver*' \) \
-      -delete 2>/dev/null || true \
+      -delete \
  && apk del npm
+WORKDIR /app
 
 # Bundled backend server + its sourcemap (keeps stack traces useful in prod logs).
 COPY --from=builder --chown=oscarr:oscarr /app/packages/backend/dist/server.js packages/backend/dist/server.js

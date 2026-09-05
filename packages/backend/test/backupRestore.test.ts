@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { existsSync, readFileSync, readdirSync, unlinkSync } from 'node:fs';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { existsSync, readFileSync, readdirSync, unlinkSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import Database from 'better-sqlite3';
 import { prisma } from '../src/utils/prisma.js';
 import { loadMasterKeyOrExit } from '../src/utils/secrets.js';
+import { maintenanceReason } from '../src/utils/maintenance.js';
+import * as migrations from '../src/utils/prismaMigrate.js';
 
 loadMasterKeyOrExit();
 
@@ -19,11 +21,54 @@ beforeAll(async () => {
 
 const snapshots: string[] = [];
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const path of snapshots.splice(0)) {
     for (const suffix of ['', '-wal', '-shm']) {
       try { unlinkSync(`${path}${suffix}`); } catch { /* already gone */ }
     }
   }
+});
+
+describe('restore failure recovery', () => {
+  it('releases maintenance and preserves live data when disconnect fails', async () => {
+    const email = `disconnect-${randomUUID()}@test.local`;
+    await addUser(email);
+    const archive = readFileSync(snapshot());
+    vi.spyOn(prisma, '$disconnect').mockRejectedValueOnce(new Error('disconnect failed'));
+
+    const result = await restoreDatabase(archive);
+
+    expect(result).toMatchObject({ ok: false, error: 'disconnect failed' });
+    expect(maintenanceReason()).toBeNull();
+    expect(await prisma.user.count({ where: { email } })).toBe(1);
+    expect(leftoverStagingFiles()).toEqual([]);
+  });
+
+  it.each([false, true])('restores the previous plugin state after migration failure (directory existed: %s)', async (hadPlugins) => {
+    const pluginsRoot = resolve(dirname(getDbPath()), 'plugins');
+    rmSync(pluginsRoot, { recursive: true, force: true });
+    if (hadPlugins) {
+      mkdirSync(pluginsRoot, { recursive: true });
+      writeFileSync(resolve(pluginsRoot, 'original.json'), 'original');
+    }
+    const archive = readFileSync(snapshot());
+    const email = `rollback-${randomUUID()}@test.local`;
+    await addUser(email);
+    vi.spyOn(migrations, 'runMigrateDeploy').mockImplementationOnce(() => { throw new Error('migration failed'); });
+
+    const result = await restoreDatabase(archive, [
+      { path: 'plugins/restored.json', data: Buffer.from('restored').toString('base64') },
+    ]);
+
+    expect(result).toMatchObject({ ok: false, error: 'migration failed' });
+    expect(result.rollbackFailed).toBeUndefined();
+    expect(await prisma.user.count({ where: { email } })).toBe(1);
+    expect(existsSync(resolve(pluginsRoot, 'restored.json'))).toBe(false);
+    expect(existsSync(pluginsRoot)).toBe(hadPlugins);
+    if (hadPlugins) expect(readFileSync(resolve(pluginsRoot, 'original.json'), 'utf8')).toBe('original');
+    expect(maintenanceReason()).toBeNull();
+    expect(leftoverStagingFiles()).toEqual([]);
+  });
 });
 
 /** Any `.restore.*` file left behind in the data directory — staged snapshots must never survive. */

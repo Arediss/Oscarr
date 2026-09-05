@@ -3,6 +3,7 @@ import {
   isRuleField, isRuleOperator, isOperatorSupported,
   isCriterionField, criterionIdOf, CRITERION_OPERATORS,
   RULE_MEDIA_TYPES, RULE_SERIES_TYPES,
+  type RuleOperator,
 } from '@oscarr/shared';
 import { checkRuleService } from './folderRules.js';
 import { findServiceTypeForMedia } from '../providers/index.js';
@@ -52,52 +53,56 @@ export async function validateRulePayload(input: RulePayload, opts: ValidateRule
   return null;
 }
 
+function unknownLabels(value: string, known: Set<string>): string[] {
+  return value.split(',').map(v => v.trim().toLowerCase()).filter(v => v !== '' && !known.has(v));
+}
+
+async function validateCriterionCondition(field: string, operator: RuleOperator, value: string): Promise<string | null> {
+  if (!CRITERION_OPERATORS.includes(operator)) return `operator "${operator}" does nothing for a criterion`;
+  const criterionId = criterionIdOf(field)!;
+  const criterion = await prisma.requestCriterion.findUnique({
+    where: { id: criterionId },
+    select: { name: true, values: { select: { label: true } } },
+  });
+  if (!criterion) return `criterion ${criterionId} does not exist`;
+  const unknown = unknownLabels(value, new Set(criterion.values.map(v => v.label.toLowerCase())));
+  return unknown.length
+    ? `value(s) not configured for criterion "${criterion.name}": ${unknown.join(', ')}`
+    : null;
+}
+
+async function validateCondition(condition: unknown, getQualityLabels: () => Promise<Set<string>>): Promise<string | null> {
+  if (!condition || typeof condition !== 'object') return 'each condition must be an object';
+  const { field, operator, value } = condition as { field?: unknown; operator?: unknown; value?: unknown };
+  if (!isRuleOperator(operator)) return `unknown operator "${String(operator)}"`;
+  if (typeof value !== 'string' || value.trim() === '') return `condition value for "${String(field)}" must be a non-empty string`;
+
+  // Reject dead criterion/value references before persisting a rule that can never match.
+  if (isCriterionField(field)) return validateCriterionCondition(field, operator, value);
+  if (!isRuleField(field)) return `unknown condition field "${String(field)}"`;
+  if (!isOperatorSupported(field, operator)) return `operator "${operator}" does nothing for field "${field}"`;
+  if (field !== 'quality') return null;
+
+  const unknown = unknownLabels(value, await getQualityLabels());
+  return unknown.length ? `quality value(s) not found in configured quality options: ${unknown.join(', ')}` : null;
+}
+
 async function validateConditions(conditions: unknown): Promise<string | null> {
-  if (!Array.isArray(conditions) || conditions.length === 0) {
-    return 'at least one condition is required';
-  }
+  if (!Array.isArray(conditions) || conditions.length === 0) return 'at least one condition is required';
 
+  // Load at most once, and only if a valid quality condition actually needs the labels.
   let qualityLabels: Set<string> | null = null;
-  for (const c of conditions) {
-    if (!c || typeof c !== 'object') return 'each condition must be an object';
-    const { field, operator, value } = c as { field?: unknown; operator?: unknown; value?: unknown };
-    if (!isRuleOperator(operator)) return `unknown operator "${String(operator)}"`;
-    if (typeof value !== 'string' || value.trim() === '') return `condition value for "${String(field)}" must be a non-empty string`;
-
-    if (isCriterionField(field)) {
-      // Same contract as quality below: a condition naming a criterion or a value that does not
-      // exist would sit in the rule matching nothing, and the admin would hunt for why routing
-      // stopped. Refuse at write time rather than fail silently at dispatch.
-      if (!CRITERION_OPERATORS.includes(operator)) {
-        return `operator "${operator}" does nothing for a criterion`;
-      }
-      const criterionId = criterionIdOf(field)!;
-      const criterion = await prisma.requestCriterion.findUnique({
-        where: { id: criterionId },
-        select: { name: true, values: { select: { label: true } } },
-      });
-      if (!criterion) return `criterion ${criterionId} does not exist`;
-      const known = new Set(criterion.values.map(v => v.label.toLowerCase()));
-      const vals = value.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
-      const unknown = vals.filter(v => !known.has(v));
-      if (unknown.length) {
-        return `value(s) not configured for criterion "${criterion.name}": ${unknown.join(', ')}`;
-      }
-      continue;
+  const getQualityLabels = async () => {
+    if (!qualityLabels) {
+      const options = await prisma.qualityOption.findMany({ select: { label: true } });
+      qualityLabels = new Set(options.map(option => option.label.toLowerCase()));
     }
+    return qualityLabels;
+  };
 
-    if (!isRuleField(field)) return `unknown condition field "${String(field)}"`;
-    if (!isOperatorSupported(field, operator)) return `operator "${operator}" does nothing for field "${field}"`;
-
-    if (field === 'quality') {
-      if (!qualityLabels) {
-        const opts = await prisma.qualityOption.findMany({ select: { label: true } });
-        qualityLabels = new Set(opts.map(o => o.label.toLowerCase()));
-      }
-      const vals = value.split(',').map(v => v.trim().toLowerCase()).filter(Boolean);
-      const unknown = vals.filter(v => !qualityLabels!.has(v));
-      if (unknown.length) return `quality value(s) not found in configured quality options: ${unknown.join(', ')}`;
-    }
+  for (const condition of conditions) {
+    const error = await validateCondition(condition, getQualityLabels);
+    if (error) return error;
   }
 
   return null;

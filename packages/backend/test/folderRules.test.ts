@@ -38,6 +38,7 @@ beforeEach(async () => {
   await prisma.folderRule.deleteMany();
   await prisma.qualityOption.deleteMany();
   await prisma.service.deleteMany();
+  await prisma.requestCriterion.deleteMany();
 });
 
 afterAll(async () => {
@@ -193,6 +194,15 @@ describe('matchFolderRule — broken target service', () => {
 });
 
 describe('validateRulePayload', () => {
+  it.each([
+    [null, /each condition must be an object/],
+    [{ field: 'genre', operator: 'unknown', value: 'x' }, /unknown operator/],
+    [{ field: 'genre', operator: 'is', value: ' ' }, /non-empty string/],
+    [{ field: 'unknown', operator: 'is', value: 'x' }, /unknown condition field/],
+  ])('rejects malformed condition %j', async (condition, error) => {
+    expect(await validateRulePayload({ mediaType: 'tv', conditions: [condition] })).toMatch(error);
+  });
+
   it('rejects an unknown media type', async () => {
     expect(await validateRulePayload({ mediaType: 'book', conditions: [{ field: 'genre', operator: 'contains', value: 'x' }] })).toMatch(/mediaType/);
   });
@@ -210,6 +220,33 @@ describe('validateRulePayload', () => {
   it('accepts a quality value backed by an option', async () => {
     await prisma.qualityOption.create({ data: { label: '4K', position: 1 } });
     expect(await validateRulePayload({ mediaType: 'tv', conditions: [{ field: 'quality', operator: 'is', value: '4K' }] })).toBeNull();
+  });
+});
+
+describe('criterion condition validation', () => {
+  async function criterionRule(value: string, operator = 'is') {
+    const criterion = await prisma.requestCriterion.create({
+      data: { name: 'Language', values: { create: [{ label: 'French' }, { label: 'English' }] } },
+    });
+    return validateRulePayload({ mediaType: 'any', conditions: [{ field: `criterion:${criterion.id}`, operator, value }] });
+  }
+
+  it('accepts multiple configured values with whitespace and case differences', async () => {
+    expect(await criterionRule(' FRENCH, English ')).toBeNull();
+  });
+
+  it('rejects an unknown criterion', async () => {
+    expect(await validateRulePayload({
+      mediaType: 'tv', conditions: [{ field: 'criterion:2147483647', operator: 'is', value: 'French' }],
+    })).toMatch(/criterion .* does not exist/);
+  });
+
+  it('rejects values outside the named criterion', async () => {
+    expect(await criterionRule('German')).toMatch(/value\(s\) not configured/);
+  });
+
+  it('rejects operators that cannot match a criterion', async () => {
+    expect(await criterionRule('French', 'contains')).toMatch(/does nothing for a criterion/);
   });
 });
 

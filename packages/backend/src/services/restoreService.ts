@@ -96,14 +96,31 @@ function stagePluginData(entries: PluginDataEntry[], stageRoot: string): { stage
  *  deliberately avoids depending on an external supervisor. Plugin data is the exception: the
  *  engine caches enabled flags, settings, routers and job handlers in memory and nothing reloads
  *  them here, so the route asks for a restart when plugin files were part of the archive. */
-export async function restoreDatabase(dbBuffer: Buffer, pluginData: PluginDataEntry[] = []): Promise<{
+export interface RestoreResult {
   ok: boolean;
   safetyPath: string;
   rollbackFailed?: boolean;
   error?: string;
   pluginFilesRestored?: number;
   pluginFilesRejected?: string[];
-}> {
+}
+
+interface RestorePaths {
+  dbPath: string;
+  stagedPath: string;
+  safetyPath: string;
+  pluginsRoot: string;
+  pluginsStage: string;
+  pluginsSafety: string;
+}
+
+interface RestoreSwap {
+  databaseReplaced: boolean;
+  pluginsMoved: boolean;
+  pluginsReplaced: boolean;
+}
+
+function prepareRestorePaths(): RestorePaths {
   const dbPath = getDbPath();
   const dbDir = dirname(dbPath);
   if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
@@ -124,110 +141,131 @@ export async function restoreDatabase(dbBuffer: Buffer, pluginData: PluginDataEn
   const pluginsStage = `${pluginsRoot}.restore.${attempt}`;
   const pluginsSafety = `${pluginsRoot}.pre-restore`;
 
-  // ── Stage and verify before anything live is touched ──
+  return { dbPath, stagedPath, safetyPath, pluginsRoot, pluginsStage, pluginsSafety };
+}
+
+function discardStaging(paths: RestorePaths): void {
+  try { unlinkSync(paths.stagedPath); } catch { /* already renamed or never written */ }
+  rmSync(paths.pluginsStage, { recursive: true, force: true });
+}
+
+function copyDatabaseSafety(paths: RestorePaths): void {
+  const { dbPath, safetyPath } = paths;
+  if (existsSync(dbPath)) copyFileSync(dbPath, safetyPath);
+  for (const suffix of SQLITE_SIDECARS) {
+    if (existsSync(`${dbPath}${suffix}`)) copyFileSync(`${dbPath}${suffix}`, `${safetyPath}${suffix}`);
+    else { try { unlinkSync(`${safetyPath}${suffix}`); } catch { /* no stale sidecar */ } }
+  }
+}
+
+function swapSnapshot(paths: RestorePaths, includePlugins: boolean, swap: RestoreSwap): void {
+  renameSync(paths.stagedPath, paths.dbPath);
+  swap.databaseReplaced = true;
+  for (const suffix of SQLITE_SIDECARS) {
+    try { unlinkSync(`${paths.dbPath}${suffix}`); } catch { /* absent is the expected case */ }
+  }
+
+  // Swap the whole directory so plugins never see a half-applied mix of old and restored data.
+  if (!includePlugins) return;
+  rmSync(paths.pluginsSafety, { recursive: true, force: true });
+  if (existsSync(paths.pluginsRoot)) {
+    renameSync(paths.pluginsRoot, paths.pluginsSafety);
+    swap.pluginsMoved = true;
+  }
+  renameSync(paths.pluginsStage, paths.pluginsRoot);
+  swap.pluginsReplaced = true;
+}
+
+function rollbackSnapshot(paths: RestorePaths, swap: RestoreSwap): void {
+  // A failure while preparing the safety copy must not roll back from an older attempt's copy.
+  if (swap.databaseReplaced) {
+    if (existsSync(paths.safetyPath)) copyFileSync(paths.safetyPath, paths.dbPath);
+    for (const suffix of SQLITE_SIDECARS) {
+      if (existsSync(`${paths.safetyPath}${suffix}`)) copyFileSync(`${paths.safetyPath}${suffix}`, `${paths.dbPath}${suffix}`);
+      else { try { unlinkSync(`${paths.dbPath}${suffix}`); } catch { /* no previous sidecar */ } }
+    }
+  }
+  if (swap.pluginsReplaced) rmSync(paths.pluginsRoot, { recursive: true, force: true });
+  if (swap.pluginsMoved) renameSync(paths.pluginsSafety, paths.pluginsRoot);
+}
+
+function recoverRestore(paths: RestorePaths, swap: RestoreSwap, writeErr: unknown): RestoreResult {
+  const writeMsg = String((writeErr as Error)?.message ?? writeErr);
+  try {
+    rollbackSnapshot(paths, swap);
+    return { ok: false, safetyPath: paths.safetyPath, error: writeMsg };
+  } catch (rollbackErr) {
+    // The database may be unavailable, so this cannot use the database-backed event log.
+    const rollbackMsg = String((rollbackErr as Error)?.message ?? rollbackErr);
+    console.error(`[Backup] CRITICAL: restore failed (${writeMsg}) AND rollback failed (${rollbackMsg}). Database may be corrupted; safety copy at ${paths.safetyPath}`);
+    return { ok: false, safetyPath: paths.safetyPath, rollbackFailed: true, error: `restore: ${writeMsg}; rollback: ${rollbackMsg}` };
+  }
+}
+
+async function quiesceForRestore(): Promise<void> {
+  stopAllJobs();
+  const stillRunning = runningJobKeys();
+  if (stillRunning.length > 0) {
+    console.warn(`[Backup] Restoring while these jobs are mid-run: ${stillRunning.join(', ')}`);
+  }
+  // Open plugin SQLite handles must release their WAL/SHM locks before directory replacement.
+  closeAllPluginStorage();
+  await prisma.$disconnect();
+}
+
+async function resumeAfterRestore(): Promise<void> {
+  try {
+    await prisma.$connect();
+    // VACUUM INTO snapshots use journal_mode=delete; the app expects WAL.
+    await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
+  } catch (err) {
+    console.error(`[Backup] Reconnect after restore failed: ${String(err)}`);
+  }
+  endMaintenance();
+  await restartJobs().catch((err) => console.error(`[Backup] Job restart after restore failed: ${String(err)}`));
+}
+
+/** Stage, verify, quiesce, swap and migrate; roll back any changes if an attempt fails. */
+export async function restoreDatabase(dbBuffer: Buffer, pluginData: PluginDataEntry[] = []): Promise<RestoreResult> {
+  const paths = prepareRestorePaths();
+  const { stagedPath, safetyPath, pluginsStage } = paths;
   let pluginStaging = { staged: 0, rejected: [] as string[] };
   try {
     writeFileSync(stagedPath, dbBuffer);
     assertRestorableSqlite(stagedPath);
     if (pluginData.length > 0) pluginStaging = stagePluginData(pluginData, pluginsStage);
   } catch (err) {
-    try { unlinkSync(stagedPath); } catch { /* nothing staged */ }
-    rmSync(pluginsStage, { recursive: true, force: true });
+    discardStaging(paths);
     return { ok: false, safetyPath, error: `staged snapshot rejected: ${String((err as Error)?.message ?? err)}` };
   }
 
-  // ── Quiesce: no new requests, no cron jobs, no open connection ──
-  // The loser cleans up only its own attempt files (see `attempt` above) and leaves the winner's
-  // jobs, connection and staging untouched.
+  // Losing attempts clean only their own files and leave the active restore untouched.
   if (!beginMaintenance('Restoring a backup')) {
-    try { unlinkSync(stagedPath); } catch { /* nothing staged */ }
-    rmSync(pluginsStage, { recursive: true, force: true });
+    discardStaging(paths);
     return { ok: false, safetyPath, error: 'RESTORE_IN_PROGRESS' };
   }
-  stopAllJobs();
-  const stillRunning = runningJobKeys();
-  if (stillRunning.length > 0) {
-    // Nothing to await on — jobs are fire-and-forget — but the operator deserves the breadcrumb
-    // if the restore lands mid-sync. Console, not logEvent: the DB is about to go away.
-    console.warn(`[Backup] Restoring while these jobs are mid-run: ${stillRunning.join(', ')}`);
-  }
-  // Plugin SQLite handles point at files the swap below replaces; a handle left open keeps
-  // writing into the old inode and holds its WAL/SHM locks. They reopen lazily.
-  closeAllPluginStorage();
-  await prisma.$disconnect();
 
-  let result: Awaited<ReturnType<typeof restoreDatabase>>;
+  const swap: RestoreSwap = { databaseReplaced: false, pluginsMoved: false, pluginsReplaced: false };
   try {
-    // ── Safety copy of the live trio (db + wal + shm) ──
-    if (existsSync(dbPath)) copyFileSync(dbPath, safetyPath);
-    for (const suffix of SQLITE_SIDECARS) {
-      if (existsSync(`${dbPath}${suffix}`)) copyFileSync(`${dbPath}${suffix}`, `${safetyPath}${suffix}`);
-      else { try { unlinkSync(`${safetyPath}${suffix}`); } catch { /* no stale sidecar */ } }
-    }
-
-    // ── Atomic swap, then drop the sidecars of the database that just went away ──
-    renameSync(stagedPath, dbPath);
-    for (const suffix of SQLITE_SIDECARS) {
-      try { unlinkSync(`${dbPath}${suffix}`); } catch { /* absent is the expected case */ }
-    }
-
-    // Plugin data rides in the archive (manifest.pluginsDataIncluded) but restore used to apply
-    // oscarr.db alone: a restored instance came back with core data from the backup and plugin
-    // KV/SQLite from whenever. Directory-level swap, so a plugin never sees a half-applied mix.
-    if (pluginStaging.staged > 0) {
-      rmSync(pluginsSafety, { recursive: true, force: true });
-      if (existsSync(pluginsRoot)) renameSync(pluginsRoot, pluginsSafety);
-      renameSync(pluginsStage, pluginsRoot);
-    }
-
-    // A backup taken by an older Oscarr carries an older schema, and `migrate deploy` is the only
-    // thing that closes the gap — boot ran it against the database we just replaced. Throwing here
-    // falls into the rollback below, which is the direction we want (R9): a restore refused beats a
-    // restored-but-unmigrated database that fails on the first query for a table it never had.
+    await quiesceForRestore();
+    copyDatabaseSafety(paths);
+    swapSnapshot(paths, pluginStaging.staged > 0, swap);
+    // An older backup must migrate before queries resume; failure restores the previous state.
     runMigrateDeploy();
 
-    result = {
+    return {
       ok: true,
       safetyPath,
       pluginFilesRestored: pluginStaging.staged,
       ...(pluginStaging.rejected.length > 0 ? { pluginFilesRejected: pluginStaging.rejected } : {}),
     };
   } catch (writeErr) {
-    const writeMsg = String((writeErr as Error)?.message ?? writeErr);
-    try {
-      if (existsSync(safetyPath)) copyFileSync(safetyPath, dbPath);
-      for (const suffix of SQLITE_SIDECARS) {
-        if (existsSync(`${safetyPath}${suffix}`)) copyFileSync(`${safetyPath}${suffix}`, `${dbPath}${suffix}`);
-      }
-      // Put the plugin directory back too. The swap above happens before `runMigrateDeploy()`, so a
-      // failing migration used to roll the database back while leaving the *backup's* plugin state
-      // in place — every plugin then read KV/SQLite that no longer matched the database beside it.
-      if (pluginStaging.staged > 0 && existsSync(pluginsSafety)) {
-        rmSync(pluginsRoot, { recursive: true, force: true });
-        renameSync(pluginsSafety, pluginsRoot);
-      }
-      result = { ok: false, safetyPath, error: writeMsg };
-    } catch (rollbackErr) {
-      // The live DB is broken and the only good copy is safetyPath. Console, not logEvent —
-      // logEvent needs the database we just lost.
-      const rollbackMsg = String((rollbackErr as Error)?.message ?? rollbackErr);
-      console.error(`[Backup] CRITICAL: restore failed (${writeMsg}) AND rollback failed (${rollbackMsg}). Database may be corrupted; safety copy at ${safetyPath}`);
-      result = { ok: false, safetyPath, rollbackFailed: true, error: `restore: ${writeMsg}; rollback: ${rollbackMsg}` };
-    }
-    try { unlinkSync(stagedPath); } catch { /* already renamed or never written */ }
-    rmSync(pluginsStage, { recursive: true, force: true });
+    return recoverRestore(paths, swap, writeErr);
   } finally {
-    // ── Reopen ──
     try {
-      await prisma.$connect();
-      // A VACUUM INTO snapshot comes back in journal_mode=delete; the app expects WAL.
-      await prisma.$queryRawUnsafe('PRAGMA journal_mode = WAL;');
-    } catch (err) {
-      console.error(`[Backup] Reconnect after restore failed: ${String(err)}`);
+      discardStaging(paths);
+    } finally {
+      await resumeAfterRestore();
     }
-    endMaintenance();
-    await restartJobs().catch((err) => console.error(`[Backup] Job restart after restore failed: ${String(err)}`));
   }
-
-  return result;
 }

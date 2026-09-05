@@ -4,8 +4,8 @@ The recommended way to run Oscarr is with Docker — see the README's *Quick Sta
 
 ## Prerequisites
 
-- Node.js 20+
-- npm 9+
+- Node.js 22 LTS (22.19.0 or newer in the 22.x series, as used by CI and Docker)
+- npm 11
 - A media server (Plex, Jellyfin, or Emby — optional, can be added later)
 - A TMDB API key (optional — a built-in read-access token is provided)
 
@@ -13,13 +13,15 @@ The recommended way to run Oscarr is with Docker — see the README's *Quick Sta
 
 ```bash
 git clone https://github.com/arediss/Oscarr.git
-cd Oscarr/app
-npm install --legacy-peer-deps
+cd Oscarr
+npm ci
 ```
 
 ## Configuration
 
-Create a `.env` file at `app/.env`. `OSCARR_SECRET_KEY`, `JWT_SECRET` and `SETUP_SECRET` are
+Run all commands in this guide from the repository root (the directory containing `package.json`).
+
+Create a `.env` file at the repository root. `OSCARR_SECRET_KEY`, `JWT_SECRET` and `SETUP_SECRET` are
 required — Oscarr refuses to start on a placeholder or a value under 16 characters. Generate them
 with `openssl rand -hex 32` for the first and `openssl rand -base64 32` for the other two:
 
@@ -73,6 +75,13 @@ Starts the frontend (`:5173`) and backend (`:3456`) concurrently.
 npm run build
 NODE_ENV=production node packages/backend/dist/index.js
 ```
+
+The build generates Prisma Client automatically before checking and compiling the backend. It does
+not connect to or modify your database. Keep the repository's TypeScript configuration; disabling
+strict checks does not fix missing generated types and can introduce additional errors.
+
+After updating Oscarr, run `npm ci` and `npm run build` again before restarting it. Keep your existing
+`.env`, secrets, database and install state.
 
 ## First launch
 

@@ -5,16 +5,15 @@ import { getMovieDetails, getTvDetails } from './tmdb.js';
 import { findTvPlaceholder, upgradeOrMergeTvPlaceholder } from './mediaService.js';
 import { matchFolderRule } from './folderRules.js';
 import { logEvent } from '../utils/logEvent.js';
-import { isQualityAllowedForRole } from '../utils/qualityAccess.js';
 import { getServiceById, getAllServices } from '../utils/services.js';
 import { VALID_MEDIA_TYPES } from '../utils/params.js';
 import { ACTIVE_REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { RequestStatusKind } from '@oscarr/shared';
 import { safeNotify, safeUserNotify, buildSiteLink } from '../utils/safeNotify.js';
-import { pluginEngine } from '../plugins/engine.js';
 import { transitionRequestStatus } from './requestStatusTransition.js';
 import { Prisma } from '@prisma/client';
 import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
+import { checkRequestGuard, resolveRequestApproval, validateRequestCriteria } from './requestCreationPolicy.js';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -403,14 +402,11 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   }
   const { tmdbId, mediaType, seasons: validSeasons } = validation;
 
-  if (user.role !== 'admin' && !input.skipPluginGuard) {
-    const guardResult = await pluginEngine.runGuards('request.create', user.id, {
-      request: { tmdbId, mediaType, seasons: validSeasons ?? null },
-    });
-    if (guardResult?.blocked) {
-      return { ok: false, status: (guardResult.statusCode || 403) as 403, code: 'BLOCKED_BY_GUARD', error: guardResult.error || 'Request blocked by plugin guard' };
-    }
-  }
+  const guardError = await checkRequestGuard({
+    userId: user.id, role: user.role, skipPluginGuard: input.skipPluginGuard,
+    tmdbId, mediaType, seasons: validSeasons,
+  });
+  if (guardError) return guardError;
 
   const bl = await isBlacklisted(tmdbId, mediaType);
   if (bl.blacklisted) {
@@ -420,34 +416,17 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   const media = await findOrCreateMedia(tmdbId, mediaType);
 
   const settings = await getAppSettings();
-  let shouldAutoApprove = user.role === 'admin' || (settings?.autoApproveRequests ?? false);
-  if (input.qualityOptionId != null) {
-    const qualityOpt = await prisma.qualityOption.findUnique({ where: { id: input.qualityOptionId } });
-    if (qualityOpt && user.role !== 'admin' && !isQualityAllowedForRole(qualityOpt.allowedRoles, user.role)) {
-      return { ok: false, status: 403, code: 'QUALITY_NOT_ALLOWED', error: 'QUALITY_NOT_ALLOWED' };
-    }
-    if (qualityOpt?.approvalMode === 'auto') shouldAutoApprove = true;
-    else if (qualityOpt?.approvalMode === 'manual') shouldAutoApprove = user.role === 'admin';
-  }
+  const approval = await resolveRequestApproval(user.role, settings?.autoApproveRequests ?? false, input.qualityOptionId);
+  if (!approval.ok) return approval;
+  const shouldAutoApprove = approval.autoApprove;
 
   // Criterion values, checked before anything is written. Two guards, both about a request that
   // could never be served: an id that does not exist, and two values of the same criterion — a
   // title cannot be wanted in French *and* subtitled at once, and a folder rule matching on that
   // criterion would have to pick one arbitrarily.
   const criterionValueIds = [...new Set(input.criterionValueIds ?? [])];
-  if (criterionValueIds.length > 0) {
-    const values = await prisma.requestCriterionValue.findMany({
-      where: { id: { in: criterionValueIds } },
-      select: { id: true, criterionId: true },
-    });
-    if (values.length !== criterionValueIds.length) {
-      return { ok: false, status: 400, code: 'UNKNOWN_CRITERION_VALUE', error: 'UNKNOWN_CRITERION_VALUE' };
-    }
-    const perCriterion = new Set(values.map((v) => v.criterionId));
-    if (perCriterion.size !== values.length) {
-      return { ok: false, status: 400, code: 'CRITERION_CONFLICT', error: 'CRITERION_CONFLICT' };
-    }
-  }
+  const criteriaError = await validateRequestCriteria(criterionValueIds);
+  if (criteriaError) return criteriaError;
 
   // Dedup + create in one transaction so two concurrent calls by the same user can't both pass
   // the dedup check and both insert (SQLite serializes writes, but defensive against future
@@ -510,22 +489,8 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
     const tagName = await getUserTagName(user.id);
     const sent = await sendToService(media, mediaType, tagName, user.id, validSeasons, input.qualityOptionId, undefined, criterionValueIds);
 
-    // Post-send writes go through a single transaction so the request status and the media
-    // status flip can't drift if the process crashes between them.
-    if (sent && media.statusCategory !== 'AVAILABLE' && media.statusCategory !== 'PROCESSING') {
-      await prisma.media.update({
-        where: { id: media.id },
-        data: { statusCategory: 'SEARCHING' },
-      }).catch((err) => {
-        logEvent('warn', 'Request', `Status-flip to 'searching' failed for media ${media.id} (request ${mediaRequest.id}): ${String(err)}`);
-      });
-    } else if (!sent) {
-      await transitionRequestStatus(
-        { requestId: mediaRequest.id, from: mediaRequest.status as RequestStatusKind, to: 'failed', why: 'dispatch-failed' },
-        () => prisma.mediaRequest.update({ where: { id: mediaRequest.id }, data: { status: 'failed' } }),
-      ).catch((err) => logEvent('warn', 'Request', `Failed to mark request ${mediaRequest.id} as failed after sendToService rejected: ${String(err)}`));
-      sendFailed = true;
-    }
+    await recordRequestDispatch(sent, media, mediaRequest);
+    sendFailed = !sent;
   }
 
   const username = user.displayName || 'User';
@@ -558,6 +523,27 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   return sendFailed
     ? { ok: true, status: 202, request: mediaRequest, sendFailed: true }
     : { ok: true, status: 201, request: mediaRequest };
+}
+
+async function recordRequestDispatch(
+  sent: boolean,
+  media: { id: number; statusCategory: string },
+  request: { id: number; status: string },
+): Promise<void> {
+  if (!sent) {
+    await transitionRequestStatus(
+      { requestId: request.id, from: request.status as RequestStatusKind, to: 'failed', why: 'dispatch-failed' },
+      () => prisma.mediaRequest.update({ where: { id: request.id }, data: { status: 'failed' } }),
+    ).catch((err) => logEvent('warn', 'Request', `Failed to mark request ${request.id} as failed after sendToService rejected: ${String(err)}`));
+    return;
+  }
+  if (media.statusCategory === 'AVAILABLE' || media.statusCategory === 'PROCESSING') return;
+  await prisma.media.update({
+    where: { id: media.id },
+    data: { statusCategory: 'SEARCHING' },
+  }).catch((err) => {
+    logEvent('warn', 'Request', `Status-flip to 'searching' failed for media ${media.id} (request ${request.id}): ${String(err)}`);
+  });
 }
 
 // ---------------------------------------------------------------------------

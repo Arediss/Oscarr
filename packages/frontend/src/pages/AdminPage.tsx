@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, type ComponentType } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { clsx } from 'clsx';
@@ -32,6 +32,33 @@ import { MailTab } from './admin/MailTab';
 import { ApiKeysTab } from './admin/ApiKeysTab';
 import { ImportTab } from './admin/ImportTab';
 
+const TAB_COMPONENTS = new Map<string, ComponentType>([
+  ['dashboard', DashboardTab],
+  ['instance', InstanceTab],
+  ['features', FeaturesTab],
+  ['homepage', HomepageTab],
+  ['links', LinksTab],
+  ['users', UsersTab],
+  ['roles', RolesTab],
+  ['auth', AuthProvidersTab],
+  ['mail', MailTab],
+  ['api-keys', ApiKeysTab],
+  ['services', ServicesTab],
+  ['quality', QualityTab],
+  ['criteria', CriteriaTab],
+  ['paths', PathsTab],
+  ['rules', RoutingRulesTab],
+  ['keywords', KeywordsTab],
+  ['blacklist', BlacklistTab],
+  ['notifications', NotificationsTab],
+  ['jobs', JobsTab],
+  ['logs', LogsTab],
+  ['backups', BackupsTab],
+  ['import', ImportTab],
+  ['danger', DangerTab],
+  ['plugins', PluginsTab],
+]);
+
 export default function AdminPage() {
   const { t } = useTranslation();
   const { user, hasPermission } = useAuth();
@@ -57,6 +84,7 @@ export default function AdminPage() {
   if (!canAccess) return null;
 
   const activePluginTab = activeTab.startsWith('plugin:') ? activeTab.replace('plugin:', '') : null;
+  const ActiveTab = TAB_COMPONENTS.get(activeTab);
   const showGroupHeader = !!activeGroup && !activePluginTab;
 
   const setTab = (id: string) => setSearchParams({ tab: id }, { replace: true });
@@ -87,30 +115,7 @@ export default function AdminPage() {
         </div>
       )}
 
-      {activeTab === 'dashboard' && <DashboardTab />}
-      {activeTab === 'instance' && <InstanceTab />}
-      {activeTab === 'features' && <FeaturesTab />}
-      {activeTab === 'homepage' && <HomepageTab />}
-      {activeTab === 'links' && <LinksTab />}
-      {activeTab === 'users' && <UsersTab />}
-      {activeTab === 'roles' && <RolesTab />}
-      {activeTab === 'auth' && <AuthProvidersTab />}
-      {activeTab === 'mail' && <MailTab />}
-      {activeTab === 'api-keys' && <ApiKeysTab />}
-      {activeTab === 'services' && <ServicesTab />}
-      {activeTab === 'quality' && <QualityTab />}
-      {activeTab === 'criteria' && <CriteriaTab />}
-      {activeTab === 'paths' && <PathsTab />}
-      {activeTab === 'rules' && <RoutingRulesTab />}
-      {activeTab === 'keywords' && <KeywordsTab />}
-      {activeTab === 'blacklist' && <BlacklistTab />}
-      {activeTab === 'notifications' && <NotificationsTab />}
-      {activeTab === 'jobs' && <JobsTab />}
-      {activeTab === 'logs' && <LogsTab />}
-      {activeTab === 'backups' && <BackupsTab />}
-      {activeTab === 'import' && <ImportTab />}
-      {activeTab === 'danger' && <DangerTab />}
-      {activeTab === 'plugins' && <PluginsTab />}
+      {ActiveTab && <ActiveTab />}
       {activePluginTab && <PluginAdminTab pluginId={activePluginTab} />}
     </div>
   );

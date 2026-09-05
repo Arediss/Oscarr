@@ -13,6 +13,7 @@
     "better-sqlite3": "^12.9.0"
   },
   "overrides": {
+    "deepmerge-ts": "8.0.1",
     "picomatch": ">=4.0.4"
   }
 }

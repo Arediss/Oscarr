@@ -224,9 +224,10 @@ describe('validateRulePayload', () => {
 });
 
 describe('criterion condition validation', () => {
+  const FRENCH_LABEL = 'French';
   async function criterionRule(value: string, operator = 'is') {
     const criterion = await prisma.requestCriterion.create({
-      data: { name: 'Language', values: { create: [{ label: 'French' }, { label: 'English' }] } },
+      data: { name: 'Language', values: { create: [{ label: FRENCH_LABEL }, { label: 'English' }] } },
     });
     return validateRulePayload({ mediaType: 'any', conditions: [{ field: `criterion:${criterion.id}`, operator, value }] });
   }
@@ -237,7 +238,7 @@ describe('criterion condition validation', () => {
 
   it('rejects an unknown criterion', async () => {
     expect(await validateRulePayload({
-      mediaType: 'tv', conditions: [{ field: 'criterion:2147483647', operator: 'is', value: 'French' }],
+      mediaType: 'tv', conditions: [{ field: 'criterion:2147483647', operator: 'is', value: FRENCH_LABEL }],
     })).toMatch(/criterion .* does not exist/);
   });
 
@@ -246,7 +247,7 @@ describe('criterion condition validation', () => {
   });
 
   it('rejects operators that cannot match a criterion', async () => {
-    expect(await criterionRule('French', 'contains')).toMatch(/does nothing for a criterion/);
+    expect(await criterionRule(FRENCH_LABEL, 'contains')).toMatch(/does nothing for a criterion/);
   });
 });
 

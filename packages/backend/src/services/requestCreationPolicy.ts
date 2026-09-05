@@ -4,6 +4,7 @@ import { pluginEngine } from '../plugins/engine.js';
 import type { CreateRequestResult } from './requestService.js';
 
 type RequestFailure = Extract<CreateRequestResult, { ok: false }>;
+const ADMIN_ROLE = 'admin';
 
 export async function checkRequestGuard(input: {
   userId: number;
@@ -13,7 +14,7 @@ export async function checkRequestGuard(input: {
   mediaType: 'movie' | 'tv';
   seasons?: number[];
 }): Promise<RequestFailure | null> {
-  if (input.role === 'admin' || input.skipPluginGuard) return null;
+  if (input.role === ADMIN_ROLE || input.skipPluginGuard) return null;
   const guard = await pluginEngine.runGuards('request.create', input.userId, {
     request: { tmdbId: input.tmdbId, mediaType: input.mediaType, seasons: input.seasons ?? null },
   });
@@ -32,16 +33,16 @@ export async function resolveRequestApproval(
   autoApproveByDefault: boolean,
   qualityOptionId?: number,
 ): Promise<{ ok: true; autoApprove: boolean } | RequestFailure> {
-  const defaultApproval = role === 'admin' || autoApproveByDefault;
+  const defaultApproval = role === ADMIN_ROLE || autoApproveByDefault;
   if (qualityOptionId == null) return { ok: true, autoApprove: defaultApproval };
 
   const quality = await prisma.qualityOption.findUnique({ where: { id: qualityOptionId } });
   if (!quality) return { ok: true, autoApprove: defaultApproval };
-  if (role !== 'admin' && !isQualityAllowedForRole(quality.allowedRoles, role)) {
+  if (role !== ADMIN_ROLE && !isQualityAllowedForRole(quality.allowedRoles, role)) {
     return { ok: false, status: 403, code: 'QUALITY_NOT_ALLOWED', error: 'QUALITY_NOT_ALLOWED' };
   }
   if (quality.approvalMode === 'auto') return { ok: true, autoApprove: true };
-  if (quality.approvalMode === 'manual') return { ok: true, autoApprove: role === 'admin' };
+  if (quality.approvalMode === 'manual') return { ok: true, autoApprove: role === ADMIN_ROLE };
   return { ok: true, autoApprove: defaultApproval };
 }
 

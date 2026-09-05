@@ -20,6 +20,7 @@ beforeAll(async () => {
 });
 
 const snapshots: string[] = [];
+const ARCHIVE_ENCODING = 'base64';
 afterEach(() => {
   vi.restoreAllMocks();
   for (const path of snapshots.splice(0)) {
@@ -57,7 +58,7 @@ describe('restore failure recovery', () => {
     vi.spyOn(migrations, 'runMigrateDeploy').mockImplementationOnce(() => { throw new Error('migration failed'); });
 
     const result = await restoreDatabase(archive, [
-      { path: 'plugins/restored.json', data: Buffer.from('restored').toString('base64') },
+      { path: 'plugins/restored.json', data: Buffer.from('restored').toString(ARCHIVE_ENCODING) },
     ]);
 
     expect(result).toMatchObject({ ok: false, error: 'migration failed' });
@@ -206,7 +207,7 @@ describe('restore of plugin files', () => {
 
   it('rejects every path that escapes the plugins directory, and writes nothing outside it', async () => {
     const archive = readFileSync(snapshot());
-    const payload = Buffer.from('owned').toString('base64');
+    const payload = Buffer.from('owned').toString(ARCHIVE_ENCODING);
 
     const hostile = [
       'plugins/../../../etc/passwd',   // classic traversal
@@ -234,7 +235,7 @@ describe('restore of plugin files', () => {
     const name = `probe-${randomUUID()}.json`;
 
     const result = await restoreDatabase(archive, [
-      { path: `plugins/demo/${name}`, data: Buffer.from('{"ok":true}').toString('base64') },
+      { path: `plugins/demo/${name}`, data: Buffer.from('{"ok":true}').toString(ARCHIVE_ENCODING) },
     ]);
 
     expect(result.ok).toBe(true);

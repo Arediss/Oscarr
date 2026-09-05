@@ -29,6 +29,8 @@ vi.mock('../src/services/tmdb.js', async (original) => ({
 
 let userId: number;
 let adminId: number;
+const ADMIN_ROLE = 'admin';
+const INITIAL_MEDIA_CATEGORY = 'UNAVAILABLE';
 const request = (extra: Partial<Parameters<typeof createUserRequest>[0]> = {}) =>
   createUserRequest({ userId, tmdbId: 101, mediaType: 'movie', ...extra });
 
@@ -44,7 +46,7 @@ beforeEach(async () => {
   await prisma.requestCriterion.deleteMany();
   await patchAppSettings({ requestsEnabled: true, autoApproveRequests: false });
   userId = (await prisma.user.create({ data: { email: 'requester@test.local', displayName: 'Requester' } })).id;
-  adminId = (await prisma.user.create({ data: { email: 'admin@test.local', role: 'admin' } })).id;
+  adminId = (await prisma.user.create({ data: { email: 'admin@test.local', role: ADMIN_ROLE } })).id;
   await prisma.media.create({ data: { tmdbId: 101, mediaType: 'movie', title: 'Test movie' } });
 });
 
@@ -84,20 +86,20 @@ describe('request approval and dispatch', () => {
   it.each([
     ['auto', false, 'user', 'approved'],
     ['manual', true, 'user', 'pending'],
-    ['manual', false, 'admin', 'approved'],
+    ['manual', false, ADMIN_ROLE, 'approved'],
   ])('applies quality approval %s with default %s for %s', async (mode, defaultApproval, role, status) => {
     await patchAppSettings({ autoApproveRequests: defaultApproval });
     const quality = await prisma.qualityOption.create({ data: { label: 'HD', approvalMode: mode } });
-    expect(await request({ userId: role === 'admin' ? adminId : userId, qualityOptionId: quality.id }))
+    expect(await request({ userId: role === ADMIN_ROLE ? adminId : userId, qualityOptionId: quality.id }))
       .toMatchObject({ ok: true, request: { status } });
   });
 
-  it.each(['UNAVAILABLE', 'AVAILABLE', 'PROCESSING'])('preserves the media state after dispatch from %s', async (category) => {
+  it.each([INITIAL_MEDIA_CATEGORY, 'AVAILABLE', 'PROCESSING'])('preserves the media state after dispatch from %s', async (category) => {
     await patchAppSettings({ autoApproveRequests: true });
     await prisma.media.updateMany({ data: { statusCategory: category } });
     expect(await request()).toMatchObject({ ok: true, status: 201 });
     expect(transport.searchMedia).toHaveBeenCalledWith(42);
-    expect((await prisma.media.findFirst())?.statusCategory).toBe(category === 'UNAVAILABLE' ? 'SEARCHING' : category);
+    expect((await prisma.media.findFirst())?.statusCategory).toBe(category === INITIAL_MEDIA_CATEGORY ? 'SEARCHING' : category);
     expect(safeUserNotify).not.toHaveBeenCalled();
   });
 
@@ -106,7 +108,7 @@ describe('request approval and dispatch', () => {
     transport.searchMedia.mockRejectedValueOnce(new Error('Service unavailable'));
     expect(await request()).toMatchObject({ ok: true, status: 202, sendFailed: true });
     expect((await prisma.mediaRequest.findFirst())?.status).toBe('failed');
-    expect((await prisma.media.findFirst())?.statusCategory).toBe('UNAVAILABLE');
+    expect((await prisma.media.findFirst())?.statusCategory).toBe(INITIAL_MEDIA_CATEGORY);
   });
 });
 

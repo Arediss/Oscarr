@@ -29,19 +29,10 @@ jobs:
 
       - run: npm ci
 
-      - name: Generate Prisma client
-        run: npx prisma generate --schema=packages/backend/prisma/schema.prisma
-
-      # backend + frontend both import from @oscarr/shared; its package.json main/types point to
-      # dist/, so the shared package has to be built before either side can typecheck.
-      - name: Build shared package
-        run: npm run build --workspace=packages/shared
-
-      - name: Typecheck backend
-        run: npx tsc --noEmit --project packages/backend/tsconfig.json
-
-      - name: Typecheck frontend
-        run: npx tsc --noEmit --project packages/frontend/tsconfig.json
+      # Exercise the documented clean-install build, including Prisma generation and typechecks
+      # for shared, backend and frontend. Preparing Prisma separately would hide build failures.
+      - name: Build all workspaces
+        run: npm run build
 
       # Applies the real migrations to a throwaway SQLite file and generates its own secrets, so
       # it needs no service container and no repository secret.

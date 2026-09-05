@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npm run db:generate && tsc --strict",
     "build:bundle": "node esbuild.config.mjs",
     "start": "node dist/index.js",
     "db:generate": "dotenv -e ../../.env -- prisma generate",

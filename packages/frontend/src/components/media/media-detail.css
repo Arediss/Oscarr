@@ -1,0 +1,77 @@
+/* Keep the image center in the uncovered area instead of behind the synopsis. */
+.media-detail-hero {
+  position: relative;
+  isolation: isolate;
+  padding: 20rem 0 2rem;
+}
+
+.media-detail-container {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+.media-detail-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.media-detail-image {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 28rem;
+}
+
+.media-detail-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(10 14 23 / .15), transparent 10rem, #0a0e17 27rem);
+}
+
+.media-detail-bottom-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, #0a0e17, transparent 12rem);
+}
+
+.media-detail-title {
+  font-size: clamp(2.5rem, 4.8vw, 4.5rem);
+  line-height: 1.08;
+  letter-spacing: -.04em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+@media (min-width: 640px) {
+  .media-detail-container { padding-inline: 2rem; }
+}
+
+@media (min-width: 1024px) {
+  .media-detail-hero {
+    display: flex;
+    align-items: center;
+    min-height: 46rem;
+    padding: 9rem 0 4rem;
+  }
+
+  .media-detail-container { padding-inline: clamp(2rem, 6vw, 6rem); }
+  .media-detail-copy { width: 46%; max-width: 38rem; }
+
+  .media-detail-image {
+    /* The image's midpoint is at 69% of the hero width. */
+    inset: 0 0 0 38%;
+    height: min(100%, 60rem);
+  }
+
+  .media-detail-shade {
+    background: linear-gradient(90deg, #0a0e17 0%, #0a0e17 28%, rgb(10 14 23 / .96) 37%, rgb(10 14 23 / .7) 48%, rgb(10 14 23 / .15) 65%, transparent 80%);
+  }
+
+  .media-detail-bottom-fade {
+    background: linear-gradient(0deg, #0a0e17 0%, rgb(10 14 23 / .7) 10%, transparent 35%);
+  }
+}

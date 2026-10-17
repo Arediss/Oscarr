@@ -12,6 +12,7 @@ import { ExternalLink } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 interface Props {
+  onBrowseSeasons?: () => void;
   media: Record<string, any>;
   dbMedia: Record<string, any> | null;
   type: 'movie' | 'tv';
@@ -42,6 +43,7 @@ interface Props {
 
 /** Title, facts, synopsis, actions and request options in the hero's readable left column. */
 export function MediaInfoColumn({
+  onBrowseSeasons,
   media, dbMedia, type, title, year, genres, director, trailer,
   isAvailable, buttonState,
   requesting, justRequested, requestError, download, blacklisted, searchMissingError,
@@ -107,7 +109,9 @@ export function MediaInfoColumn({
             </a>
           )}
 
-          <ActionButton
+          {onBrowseSeasons ? (
+            <button className="btn-primary" onClick={onBrowseSeasons}>{t('media.explorer.title')}</button>
+          ) : <ActionButton
             state={buttonState}
             requesting={requesting}
             justRequested={justRequested}
@@ -117,7 +121,7 @@ export function MediaInfoColumn({
             onRequest={onRequest}
             onSearchMissing={onSearchMissing}
             t={t}
-          />
+          />}
 
           {/* Request error message */}
           {requestError && (
@@ -130,6 +134,7 @@ export function MediaInfoColumn({
           <PluginSlot hookPoint="media.detail.actions" context={{ media, type, isAvailable, dbMedia }} />
         </div>
 
+        {!onBrowseSeasons && <>
         <QualityPicker
           options={qualityOptions}
           takenIds={takenQualityIds}
@@ -146,6 +151,7 @@ export function MediaInfoColumn({
             setSelectedCriteria(next);
           }}
         />
+        </>}
 
         {/* What is actually on disk, read from the file after import. Descriptive, not a choice —
             the pickers above are the choices. */}

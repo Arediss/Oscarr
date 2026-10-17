@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Loader2,
@@ -27,6 +27,7 @@ import { MediaBackdrop } from '@/components/media/MediaHeroArt';
 import '@/components/media/media-detail.css';
 import { mediaSummary } from '@/utils/mediaSummary';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
+import SeasonExplorerPreview from '@/components/media/SeasonExplorerPreview';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -36,6 +37,8 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const seasonPreview = import.meta.env.DEV && type === 'tv' && id === '73223' && searchParams.get('season-preview') === '1';
   const { user } = useAuth();
   const { isNsfw, disableBlur } = useNsfwFilter();
   const [revealed, setRevealed] = useState(false);
@@ -120,6 +123,11 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
               </button>
             )}
             <MediaInfoColumn
+              onBrowseSeasons={seasonPreview ? () => {
+                const section = document.getElementById('season-explorer');
+                section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                section?.focus({ preventScroll: true });
+              } : undefined}
               media={media}
               dbMedia={dbMedia}
               type={type}
@@ -152,7 +160,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
       </section>
 
       <div className="media-detail-container relative pb-16">
-        {type === 'tv' && media.seasons && media.seasons.length > 0 && (
+        {seasonPreview ? <SeasonExplorerPreview key={media.id} /> : type === 'tv' && media.seasons && media.seasons.length > 0 && (
           <div className="border-b border-white/5 pb-8">
             <SeasonsPicker
               seasons={media.seasons}
@@ -261,12 +269,12 @@ function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; tit
             className="flex-shrink-0 w-[120px] group/card"
             style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}
           >
-            <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-ndp-surface-light">
+            <div className="relative aspect-square rounded-full overflow-hidden bg-ndp-surface-light ring-1 ring-white/10">
               {person.profile_path ? (
                 <img
                   src={`https://image.tmdb.org/t/p/w185${person.profile_path}`}
                   alt={person.name}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover/card:scale-105"
+                  className="w-full h-full object-cover object-[center_20%] transition-transform duration-300 group-hover/card:scale-105"
                   loading="lazy"
                 />
               ) : (
@@ -274,13 +282,13 @@ function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; tit
                   <User className="w-10 h-10 text-ndp-text-dim/30" />
                 </div>
               )}
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-8 pb-2.5 px-2.5">
-                <p className="text-xs font-semibold text-white leading-tight truncate">{person.name}</p>
+            </div>
+              <div className="pt-3 px-1 text-center">
+                <p className="text-xs font-semibold text-ndp-text leading-snug">{person.name}</p>
                 {person.character && (
-                  <p className="text-[10px] text-ndp-text-muted leading-tight truncate mt-0.5">{person.character}</p>
+                  <p className="text-[11px] text-ndp-text-muted leading-snug mt-1">{person.character}</p>
                 )}
               </div>
-            </div>
           </Link>
         ))}
       </div>

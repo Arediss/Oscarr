@@ -94,7 +94,7 @@ async function start() {
 
   const port = Number.parseInt(process.env.PORT || '3001', 10);
   if (Number.isNaN(port)) throw new Error('PORT environment variable must be a valid number');
-  await app.listen({ port, host: '0.0.0.0' });
+  await app.listen({ port, host: process.env.HOST || '0.0.0.0' });
   app.log.info({ port }, 'Oscarr API listening');
 
   await startScheduler();

@@ -32,18 +32,6 @@
   background: linear-gradient(180deg, rgb(10 14 23 / .15), transparent 10rem, #0a0e17 27rem);
 }
 
-.media-detail-bottom-fade {
-  position: absolute;
-  /* Follow the actual image edge, including when its height is capped. */
-  inset: auto 0 0;
-  height: min(50%, 16rem);
-  background: linear-gradient(0deg,
-    #0a0e17 12%,
-    rgb(10 14 23 / .96) 28%,
-    rgb(10 14 23 / .7) 50%,
-    transparent 100%);
-}
-
 .media-detail-title {
   font-size: clamp(2.5rem, 4.8vw, 4.5rem);
   line-height: 1.08;
@@ -75,15 +63,13 @@
   }
 
   .media-detail-shade {
-    /* Stay opaque past the artwork's edge before revealing it gradually. */
-    background:
-      linear-gradient(180deg, #0a0e17, transparent 8rem),
-      linear-gradient(90deg,
-        #0a0e17 calc(var(--media-art-start) + 2%),
-        rgb(10 14 23 / .94) calc(var(--media-art-start) + 10%),
-        rgb(10 14 23 / .7) calc(var(--media-art-start) + 18%),
-        rgb(10 14 23 / .15) calc(var(--media-art-start) + 34%),
-        transparent calc(var(--media-art-start) + 48%));
+    /* One ellipse merges the left, top and bottom fades into a continuous arch. */
+    background: radial-gradient(ellipse 100% 50% at 100% 50%,
+      transparent 20%,
+      rgb(10 14 23 / .12) 38%,
+      rgb(10 14 23 / .55) 62%,
+      rgb(10 14 23 / .9) 82%,
+      #0a0e17 96%);
   }
 
 }

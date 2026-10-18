@@ -16,10 +16,9 @@ export function MediaBackdrop({ backdropPath, posterPath, blurred }: Readonly<{
             alt=""
             className={clsx('w-full h-full object-center', backdropPath ? 'object-cover' : 'object-contain', blurred && 'blur-3xl scale-110')}
           />
-          <div className="media-detail-bottom-fade" />
+          <div className="media-detail-shade" />
         </div>
       )}
-      <div className="media-detail-shade" />
     </div>
   );
 }

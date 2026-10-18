@@ -68,10 +68,10 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
     : t('media.request_collection');
 
   return (
-    <div className="mt-12 px-4 sm:px-8">
-      <div className="flex items-center justify-between mb-4 gap-4">
+    <div className="mt-12">
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <h3 className="text-lg font-bold text-ndp-text truncate">{collection.name}</h3>
+          <h2 className="text-xl font-bold text-ndp-text">{t('media.collection')}</h2>
           {!loading && (
             <span className="text-xs text-ndp-text-dim flex-shrink-0">{handledCount}/{totalCount}</span>
           )}

@@ -320,6 +320,7 @@
   "media.recommendations": "Recommendations",
   "media.season_one": "{{count}} season",
   "media.season_other": "{{count}} seasons",
+  "media.collection": "Collection",
   "media.collection_complete": "Collection complete",
   "media.collection_in_progress": "Collection in progress...",
   "media.complete_collection": "Complete collection ({{count}} missing)",

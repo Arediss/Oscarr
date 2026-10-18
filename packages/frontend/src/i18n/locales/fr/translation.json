@@ -319,6 +319,7 @@
   "media.recommendations": "Recommandations",
   "media.season_one": "{{count}} saison",
   "media.season_other": "{{count}} saisons",
+  "media.collection": "Collection",
   "media.collection_complete": "Collection complète",
   "media.collection_in_progress": "Collection en cours...",
   "media.complete_collection": "Compléter la collection ({{count}} manquants)",

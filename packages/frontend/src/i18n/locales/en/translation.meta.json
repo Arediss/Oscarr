@@ -142,6 +142,7 @@
   "media.recommendations": "Section title for recommended similar media on a detail page",
   "media.season_one": "Singular season count text. {{count}} is 1. Uses i18next plural form",
   "media.season_other": "Plural season count text. {{count}} is 2+. Uses i18next plural form",
+  "media.collection": "Section title for movies in the same collection on a media detail page",
   "media.collection_complete": "Badge shown when all movies in a collection are available",
   "media.complete_collection": "Button text to request missing movies from a collection. {{count}} is the number of missing movies",
   "media.request_collection": "Button to request all movies in a collection at once",

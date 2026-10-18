@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '@/lib/api';
 import { invalidateMediaStatus } from '@/hooks/useMediaStatus';
@@ -23,13 +23,16 @@ export function useMediaRequestActions(
   const [searchMissingState, setSearchMissingState] = useState<'idle' | 'searching' | 'error'>('idle');
   const [searchMissingError, setSearchMissingError] = useState('');
 
-  const handleRequest = async () => {
-    if (!media) return;
+  const submitting = useRef(false);
+  const submitRequest = async (seasons: number[]) => {
+    if (!media || submitting.current) return false;
+    submitting.current = true;
     setRequesting(true);
+    setRequestError('');
     try {
       const body: Record<string, unknown> = { tmdbId: media.id, mediaType: type };
-      if (type === 'tv' && selectedSeasons.length > 0) {
-        body.seasons = selectedSeasons;
+      if (type === 'tv' && seasons.length > 0) {
+        body.seasons = seasons;
       }
       if (selectedQuality) {
         body.qualityOptionId = selectedQuality;
@@ -47,13 +50,19 @@ export function useMediaRequestActions(
       }
       invalidateMediaStatus(media.id, type);
       await refreshDbData();
+      return reqData.sendError ? 'queued' as const : 'sent' as const;
     } catch (err: unknown) {
       setRequestError(extractApiError(err, err instanceof Error ? err.message : t('common.error')));
       setTimeout(() => setRequestError(''), 5000);
+      return false;
     } finally {
+      submitting.current = false;
       setRequesting(false);
     }
   };
+
+  const handleRequest = () => submitRequest(selectedSeasons);
+  const handleSeasonRequest = (seasonNumber: number) => submitRequest([seasonNumber]);
 
   const handleSearchMissing = async () => {
     if (!media) return;
@@ -92,6 +101,7 @@ export function useMediaRequestActions(
     searchMissingState,
     searchMissingError,
     handleRequest,
+    handleSeasonRequest,
     handleSearchMissing,
     resetOnNavigation,
   };

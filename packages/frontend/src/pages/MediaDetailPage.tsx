@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Loader2,
@@ -16,10 +16,7 @@ import MediaRow from '@/components/MediaRow';
 import CollectionSection from '@/components/CollectionSection';
 import { useMediaDetailData } from '@/hooks/useMediaDetailData';
 import { useMediaRequestActions } from '@/hooks/useMediaRequestActions';
-import { useEpisodeModal } from '@/hooks/useEpisodeModal';
 import type { TmdbCast, TmdbCrew } from '@/types';
-import { SeasonsPicker } from '@/components/media/SeasonsPicker';
-import { EpisodeDetailsModal } from '@/components/media/EpisodeDetailsModal';
 import { useMediaAvailability } from '@/hooks/useMediaAvailability';
 import { NsfwRevealModal } from '@/components/media/NsfwRevealModal';
 import { MediaInfoColumn } from '@/components/media/MediaInfoColumn';
@@ -27,7 +24,7 @@ import { MediaBackdrop } from '@/components/media/MediaHeroArt';
 import '@/components/media/media-detail.css';
 import { mediaSummary } from '@/utils/mediaSummary';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
-import SeasonExplorerPreview from '@/components/media/SeasonExplorerPreview';
+import SeasonExplorer from '@/components/media/SeasonExplorer';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -37,8 +34,6 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const seasonPreview = import.meta.env.DEV && type === 'tv' && id === '73223' && searchParams.get('season-preview') === '1';
   const { user } = useAuth();
   const { isNsfw, disableBlur } = useNsfwFilter();
   const [revealed, setRevealed] = useState(false);
@@ -52,7 +47,6 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
   const {
     requesting, justRequested, requestError,
-    selectedSeasons, setSelectedSeasons,
     selectedQuality, setSelectedQuality,
     selectedCriteria, setSelectedCriteria,
     searchMissingState, searchMissingError,
@@ -60,10 +54,6 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     resetOnNavigation,
   } = useMediaRequestActions(media, id, type, refreshDbData);
 
-  const {
-    episodeModalOpen, openEpisodeModal, closeEpisodeModal,
-    episodeCache, expandedSeason, loadingSeason, toggleSeason,
-  } = useEpisodeModal(media?.id);
 
   // Reset local UI state on navigation
   useEffect(() => {
@@ -72,7 +62,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     resetOnNavigation();
   }, [id, type]);
 
-  const { isAvailable, takenQualityIds, userHasRequest, buttonState } = useMediaAvailability({
+  const { isAvailable, takenQualityIds, buttonState } = useMediaAvailability({
     dbMedia,
     type,
     inLibrary,
@@ -123,9 +113,9 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
               </button>
             )}
             <MediaInfoColumn
-              onBrowseSeasons={seasonPreview ? () => {
+              onBrowseSeasons={type === 'tv' && media.seasons?.some(season => season.season_number > 0) ? () => {
                 const section = document.getElementById('season-explorer');
-                section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                section?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
                 section?.focus({ preventScroll: true });
               } : undefined}
               media={media}
@@ -160,17 +150,11 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
       </section>
 
       <div className="media-detail-container relative pb-16">
-        {seasonPreview ? <SeasonExplorerPreview key={media.id} /> : type === 'tv' && media.seasons && media.seasons.length > 0 && (
-          <div className="border-b border-white/5 pb-8">
-            <SeasonsPicker
-              seasons={media.seasons}
-              sonarrSeasons={sonarrSeasons}
-              selectedSeasons={selectedSeasons}
-              setSelectedSeasons={setSelectedSeasons}
-              canSelect={!userHasRequest}
-              onOpenDetails={openEpisodeModal}
-            />
-          </div>
+        {type === 'tv' && media.seasons?.some(season => season.season_number > 0) && (
+          <SeasonExplorer key={media.id} media={media} seasons={media.seasons}
+            sonarrSeasons={sonarrSeasons} requests={dbMedia?.requests ?? []}
+            qualityOptions={qualityOptions} activeQualityOptionIds={activeQualityOptionIds}
+            blocked={blacklisted.blocked} onRefresh={refreshDbData} />
         )}
 
         {/* Collection */}
@@ -190,20 +174,6 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
           </div>
         )}
       </div>
-
-      {/* Episode details modal */}
-      {episodeModalOpen && media && (
-        <EpisodeDetailsModal
-          media={media}
-          sonarrSeasons={sonarrSeasons}
-          expandedSeason={expandedSeason}
-          loadingSeason={loadingSeason}
-          episodeCache={episodeCache}
-          nsfw={nsfw}
-          onToggleSeason={toggleSeason}
-          onClose={closeEpisodeModal}
-        />
-      )}
 
       {showNsfwModal && (
         <NsfwRevealModal

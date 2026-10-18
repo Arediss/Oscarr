@@ -1,6 +1,5 @@
 .season-explorer { scroll-margin-top: 8rem; outline: none; }
 .season-explorer-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
-.season-preview-label { padding: .25rem .625rem; border: 1px solid #818cf830; border-radius: .375rem; color: #a5b4fc; font-size: .6875rem; white-space: nowrap; }
 .season-panel { border: 1px solid #ffffff12; border-radius: .75rem; overflow: hidden; }
 .season-panel.is-expanded { background: #ffffff02; border-color: #ffffff22; }
 .season-toggle { width: 100%; display: flex; align-items: center; gap: 1rem; padding: 1.25rem; text-align: left; }
@@ -27,8 +26,6 @@
 .episode-state-upcoming, .episode-state-undated { color: #9ca3af; }
 .episode-state-downloading, .episode-state-requested { color: #a5b4fc; }
 .season-footer { border-top: 1px solid #ffffff0a; padding: 1rem 1.25rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; background: #ffffff02; }
-.season-confirmation { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; width: 100%; }
-.season-confirmation > div:first-child { flex: 1; min-width: 12rem; }
 @media (max-width: 640px) {
   .season-explorer-heading { align-items: flex-start; }
   .season-next, .episode-quality { display: none; }
@@ -37,5 +34,4 @@
   .episode-line { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: .5rem; }
   .episode-number { width: 2rem; }
   .episode-state { grid-column: 2; justify-content: flex-start; min-width: 0; font-size: .6875rem; }
-  .season-preview-label { white-space: normal; }
 }

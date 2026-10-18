@@ -63,8 +63,8 @@
   }
 
   .media-detail-shade {
-    /* One ellipse merges the left, top and bottom fades into a continuous arch. */
-    background: radial-gradient(ellipse 100% 50% at 100% 50%,
+    /* Anchor the clear area at the top right so the fade curves from top left to bottom right. */
+    background: radial-gradient(ellipse 100% 100% at 100% 0%,
       transparent 20%,
       rgb(10 14 23 / .12) 38%,
       rgb(10 14 23 / .55) 62%,

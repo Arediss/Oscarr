@@ -29,9 +29,10 @@ export function validateRequestBody(body: { tmdbId: unknown; mediaType: unknown;
   if (!VALID_MEDIA_TYPES.includes(mediaType as string)) {
     return { valid: false, error: 'mediaType must be "movie" or "tv"' };
   }
-  const validSeasons = Array.isArray(seasons) && seasons.every((s) => typeof s === 'number' && Number.isFinite(s))
-    ? (seasons as number[])
-    : undefined;
+  if (seasons != null && (!Array.isArray(seasons) || !seasons.every(s => Number.isInteger(s) && s > 0))) {
+    return { valid: false, error: 'Seasons must be positive integers' };
+  }
+  const validSeasons = Array.isArray(seasons) && seasons.length > 0 ? [...new Set(seasons as number[])] : undefined;
   return { valid: true, tmdbId, mediaType: mediaType as 'movie' | 'tv', seasons: validSeasons };
 }
 
@@ -259,7 +260,12 @@ async function sendToArrService(
 
   const existing = await client.findByExternalId(externalId);
   if (existing) {
-    await client.searchMedia(existing.id);
+    if (mediaType === 'tv' && seasons?.length) {
+      if (!client.requestSeasons) throw new Error('This service does not support season requests');
+      await client.requestSeasons(existing.id, seasons);
+    } else {
+      await client.searchMedia(existing.id);
+    }
     return existing.id;
   }
 
@@ -449,10 +455,20 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
         status: { in: [...ACTIVE_REQUEST_STATUSES] },
         qualityOptionId: input.qualityOptionId ?? null,
       },
-      select: { id: true, criteria: { select: { valueId: true } } },
+      select: { id: true, seasons: true, criteria: { select: { valueId: true } } },
     });
     const wanted = new Set(criterionValueIds);
     const dup = candidates.find((c) => {
+      // Different seasons of the same variant are separate requests. A whole-series request
+      // overlaps every season; malformed legacy scopes remain conservative.
+      if (mediaType === 'tv' && validSeasons?.length && c.seasons) {
+        try {
+          const existingSeasons: unknown = JSON.parse(c.seasons);
+          if (Array.isArray(existingSeasons) && existingSeasons.length > 0
+            && existingSeasons.every(s => Number.isInteger(s) && s > 0)
+            && !existingSeasons.some(s => validSeasons.includes(s))) return false;
+        } catch { /* Treat invalid legacy data as a whole-series request. */ }
+      }
       if (c.criteria.length !== wanted.size) return false;
       return c.criteria.every((row) => wanted.has(row.valueId));
     });

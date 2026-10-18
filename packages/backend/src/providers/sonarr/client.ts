@@ -274,6 +274,25 @@ export class SonarrClient extends ArrClientBase implements ArrClient {
     });
   }
 
+  async requestSeasons(seriesId: number, seasonNumbers: number[]): Promise<void> {
+    const selected = new Set(seasonNumbers);
+    const series = await this.getSeriesById(seriesId);
+    if (selected.size === 0 || [...selected].some(number => !Number.isInteger(number) || number < 1 || !series.seasons.some(s => s.seasonNumber === number))) {
+      throw new Error('Requested season not found in Sonarr');
+    }
+    // Season Pass updates only the supplied seasons, preserving other monitoring and settings.
+    await this.api.post('/seasonpass', {
+      series: [{ id: seriesId, monitored: true, seasons: [...selected].map(seasonNumber => ({ seasonNumber, monitored: true })) }],
+    });
+    for (const seasonNumber of selected) {
+      // An already-monitored season can contain individually unmonitored episodes.
+      const episodes = await this.getEpisodes(seriesId, seasonNumber);
+      const episodeIds = episodes.filter(ep => !ep.monitored).map(ep => ep.id);
+      if (episodeIds.length) await this.api.put('/episode/monitor', { episodeIds, monitored: true });
+      await this.api.post('/command', { name: 'SeasonSearch', seriesId, seasonNumber });
+    }
+  }
+
   async searchMedia(seriesId: number): Promise<void> {
     await this.searchMissingEpisodes(seriesId);
   }

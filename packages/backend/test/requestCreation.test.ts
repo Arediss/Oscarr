@@ -10,6 +10,7 @@ const transport = vi.hoisted(() => ({
   defaultRootFolder: '/movies',
   findByExternalId: vi.fn(async () => ({ id: 42 })),
   searchMedia: vi.fn(async () => undefined),
+  requestSeasons: vi.fn(async () => undefined),
 }));
 
 vi.mock('../src/providers/index.js', async (original) => ({
@@ -138,5 +139,33 @@ describe('request criteria and duplicate detection', () => {
     expect(await request({ criterionValueIds: [english] })).toMatchObject({ ok: true });
     expect(await prisma.mediaRequest.count()).toBe(2);
     expect(await prisma.mediaRequestCriterion.count()).toBe(2);
+  });
+});
+
+describe('season requests', () => {
+  beforeEach(async () => {
+    await prisma.media.create({ data: { tmdbId: 202, tvdbId: 303, mediaType: 'tv', title: 'Test series' } });
+  });
+  const seasonRequest = (seasons?: number[]) => request({ tmdbId: 202, mediaType: 'tv', seasons });
+
+  it('allows distinct seasons but rejects overlapping requests', async () => {
+    expect(await seasonRequest([1])).toMatchObject({ ok: true });
+    expect(await seasonRequest([2])).toMatchObject({ ok: true });
+    expect(await seasonRequest([2, 3])).toMatchObject({ code: 'DUPLICATE' });
+    expect(await seasonRequest()).toMatchObject({ code: 'DUPLICATE' });
+  });
+  it('treats an existing whole-series request as covering every season', async () => {
+    expect(await seasonRequest()).toMatchObject({ ok: true });
+    expect(await seasonRequest([2])).toMatchObject({ code: 'DUPLICATE' });
+  });
+  it('dispatches only the selected season of an existing series', async () => {
+    await patchAppSettings({ autoApproveRequests: true });
+    expect(await seasonRequest([2])).toMatchObject({ ok: true });
+    expect(transport.requestSeasons).toHaveBeenCalledWith(42, [2]);
+    expect(transport.searchMedia).not.toHaveBeenCalled();
+  });
+  it.each([[0], [-1], [1.5]])('rejects invalid season numbers %j', async (...seasons) => {
+    expect(await seasonRequest(seasons)).toMatchObject({ ok: false, status: 400 });
+    expect(await prisma.mediaRequest.count()).toBe(0);
   });
 });

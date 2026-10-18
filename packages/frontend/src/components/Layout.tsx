@@ -13,7 +13,7 @@ import ChangelogModal from '@/components/ChangelogModal';
 import { useChangelogNotification } from '@/hooks/useChangelogNotification';
 import { useNotifications } from '@/hooks/useNotifications';
 import { PluginSlot } from '@/plugins/PluginSlot';
-import { DynamicIcon } from '@/plugins/DynamicIcon';
+import { PluginNavItem } from '@/plugins/PluginNavItem';
 import { useFeatures } from '@/context/FeaturesContext';
 import { UserCluster } from '@/components/nav/UserCluster';
 import { LinkIcon } from '@/icons/LinkIcon';
@@ -170,11 +170,12 @@ export default function Layout({ children }: Readonly<{ children: React.ReactNod
         style={{ top: `${topOffset * 4}px` }}
       >
         <div className="max-w-[1800px] mx-auto px-4 sm:px-6">
-          <div className="relative flex items-center justify-between h-16">
-            <div className="flex items-center gap-0.5 relative z-10">
+          <div className="oscarr-header-grid">
+            <div className="oscarr-header-start">
               {navItems.map(({ path, labelKey, icon: Icon }) => (
                 <Link
                   key={path}
+                  aria-label={t(labelKey)} title={t(labelKey)}
                   to={path}
                   className={clsx(
                     'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
@@ -184,43 +185,30 @@ export default function Layout({ children }: Readonly<{ children: React.ReactNod
                   )}
                 >
                   <Icon className="w-4 h-4" />
-                  <span className="hidden lg:inline">{t(labelKey)}</span>
+                  <span className="oscarr-nav-label">{t(labelKey)}</span>
                 </Link>
               ))}
               <PluginSlot
                 hookPoint="nav"
-                renderItem={(c) => (
-                  <Link
-                    key={c.pluginId}
-                    to={c.props.path as string}
-                    className={clsx(
-                      'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
-                      location.pathname.startsWith(c.props.path as string)
-                        ? 'bg-ndp-accent/10 text-ndp-accent'
-                        : 'text-ndp-text-muted hover:text-ndp-text hover:bg-white/5'
-                    )}
-                  >
-                    <DynamicIcon name={c.props.icon as string} className="w-4 h-4" />
-                    <span className="hidden lg:inline">{c.props.label as string}</span>
-                  </Link>
-                )}
+                renderItem={(c) => <PluginNavItem key={c.pluginId} contribution={c} />}
               />
               {leftLinks.map((link) => (
                 <a
                   key={link.id}
+                  aria-label={link.label}
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-ndp-text-muted hover:text-ndp-text hover:bg-white/5 transition-all duration-200"
                 >
                   <LinkIcon value={link.icon} className="w-4 h-4" />
-                  <span className="hidden lg:inline">{link.label}</span>
+                  <span className="oscarr-nav-label">{link.label}</span>
                 </a>
               ))}
             </div>
 
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <form onSubmit={handleSearch} className="w-full max-w-lg px-4 pointer-events-auto">
+            <div className="oscarr-header-search">
+              <form onSubmit={handleSearch} className="w-full">
                 <div className="relative">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ndp-text-dim" />
                   <input
@@ -234,7 +222,7 @@ export default function Layout({ children }: Readonly<{ children: React.ReactNod
               </form>
             </div>
 
-            <div className="flex items-center gap-2 flex-shrink-0 relative z-10">
+            <div className="oscarr-header-end">
               {rightLinks.map((link) => (
                 <Tooltip key={link.id} label={link.label}>
                   <a
@@ -353,22 +341,7 @@ export default function Layout({ children }: Readonly<{ children: React.ReactNod
             ))}
             <PluginSlot
               hookPoint="nav"
-              renderItem={(c) => (
-                <Link
-                  key={c.pluginId}
-                  to={c.props.path as string}
-                  onClick={() => setDrawerOpen(false)}
-                  className={clsx(
-                    'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
-                    location.pathname.startsWith(c.props.path as string)
-                      ? 'bg-ndp-accent/10 text-ndp-accent'
-                      : 'text-ndp-text-muted hover:text-ndp-text hover:bg-white/5'
-                  )}
-                >
-                  <DynamicIcon name={c.props.icon as string} className="w-5 h-5 flex-shrink-0" />
-                  <span className="truncate">{c.props.label as string}</span>
-                </Link>
-              )}
+              renderItem={(c) => <PluginNavItem key={c.pluginId} contribution={c} mobile onNavigate={() => setDrawerOpen(false)} />}
             />
             {leftLinks.map((link) => (
               <a

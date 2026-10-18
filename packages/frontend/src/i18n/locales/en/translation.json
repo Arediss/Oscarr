@@ -1,4 +1,5 @@
 {
+  "nav.browse_plugin": "Browse {{label}}",
   "errors.SETUP_REQUIRED": "This instance has no account yet. Create the first one from the install wizard.",
   "errors.ADMIN_EXISTS": "An administrator already exists — sign in with that account to continue the install.",
   "errors.ADMIN_REQUIRED": "Create the administrator account before finishing the install.",

@@ -1,4 +1,5 @@
 {
+  "nav.browse_plugin": "Parcourir {{label}}",
   "errors.SETUP_REQUIRED": "Cette instance n'a encore aucun compte. Créez le premier depuis l'assistant d'installation.",
   "errors.ADMIN_EXISTS": "Un administrateur existe déjà — connectez-vous avec ce compte pour continuer l'installation.",
   "errors.ADMIN_REQUIRED": "Créez le compte administrateur avant de terminer l'installation.",

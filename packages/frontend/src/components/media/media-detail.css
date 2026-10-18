@@ -66,9 +66,9 @@
     /* Anchor the clear area at the top right so the fade curves from top left to bottom right. */
     background: radial-gradient(ellipse 100% 100% at 100% 0%,
       transparent 20%,
-      rgb(10 14 23 / .12) 38%,
-      rgb(10 14 23 / .55) 62%,
-      rgb(10 14 23 / .9) 82%,
+      rgb(10 14 23 / .08) 42%,
+      rgb(10 14 23 / .4) 68%,
+      rgb(10 14 23 / .85) 86%,
       #0a0e17 96%);
   }
 

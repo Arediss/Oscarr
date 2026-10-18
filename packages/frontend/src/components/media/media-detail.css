@@ -34,8 +34,14 @@
 
 .media-detail-bottom-fade {
   position: absolute;
-  inset: 0;
-  background: linear-gradient(0deg, #0a0e17, transparent 12rem);
+  /* Follow the actual image edge, including when its height is capped. */
+  inset: auto 0 0;
+  height: min(50%, 16rem);
+  background: linear-gradient(0deg,
+    #0a0e17 12%,
+    rgb(10 14 23 / .96) 28%,
+    rgb(10 14 23 / .7) 50%,
+    transparent 100%);
 }
 
 .media-detail-title {
@@ -80,7 +86,4 @@
         transparent calc(var(--media-art-start) + 48%));
   }
 
-  .media-detail-bottom-fade {
-    background: linear-gradient(0deg, #0a0e17 0%, rgb(10 14 23 / .7) 10%, transparent 35%);
-  }
 }

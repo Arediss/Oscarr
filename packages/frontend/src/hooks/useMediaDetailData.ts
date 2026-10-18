@@ -72,7 +72,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
               .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())[0]
               ?.status as RequestStatus | undefined) ?? null
           : undefined;
-        updateMediaStatusCache(tmdbId, type, toMediaStateCategory(data.statusCategory), ownStatus);
+        updateMediaStatusCache(tmdbId, type, toMediaStateCategory(data.statusCategory), ownStatus, typeof data.hasFreeQualityOption === 'boolean' ? data.hasFreeQualityOption : undefined);
       }
     }
   }, [id, type, addNsfwIds, user]);

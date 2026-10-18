@@ -8,7 +8,7 @@ import { normalizeLanguages } from '../utils/languages.js';
 import { performLiveCheckWithTimeout, cacheLanguageData, refreshMediaCategory, canSkipLiveCheck } from '../services/mediaService.js';
 import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { Availability } from '@oscarr/shared';
-import { buildAvailability, loadBlacklistedKeys, loadLibraryGate, loadFreeQualityMediaIds, gateCategory, recentLibraryFilter } from '../services/availability.js';
+import { buildAvailability, loadBlacklistedKeys, loadLibraryGate, loadFreeQualityMediaIds, loadSatisfiedQualityOptions, gateCategory, recentLibraryFilter } from '../services/availability.js';
 import { mediaKey } from '../utils/mediaKey.js';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
@@ -442,11 +442,7 @@ async function applyLiveCheckSideEffects(
 /** Which request-time quality options this media's *arr profile satisfies. */
 async function resolveActiveQualityOptions(media: DetailMedia, liveAvailable: boolean): Promise<number[]> {
   if ((media.statusCategory !== 'AVAILABLE' && !liveAvailable) || !media.qualityProfileId) return [];
-  const mappings = await prisma.qualityMapping.findMany({
-    where: { qualityProfileId: media.qualityProfileId },
-    select: { qualityOptionId: true },
-  });
-  return [...new Set(mappings.map((m) => m.qualityOptionId))];
+  return (await loadSatisfiedQualityOptions([media])).get(media.id) ?? [];
 }
 
 async function assembleDetailResponse(
@@ -456,6 +452,7 @@ async function assembleDetailResponse(
   activeQualityOptionIds: number[],
 ): Promise<Record<string, unknown>> {
   const result: Record<string, unknown> = { ...media };
+  result.hasFreeQualityOption = (await loadFreeQualityMediaIds([media.id])).has(media.id);
   // Same threshold as the batch endpoint — a detail page saying "Available" while the grid says
   // otherwise would be worse than either answer on its own.
   result.statusCategory = gateCategory(media.statusCategory, media.mediaType, media.libraryConfirmedAt, await loadLibraryGate());

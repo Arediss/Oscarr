@@ -1,14 +1,17 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Star, CheckCircle, Film, Tv, Plus, Loader2, EyeOff } from 'lucide-react';
 import api, { posterUrl } from '@/lib/api';
-import { canRequest, MEDIA_STATE_DISPLAY, type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
+import { type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
 import type { TmdbMedia } from '@/types';
 import { clsx } from 'clsx';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
 import { MediaStateBadge } from '@/utils/mediaStateDisplay';
 import { toastApiError } from '@/utils/toast';
+import { useFeatures } from '@/context/FeaturesContext';
+import { cardRequestAction } from '@/utils/cardRequestAction';
+import { invalidateMediaStatus } from '@/hooks/useMediaStatus';
 
 interface MediaCardProps {
   media: TmdbMedia;
@@ -25,6 +28,8 @@ interface MediaCardProps {
 export default function MediaCard({ media, className, availability, index = 0 }: Readonly<MediaCardProps>) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { features, loading: featuresLoading } = useFeatures();
+  const submitting = useRef(false);
   const { isNsfw } = useNsfwFilter();
   const [loaded, setLoaded] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -37,33 +42,24 @@ export default function MediaCard({ media, className, availability, index = 0 }:
   const type = media.media_type || (media.title ? 'movie' : 'tv');
   const link = `/${type}/${media.id}`;
 
-  const showRequest = !availability
-    || canRequest(
-      availability.statusCategory,
-      availability.requestStatus ?? null,
-      availability.hasFreeQualityOption ?? false,
-    );
-
-  // True when the only reason to offer anything is a free quality option. A card has no picker, and
-  // posting blind would send the default option, not the one this person came for — which is the
-  // whole point of asking again. So the click opens the page that does have the picker.
-  const needsQualityChoice = !!availability
-    && (availability.hasFreeQualityOption ?? false)
-    && !MEDIA_STATE_DISPLAY[availability.statusCategory].showsRequestCTA;
+  const requestAction = cardRequestAction(availability, !featuresLoading && features.requestsEnabled, type);
+  const showRequest = requestAction !== 'none';
 
   const handleRequest = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (requesting || requested) return;
-    if (needsQualityChoice) { navigate(link); return; }
+    if (submitting.current || requested || !showRequest) return;
+    if (requestAction === 'details') { navigate(link); return; }
+    submitting.current = true;
     setRequesting(true);
     try {
       await api.post('/requests', { tmdbId: media.id, mediaType: type });
       setRequested(true);
+      invalidateMediaStatus(media.id, type);
     } catch (err) {
       toastApiError(err, t('status.request_send_failed'));
     }
-    finally { setRequesting(false); }
+    finally { submitting.current = false; setRequesting(false); }
   };
 
   return (
@@ -167,6 +163,7 @@ export default function MediaCard({ media, className, availability, index = 0 }:
       {showRequest && !requested && (
         <button
           onClick={handleRequest}
+          disabled={requesting}
           className="absolute top-2 right-2 p-1.5 bg-ndp-accent rounded-full hover:bg-ndp-accent/80 transition-colors shadow-lg opacity-0 group-hover:opacity-100 z-10"
           title={t('media.request')}
           aria-label={t('media.request')}

@@ -1,3 +1,4 @@
+import { requestQualityAliases } from './requestQualityAliases.js';
 import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService } from '../providers/index.js';
@@ -434,6 +435,9 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   const criteriaError = await validateRequestCriteria(criterionValueIds);
   if (criteriaError) return criteriaError;
 
+  const qualityAliases = await requestQualityAliases(input.qualityOptionId,
+    option => resolveServiceContext(mediaType, tmdbId, user.id, option, criterionValueIds), input.rootFolder);
+
   // Dedup + create in one transaction so two concurrent calls by the same user can't both pass
   // the dedup check and both insert (SQLite serializes writes, but defensive against future
   // backends and intent-clarity for the reader).
@@ -453,7 +457,7 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
         mediaId: media.id,
         userId: user.id,
         status: { in: [...ACTIVE_REQUEST_STATUSES] },
-        qualityOptionId: input.qualityOptionId ?? null,
+        OR: qualityAliases.map(qualityOptionId => ({ qualityOptionId })),
       },
       select: { id: true, seasons: true, criteria: { select: { valueId: true } } },
     });

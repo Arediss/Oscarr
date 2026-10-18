@@ -44,8 +44,9 @@ beforeEach(async () => {
   await prisma.user.deleteMany();
   await prisma.folderRule.deleteMany();
   await prisma.qualityOption.deleteMany();
+  await prisma.service.deleteMany();
   await prisma.requestCriterion.deleteMany();
-  await patchAppSettings({ requestsEnabled: true, autoApproveRequests: false });
+  await patchAppSettings({ requestsEnabled: true, autoApproveRequests: false, defaultQualityProfile: 1 });
   userId = (await prisma.user.create({ data: { email: 'requester@test.local', displayName: 'Requester' } })).id;
   adminId = (await prisma.user.create({ data: { email: 'admin@test.local', role: ADMIN_ROLE } })).id;
   await prisma.media.create({ data: { tmdbId: 101, mediaType: 'movie', title: 'Test movie' } });
@@ -167,5 +168,25 @@ describe('season requests', () => {
   it.each([[0], [-1], [1.5]])('rejects invalid season numbers %j', async (...seasons) => {
     expect(await seasonRequest(seasons)).toMatchObject({ ok: false, status: 400 });
     expect(await prisma.mediaRequest.count()).toBe(0);
+  });
+});
+
+describe('equivalent quality requests', () => {
+  async function configure(profile = 1) {
+    const service = await prisma.service.create({ data: { name: 'Radarr test', type: 'radarr', config: '{}' } });
+    const quality = await prisma.qualityOption.create({ data: { label: 'HD' } });
+    await prisma.qualityMapping.create({ data: { qualityProfileName: 'Test profile', qualityOptionId: quality.id, serviceId: service.id, qualityProfileId: profile } });
+    return quality.id;
+  }
+  it.each([true, false])('deduplicates default and HD in either order (default first: %s)', async defaultFirst => {
+    const qualityOptionId = await configure();
+    expect(await request(defaultFirst ? {} : { qualityOptionId })).toMatchObject({ ok: true });
+    expect(await request(defaultFirst ? { qualityOptionId } : {})).toMatchObject({ code: 'DUPLICATE' });
+    expect(await prisma.mediaRequest.count()).toBe(1);
+  });
+  it('still allows a genuinely different profile', async () => {
+    const qualityOptionId = await configure(4);
+    expect(await request()).toMatchObject({ ok: true });
+    expect(await request({ qualityOptionId })).toMatchObject({ ok: true });
   });
 });

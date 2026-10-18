@@ -55,7 +55,6 @@ const DEFAULT_JOBS = [
 ];
 
 const activeTasks = new Map<string, ScheduledTask>();
-const pluginJobKeys = new Set<string>(); // Track which job keys belong to plugins
 // Per-key mutex — same job can't double-run (manual + cron tick collision).
 const runningJobs = new Set<string>();
 let _pluginEngine: PluginEngine | null = null;
@@ -76,33 +75,31 @@ async function seedJobs() {
 }
 
 async function runJob(key: string): Promise<RunJobOutcome> {
-  // Resolve plugin handlers lazily so a hot-installed plugin's job runs without restart —
-  // initScheduler's one-shot Object.assign would otherwise miss it until next boot.
-  const handler = JOB_HANDLERS[key] ?? _pluginEngine?.getJobHandlers()[key];
-  if (!handler) return { skipped: true, reason: 'unknown_job' };
-
-  // Guard: skip plugin jobs if their plugin is disabled
-  if (pluginJobKeys.has(key) && _pluginEngine) {
-    const pluginList = _pluginEngine.getPluginList();
-    const ownerPlugin = pluginList.find(p =>
-      _pluginEngine!.getPlugin(p.id)?.manifest.hooks?.jobs?.some(j => j.key === key)
-    );
-    if (ownerPlugin && !ownerPlugin.enabled) {
-      logEvent('debug', 'Job', `Skipping job "${sanitize(key)}" — plugin "${ownerPlugin.id}" is disabled`);
-      return { skipped: true, reason: 'plugin_disabled' };
-    }
-  }
-
   if (runningJobs.has(key)) {
     logEvent('debug', 'Job', `Job "${sanitize(key)}" already running, skipping concurrent trigger`);
     return { skipped: true, reason: 'already_running' };
   }
   runningJobs.add(key);
 
-  const wasFirstSync = !(await hasCompletedFirstSync());
-
   const start = Date.now();
   try {
+    let handler = JOB_HANDLERS[key];
+    if (!handler && _pluginEngine) {
+      // Ownership is persisted on the job. A disabled predecessor may declare the same key,
+      // so neither manifest order nor a handler cached at boot identifies the current owner.
+      const job = await prisma.cronJob.findUnique({ where: { key }, select: { pluginId: true } });
+      if (job?.pluginId) {
+        const owner = _pluginEngine.getPlugin(job.pluginId);
+        if (!owner || !owner.enabled || owner.error) {
+          logEvent('debug', 'Job', `Skipping job "${sanitize(key)}" — plugin "${sanitize(job.pluginId)}" is unavailable`);
+          return { skipped: true, reason: 'plugin_disabled' };
+        }
+        handler = _pluginEngine.getJobHandlers(job.pluginId)[key];
+      }
+    }
+    if (!handler) return { skipped: true, reason: 'unknown_job' };
+
+    const wasFirstSync = !(await hasCompletedFirstSync());
     const result = await handler();
     const duration = Date.now() - start;
     await prisma.cronJob.update({
@@ -207,12 +204,8 @@ export async function initScheduler(pluginEngine?: PluginEngine) {
   // Register plugin job handlers and seed their definitions
   if (pluginEngine) {
     _pluginEngine = pluginEngine;
-    const pluginHandlers = pluginEngine.getJobHandlers();
-    Object.assign(JOB_HANDLERS, pluginHandlers);
-
     const pluginJobDefs = pluginEngine.getJobDefs();
     for (const job of pluginJobDefs) {
-      pluginJobKeys.add(job.key);
       await prisma.cronJob.upsert({
         where: { key: job.key },
         update: { pluginId: job.pluginId },
@@ -259,7 +252,6 @@ export async function registerPluginJobs(
     if (existing && existing.pluginId && existing.pluginId !== pluginId) {
       throw new Error(`Job key "${job.key}" is already owned by plugin "${existing.pluginId}" — cannot register for "${pluginId}".`);
     }
-    pluginJobKeys.add(job.key);
     const row = await prisma.cronJob.upsert({
       where: { key: job.key },
       update: { pluginId },
@@ -278,7 +270,6 @@ export function cancelPluginJobs(pluginId: string, keys: string[]): void {
       task.stop();
       activeTasks.delete(key);
     }
-    pluginJobKeys.delete(key);
   }
   void pluginId; // tracked in the keys argument; explicit param keeps the call site clear.
 }

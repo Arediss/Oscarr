@@ -52,6 +52,7 @@
 
 @media (min-width: 1024px) {
   .media-detail-hero {
+    --media-art-start: 38%;
     display: flex;
     align-items: center;
     min-height: 46rem;
@@ -63,12 +64,20 @@
 
   .media-detail-image {
     /* The image's midpoint is at 69% of the hero width. */
-    inset: 0 0 0 38%;
+    inset: 0 0 0 var(--media-art-start);
     height: min(100%, 60rem);
   }
 
   .media-detail-shade {
-    background: linear-gradient(90deg, #0a0e17 0%, #0a0e17 28%, rgb(10 14 23 / .96) 37%, rgb(10 14 23 / .7) 48%, rgb(10 14 23 / .15) 65%, transparent 80%);
+    /* Stay opaque past the artwork's edge before revealing it gradually. */
+    background:
+      linear-gradient(180deg, #0a0e17, transparent 8rem),
+      linear-gradient(90deg,
+        #0a0e17 calc(var(--media-art-start) + 2%),
+        rgb(10 14 23 / .94) calc(var(--media-art-start) + 10%),
+        rgb(10 14 23 / .7) calc(var(--media-art-start) + 18%),
+        rgb(10 14 23 / .15) calc(var(--media-art-start) + 34%),
+        transparent calc(var(--media-art-start) + 48%));
   }
 
   .media-detail-bottom-fade {

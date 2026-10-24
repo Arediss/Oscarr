@@ -834,6 +834,7 @@
   "requests.seasons_unknown": "Unspecified seasons",
   "requests.download_progress": "Downloading: {{progress}}%",
   "requests.show_all_requests": "Show all {{count}} requests",
+  "requests.group_count": "{{count}} requests",
   "requests.show_less": "Show less",
   "requests.request_settings": "Request settings",
   "requests.quality_label": "Quality",

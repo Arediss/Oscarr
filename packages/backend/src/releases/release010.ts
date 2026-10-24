@@ -19,7 +19,7 @@ Une demande de saison sur une série déjà présente dans Sonarr ne recherche q
 
 ## Une carte par média et par demandeur
 
-Les demandes de plusieurs saisons sont regroupées sur une carte, avec les numéros de saison, les qualités et les états de chaque demande. Le regroupement est conservé lors du chargement des pages suivantes. Les actions restent propres à chaque demande.
+Les demandes de plusieurs saisons sont regroupées sur une carte compacte de taille habituelle. Une flèche indique les détails : au survol, les saisons, qualités et états apparaissent dans un panneau flottant au-dessus de la grille, puis se referment quand la souris en sort. La flèche fonctionne aussi au clic et au clavier. Le regroupement est conservé lors du chargement des pages suivantes. Les actions restent propres à chaque demande.
 
 Les titres restent visibles pendant les téléchargements et permettent d’ouvrir la fiche du média. Les demandes de collections respectent maintenant le réglage global d’auto-approbation, comme les demandes individuelles. Ce correctif ne valide pas rétroactivement les demandes déjà en attente.
 
@@ -44,7 +44,7 @@ Requesting a season for a series already in Sonarr searches only the selected se
 
 ## One card per title and requester
 
-Multiple season requests share a card, with the season numbers, qualities and individual request states. Groups stay together when loading more pages. Actions still apply to individual requests.
+Multiple season requests share a compact card at the usual size. An arrow reveals the details: hovering shows seasons, qualities and request states in a floating panel over the grid, which closes when the pointer leaves. The arrow also supports click and keyboard interaction. Groups stay together when loading more pages. Actions still apply to individual requests.
 
 Titles remain visible during downloads and link to the media page. Collection requests now follow the global automatic approval setting, just like individual requests. This fix does not retroactively approve existing pending requests.
 

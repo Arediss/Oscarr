@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../src/utils/prisma.js';
 import { patchAppSettings } from '../src/utils/appSettings.js';
-import { createUserRequest } from '../src/services/requestService.js';
+import { createUserRequest, requestCollectionMovie } from '../src/services/requestService.js';
 import { pluginEngine } from '../src/plugins/engine.js';
 import { safeUserNotify } from '../src/utils/safeNotify.js';
 
@@ -111,6 +111,37 @@ describe('request approval and dispatch', () => {
     expect(await request()).toMatchObject({ ok: true, status: 202, sendFailed: true });
     expect((await prisma.mediaRequest.findFirst())?.status).toBe('failed');
     expect((await prisma.media.findFirst())?.statusCategory).toBe(INITIAL_MEDIA_CATEGORY);
+  });
+});
+
+describe('collection request approval', () => {
+  it.each([
+    [true, 'proche', 'approved'],
+    [false, 'proche', 'pending'],
+    [false, ADMIN_ROLE, 'approved'],
+  ])('uses global approval %s for %s', async (autoApproveRequests, role, status) => {
+    await patchAppSettings({ autoApproveRequests });
+    await prisma.user.update({ where: { id: userId }, data: { role } });
+    expect(await requestCollectionMovie(101, { id: userId, role })).toBe(true);
+    expect(await prisma.mediaRequest.findFirst()).toMatchObject({
+      status, approvedById: status === 'approved' ? userId : null,
+    });
+    expect(transport.searchMedia).toHaveBeenCalledTimes(status === 'approved' ? 1 : 0);
+  });
+
+  it('keeps auto-approved collection requests retryable when dispatch fails', async () => {
+    await patchAppSettings({ autoApproveRequests: true });
+    transport.searchMedia.mockRejectedValueOnce(new Error('Service unavailable'));
+    expect(await requestCollectionMovie(101, { id: userId, role: 'user' })).toBe(true);
+    expect(await prisma.mediaRequest.findFirst()).toMatchObject({ status: 'failed' });
+  });
+
+  it('skips existing collection requests', async () => {
+    await patchAppSettings({ autoApproveRequests: true });
+    await requestCollectionMovie(101, { id: userId, role: 'user' });
+    expect(await requestCollectionMovie(101, { id: userId, role: 'user' })).toBe(false);
+    expect(await prisma.mediaRequest.count()).toBe(1);
+    expect(transport.searchMedia).toHaveBeenCalledTimes(1);
   });
 });
 

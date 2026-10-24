@@ -574,7 +574,8 @@ export async function requestCollectionMovie(
   movieTmdbId: number,
   user: { id: number; role: string },
 ): Promise<boolean> {
-  if ((await getAppSettings())?.requestsEnabled === false) return false;
+  const settings = await getAppSettings();
+  if (settings?.requestsEnabled === false) return false;
 
   const bl = await isBlacklisted(movieTmdbId, 'movie');
   if (bl.blacklisted) return false;
@@ -594,21 +595,24 @@ export async function requestCollectionMovie(
 
   const media = dbMedia ?? await findOrCreateMedia(movieTmdbId, 'movie');
 
-  const collectionInitialStatus: RequestStatusKind = user.role === 'admin' ? 'approved' : 'pending';
+  // Collections use the same default approval policy as individual movie requests.
+  const approval = await resolveRequestApproval(user.role, settings?.autoApproveRequests ?? false);
+  if (!approval.ok) return false;
+  const collectionInitialStatus: RequestStatusKind = approval.autoApprove ? 'approved' : 'pending';
   const req = await transitionRequestStatus(
-    { requestId: undefined, from: undefined, to: collectionInitialStatus, why: user.role === 'admin' ? 'collection-request-auto-approve' : 'collection-request-create' },
+    { requestId: undefined, from: undefined, to: collectionInitialStatus, why: approval.autoApprove ? 'collection-request-auto-approve' : 'collection-request-create' },
     () => prisma.mediaRequest.create({
       data: {
         mediaId: media.id,
         userId: user.id,
         mediaType: 'movie',
         status: collectionInitialStatus,
-        approvedById: user.role === 'admin' ? user.id : null,
+        approvedById: approval.autoApprove ? user.id : null,
       },
     }),
   );
 
-  if (user.role === 'admin') {
+  if (approval.autoApprove) {
     const tagName = await getUserTagName(user.id);
     const sent = await sendToService(media, 'movie', tagName, user.id);
     if (!sent) {

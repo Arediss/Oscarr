@@ -24,6 +24,8 @@ import { useDownloadForMedia } from '@/hooks/useDownloads';
 import { localizedDate } from '@/i18n/formatters';
 import type { MediaRequest } from '@/types';
 import { useModal } from '@/hooks/useModal';
+import { parseRequestSeasons } from '@/utils/requestSeasons';
+import { groupRequests } from '@/utils/requestGroups';
 
 const STATUS_CONFIG: Record<string, { labelKey: string; icon: typeof Clock; color: string; bg: string; dot: string }> = {
   pending: { labelKey: 'pending', icon: Clock, color: 'text-ndp-warning', bg: 'bg-ndp-warning', dot: 'bg-ndp-warning' },
@@ -98,6 +100,7 @@ export default function RequestsPage() {
     if (!append) setFiltering(true);
     try {
       const params = new URLSearchParams();
+      params.set('groupBy', 'mediaUser');
       if (filter) params.set('status', filter);
       if (filterUser) params.set('userId', filterUser);
       if (filterMediaType) params.set('mediaType', filterMediaType);
@@ -258,8 +261,9 @@ export default function RequestsPage() {
         <>
           <div className={clsx('transition-opacity duration-300', filtering ? 'opacity-40' : 'opacity-100')}>
             {(() => {
-              const pendingRequests = !filter ? requests.filter(r => r.status === 'pending') : [];
-              const otherRequests = !filter ? requests.filter(r => r.status !== 'pending') : requests;
+              const groups = groupRequests(requests);
+              const pendingRequests = !filter ? groups.filter(group => group.some(r => r.status === 'pending')) : [];
+              const otherRequests = !filter ? groups.filter(group => group.every(r => r.status !== 'pending')) : groups;
 
               return (
                 <>
@@ -267,11 +271,11 @@ export default function RequestsPage() {
                     <div className="mb-8">
                       <h2 className="text-sm font-semibold text-ndp-warning uppercase tracking-wider mb-3 flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        {t('requests.pending_section', { count: pendingRequests.length })}
+                        {t('requests.pending_section', { count: pendingRequests.flat().filter(r => r.status === 'pending').length })}
                       </h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                        {pendingRequests.map((req, index) => (
-                          <RequestCard key={req.id} request={req} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
+                        {pendingRequests.map((group, index) => (
+                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
                         ))}
                       </div>
                     </div>
@@ -285,8 +289,8 @@ export default function RequestsPage() {
                         </h2>
                       )}
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                        {otherRequests.map((req, index) => (
-                          <RequestCard key={req.id} request={req} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
+                        {otherRequests.map((group, index) => (
+                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
                         ))}
                       </div>
                     </div>
@@ -456,6 +460,7 @@ export default function RequestsPage() {
 
 interface RequestCardProps {
   request: MediaRequest;
+  compact?: boolean;
   canApprove: boolean;
   canDecline?: boolean;
   actionLoading: number | null;
@@ -465,8 +470,39 @@ interface RequestCardProps {
   index: number;
 }
 
+function RequestGroupCard({ requests, ...props }: Omit<RequestCardProps, 'request' | 'compact'> & { requests: MediaRequest[] }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const first = requests[0];
+  const download = useDownloadForMedia(first.media?.tmdbId, first.mediaType);
+  if (requests.length === 1) return <RequestCard request={first} {...props} />;
+  const title = first.media?.title || t('requests.unknown_media');
+  const rows = expanded ? requests : requests.slice(0, 4);
+  return (
+    <article className="self-start overflow-hidden rounded-2xl border border-white/5 bg-ndp-surface">
+      <div className="flex gap-3 p-3.5">
+        {first.media?.posterPath && <img src={posterUrl(first.media.posterPath, 'w185')} alt="" className="w-14 aspect-[2/3] object-cover rounded-lg self-start" />}
+        <div className="min-w-0 flex-1">
+          <h3 className="text-base font-bold leading-tight text-white">
+            {first.media && first.media.tmdbId > 0 ? <Link to={`/${first.mediaType}/${first.media.tmdbId}`} className="hover:text-ndp-accent focus-visible:outline-ndp-accent">{title}</Link> : title}
+          </h3>
+          <p className="text-xs text-ndp-text-muted mt-2 truncate">{first.user?.displayName}</p>
+          {download && <p className="mt-2 text-xs text-ndp-accent">{t('requests.download_progress', { progress: Math.round(download.progress) })}</p>}
+        </div>
+      </div>
+      <div className="divide-y divide-white/5">
+        {rows.map(request => <RequestCard key={request.id} request={request} {...props} compact />)}
+      </div>
+      {requests.length > 4 && <button type="button" onClick={() => setExpanded(value => !value)} aria-expanded={expanded} className="w-full p-3 text-xs font-semibold text-ndp-accent hover:bg-white/5 focus-visible:outline-ndp-accent">
+        {expanded ? t('requests.show_less') : t('requests.show_all_requests', { count: requests.length })}
+      </button>}
+    </article>
+  );
+}
+
 function RequestCardInner({
   request: req,
+  compact = false,
   canApprove,
   canDecline,
   actionLoading,
@@ -502,27 +538,31 @@ function RequestCardInner({
   const year = req.media?.releaseDate?.slice(0, 4);
   const backdrop = req.media?.backdropPath;
   const isPending = req.status === 'pending';
+  const seasons = req.mediaType === 'tv' ? parseRequestSeasons(req.seasons) : null;
+  const seasonLabel = seasons === 'all' ? t('media.all_seasons')
+    : seasons === 'unknown' ? t('requests.seasons_unknown')
+    : seasons ? seasons.map(number => t('media.season_label', { number })).join(' · ') : '';
 
   return (
     // Card is a <div> (not <Link>) so nested <button>s are valid HTML.
     // The clickable area is a sibling <Link className="absolute inset-0"> positioned under the
     // buttons via z-index — screen readers announce one link + the buttons independently.
     <div
-      className="group relative rounded-2xl overflow-hidden min-h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5"
-      style={{ animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
+      className={compact ? 'relative flex' : 'group self-start relative rounded-2xl overflow-hidden min-h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5'}
+      style={compact ? undefined : { animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
     >
-      {hasValidTmdbId && (
+      {hasValidTmdbId && !compact && (
         <Link
           to={mediaLink}
           className="absolute inset-0 z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent/60 rounded-2xl"
-          aria-label={req.media?.title || t('requests.unknown_media')}
+          aria-label={[req.media?.title || t('requests.unknown_media'), seasonLabel].filter(Boolean).join(' — ')}
         />
       )}
 {/* No left bar — status shown inline */}
 
       {/* Background — subtle backdrop hint */}
       <div className="absolute inset-0 bg-ndp-surface">
-        {backdrop && (
+        {backdrop && !compact && (
           <>
             <img src={backdropUrl(backdrop, 'w300')} alt="" className="absolute right-0 top-0 h-full w-2/3 object-cover opacity-[0.07]" />
             <div className="absolute inset-0 bg-gradient-to-r from-ndp-surface via-ndp-surface/95 to-transparent" />
@@ -531,20 +571,22 @@ function RequestCardInner({
       </div>
 
       {/* Content */}
-      <div className="relative flex w-full p-3.5 pointer-events-none">
+      <div className={clsx('relative flex w-full p-3.5 pointer-events-none', isPending && 'pb-12')}>
         {/* Left: info */}
-        <div className="flex-1 flex flex-col min-w-0 pr-3">
-          <h3 className="text-base font-bold text-white leading-tight line-clamp-1 shrink-0">
+        <div className={compact ? 'flex-1 grid grid-cols-[1fr_auto] gap-x-3 min-w-0' : 'flex-1 flex flex-col min-w-0 pr-3'}>
+          {!compact && <h3 className="text-base font-bold text-white leading-tight line-clamp-1 shrink-0">
             {req.media?.title || t('requests.unknown_media')}
-          </h3>
+          </h3>}
 
-          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-white/50">
-            {year && <span className="text-white/70">{year}</span>}
-            {year && <span>·</span>}
+          {seasonLabel && <p className="mt-1 text-xs font-semibold text-ndp-accent shrink-0">{seasonLabel}</p>}
+
+          <div className={clsx('flex items-center gap-1.5 mt-1.5 text-xs text-white/50', compact && 'row-start-2 col-start-1')}>
+            {year && !compact && <span className="text-white/70">{year}</span>}
+            {year && !compact && <span>·</span>}
             <span>{localizedDate(req.createdAt)}</span>
           </div>
 
-          <div className="flex items-center gap-1.5 mt-2">
+          {!compact && <div className="flex items-center gap-1.5 mt-2">
             {req.user?.avatar ? (
               <img src={req.user.avatar} alt="" className="w-4 h-4 rounded-full ring-1 ring-white/20" />
             ) : (
@@ -553,10 +595,10 @@ function RequestCardInner({
               </div>
             )}
             <span className="text-xs text-white/60 truncate">{req.user?.displayName}</span>
-          </div>
+          </div>}
 
           {qualityOptions.length > 0 && (
-            <div className="mt-1.5">
+            <div className={clsx('mt-1.5', compact && 'row-start-2 col-start-2 text-right')}>
               <span className={clsx('text-[11px] font-semibold', req.qualityOption ? 'text-ndp-accent' : 'text-ndp-text-dim')}>
                 {req.qualityOption?.label || t('requests.no_quality')}
               </span>
@@ -564,8 +606,8 @@ function RequestCardInner({
           )}
 
           {/* Status badge — hidden when pending (bottom bar shows intent) */}
-          {!isPending && (
-            <div className="mt-auto pt-1.5">
+          {(!isPending || compact) && (
+            <div className={compact ? 'row-start-1 col-start-2 text-right' : 'mt-auto pt-1.5'}>
               <span className={clsx('inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-md', status.color,
                 req.status === 'available' ? 'bg-ndp-success/15' :
                 req.status === 'approved' ? 'bg-ndp-accent/15' :
@@ -578,7 +620,7 @@ function RequestCardInner({
           )}
 
           {/* Download progress */}
-          {download && (
+          {download && !compact && (
             <div className="flex items-center gap-2 mt-auto pt-1.5">
               <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-ndp-accent rounded-full transition-all duration-1000" style={{ width: `${download.progress}%` }} />
@@ -589,7 +631,7 @@ function RequestCardInner({
         </div>
 
         {/* Right: poster */}
-        <div className="flex-shrink-0 w-[80px] self-center">
+        {!compact && <div className="flex-shrink-0 w-[80px] self-center">
           <div className="aspect-[2/3] rounded-xl overflow-hidden ring-1 ring-white/10 shadow-lg group-hover:ring-white/20 transition-all">
             {req.media?.posterPath ? (
               <img src={posterUrl(req.media.posterPath, 'w185')} alt="" className="w-full h-full object-cover" />
@@ -599,11 +641,11 @@ function RequestCardInner({
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
       {/* Bottom action bar */}
       {isPending && (
-        <div className="absolute bottom-2 left-2 right-[108px] z-10 flex items-center bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07] rounded-xl" onClick={(e) => e.preventDefault()}>
+        <div className={clsx('absolute bottom-2 left-2 z-10 flex items-center bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07] rounded-xl', compact ? 'right-2' : 'right-[108px]')} onClick={(e) => e.preventDefault()}>
           {canApprove ? (
             <>
               <button
@@ -640,6 +682,7 @@ function RequestCardInner({
                     .catch(() => {})
                     .finally(() => setResolvingCtx(false));
                 }}
+                aria-label={[t('requests.request_settings'), seasonLabel].filter(Boolean).join(' — ')}
                 className="px-4 py-2 text-white/50 hover:text-white hover:bg-white/5 transition-colors rounded-r-xl"
               >
                 <Settings2 className="w-3.5 h-3.5" />

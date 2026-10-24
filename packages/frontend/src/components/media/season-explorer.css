@@ -6,10 +6,6 @@
 .season-poster { position: relative; display: block; border-radius: .75rem; overflow: hidden; box-shadow: 0 0 0 1px rgb(255 255 255 / .06); transition: transform .2s, box-shadow .2s; }
 .season-poster-art { display: grid; place-items: center; aspect-ratio: 2 / 3; overflow: hidden; background: theme('colors.ndp.surface-light'); }
 .season-poster:hover, .season-poster[data-selected=true] { box-shadow: 0 0 0 2px theme('colors.ndp.accent'); }
-.season-cover-request { position: absolute; right: .5rem; bottom: .5rem; display: flex; align-items: center; justify-content: center; gap: .375rem; min-width: 2.75rem; min-height: 2.75rem; padding: .5rem .75rem; border-radius: .5rem; color: white; background: theme('colors.ndp.accent'); box-shadow: 0 2px 8px #0006; }
-.season-cover-request span { display: none; font-size: .75rem; font-weight: 600; }
-.season-poster:hover .season-cover-request span, .season-poster:focus-within .season-cover-request span { display: inline; }
-@media (hover: none) { .season-cover-request span { display: inline; } }
 .season-card-title { display: block; margin-top: .75rem; font-size: .875rem; font-weight: 600; color: theme('colors.ndp.text'); }
 .season-card-meta { display: block; margin-top: .25rem; font-size: .75rem; color: theme('colors.ndp.text-muted'); }
 .season-card-status { margin-top: .375rem; font-size: .75rem; color: theme('colors.ndp.text-muted'); }

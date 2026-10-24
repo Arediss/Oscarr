@@ -1,7 +1,8 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Star, CheckCircle, Film, Tv, Plus, Loader2, EyeOff } from 'lucide-react';
+import { Star, CheckCircle, Film, Tv, EyeOff } from 'lucide-react';
+import { PosterRequestButton } from './PosterRequestButton';
 import api, { posterUrl } from '@/lib/api';
 import { type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
 import type { TmdbMedia } from '@/types';
@@ -161,15 +162,7 @@ export default function MediaCard({ media, className, availability, index = 0 }:
        *  anchor. Visible only on hover (matches the rest of the overlay), positioned
        *  absolute so it overlays the top-right of the card. */}
       {showRequest && !requested && (
-        <button
-          onClick={handleRequest}
-          disabled={requesting}
-          className="absolute top-2 right-2 p-1.5 bg-ndp-accent rounded-full hover:bg-ndp-accent/80 transition-colors shadow-lg opacity-0 group-hover:opacity-100 z-10"
-          title={t('media.request')}
-          aria-label={t('media.request')}
-        >
-          {requesting ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Plus className="w-4 h-4 text-white" />}
-        </button>
+        <PosterRequestButton onClick={handleRequest} loading={requesting} label={t('media.request')} />
       )}
       {requested && (
         <div className="absolute top-2 right-2 p-1.5 bg-ndp-success rounded-full shadow-lg opacity-0 group-hover:opacity-100 z-10 pointer-events-none">

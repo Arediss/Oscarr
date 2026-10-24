@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Plus } from 'lucide-react';
+import { Check } from 'lucide-react';
+import { PosterRequestButton } from '../PosterRequestButton';
 import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
 import { useFeatures } from '@/context/FeaturesContext';
 import { useAuth } from '@/context/AuthContext';
@@ -82,16 +83,14 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
         const label = t('media.season_label', { number: season.season_number });
         const active = selection?.number === season.season_number;
         return <article className="season-card" key={season.season_number}>
-          <div className="season-poster" data-selected={active}>
+          <div className="season-poster group" data-selected={active}>
             <button className="season-card-button" aria-label={`${label} — ${t('media.explorer.view_episodes')}`}
               aria-expanded={active} aria-controls="season-details" onClick={event => open(season.season_number, false, event.currentTarget)}>
               <SeasonPoster posterPath={season.poster_path} seriesPosterPath={props.media.poster_path} blurred={props.blurred} />
             </button>
             {state.complete && <span className="season-complete"><Check size={14} aria-hidden="true" />{t('media.explorer.complete')}</span>}
-            {state.canRequest && !state.complete && <button className="season-cover-request" aria-controls="season-details"
-              aria-label={`${t('media.explorer.request')} — ${label}`} onClick={event => open(season.season_number, true, event.currentTarget)}>
-              <Plus size={18} aria-hidden="true" /><span>{t('media.explorer.request_short')}</span>
-            </button>}
+            {state.canRequest && !state.complete && <PosterRequestButton controls="season-details"
+              label={`${t('media.explorer.request')} — ${label}`} onClick={event => open(season.season_number, true, event.currentTarget)} />}
           </div>
           <h3 className="season-card-title">{label}</h3>
           <p className="season-card-meta">{season.air_date?.slice(0, 4)}{season.air_date && ' · '}{season.episode_count} {t('media.episodes_short')}</p>

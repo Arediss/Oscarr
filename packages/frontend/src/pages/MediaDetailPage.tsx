@@ -154,7 +154,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
           <SeasonExplorer key={media.id} media={media} seasons={media.seasons}
             sonarrSeasons={sonarrSeasons} requests={dbMedia?.requests ?? []}
             qualityOptions={qualityOptions} activeQualityOptionIds={activeQualityOptionIds}
-            blocked={blacklisted.blocked} onRefresh={refreshDbData} />
+            blocked={blacklisted.blocked} blurred={nsfw} onRefresh={refreshDbData} />
         )}
 
         {/* Collection */}

@@ -508,13 +508,13 @@ function RequestCardInner({
     // The clickable area is a sibling <Link className="absolute inset-0"> positioned under the
     // buttons via z-index — screen readers announce one link + the buttons independently.
     <div
-      className="group relative rounded-2xl overflow-hidden h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5"
+      className="group relative rounded-2xl overflow-hidden min-h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5"
       style={{ animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
     >
       {hasValidTmdbId && (
         <Link
           to={mediaLink}
-          className="absolute inset-0 z-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent/60 rounded-2xl"
+          className="absolute inset-0 z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent/60 rounded-2xl"
           aria-label={req.media?.title || t('requests.unknown_media')}
         />
       )}
@@ -531,10 +531,10 @@ function RequestCardInner({
       </div>
 
       {/* Content */}
-      <div className="relative flex w-full p-3.5">
+      <div className="relative flex w-full p-3.5 pointer-events-none">
         {/* Left: info */}
         <div className="flex-1 flex flex-col min-w-0 pr-3">
-          <h3 className="text-base font-bold text-white leading-tight line-clamp-1">
+          <h3 className="text-base font-bold text-white leading-tight line-clamp-1 shrink-0">
             {req.media?.title || t('requests.unknown_media')}
           </h3>
 

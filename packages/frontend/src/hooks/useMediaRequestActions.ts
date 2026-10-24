@@ -49,7 +49,8 @@ export function useMediaRequestActions(
         setJustRequested(true);
       }
       invalidateMediaStatus(media.id, type);
-      await refreshDbData();
+      // A failed refresh must not turn a successfully created request into a retryable error.
+      await refreshDbData().catch(err => console.warn('[useMediaRequestActions] refresh after request failed', err));
       return reqData.sendError ? 'queued' as const : 'sent' as const;
     } catch (err: unknown) {
       setRequestError(extractApiError(err, err instanceof Error ? err.message : t('common.error')));

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check } from 'lucide-react';
-import { PosterRequestButton } from '../PosterRequestButton';
+import { SeasonQuickRequest, type SeasonRequestResult } from './SeasonQuickRequest';
 import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
 import { useFeatures } from '@/context/FeaturesContext';
 import { useAuth } from '@/context/AuthContext';
@@ -46,13 +46,14 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
   const { features, loading } = useFeatures();
   const downloads = useDownloads().filter(item => item.tmdbId === props.media.id && item.mediaType === 'tv');
   const [selection, setSelection] = useState<{ number: number; requesting: boolean } | null>(null);
+  const [submitted, setSubmitted] = useState<Record<number, SeasonRequestResult>>({});
   const opener = useRef<HTMLButtonElement | null>(null);
   const requestAccess = !loading && features.requestsEnabled && !props.blocked;
   const seasons = props.seasons.filter(season => season.season_number > 0).map(season => {
     const sonarr = props.sonarrSeasons.find(item => item.seasonNumber === season.season_number);
     const complete = fillOf(season, sonarr) === 'full';
     const activeRequests = props.requests.filter(request => (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status) && coversSeason(request, season.season_number));
-    const ownRequest = activeRequests.some(request => request.userId === user?.id);
+    const ownRequest = !!submitted[season.season_number] || activeRequests.some(request => request.userId === user?.id);
     const takenQualityIds = new Set([
       ...activeRequests.map(request => request.qualityOptionId).filter((id): id is number => id !== null),
       ...(complete ? props.activeQualityOptionIds : []),
@@ -60,7 +61,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
     const defaultAllowed = !complete && !ownRequest;
     const canRequest = requestAccess && (defaultAllowed || props.qualityOptions.some(option => !takenQualityIds.has(option.id)));
     const downloading = downloads.some(item => item.episode?.seasonNumber === season.season_number);
-    const status = complete ? 'complete' : downloading ? 'downloading' : activeRequests.length ? 'requested'
+    const status = complete ? 'complete' : downloading ? 'downloading' : ownRequest || activeRequests.length ? 'requested'
       : sonarr?.episodeFileCount ? 'partial' : sonarr ? 'not_available' : 'not_requested';
     return { season, sonarr, status, state: { complete, ownRequest, takenQualityIds, defaultAllowed, canRequest } };
   });
@@ -89,8 +90,9 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
               <SeasonPoster posterPath={season.poster_path} seriesPosterPath={props.media.poster_path} blurred={props.blurred} />
             </button>
             {state.complete && <span className="season-complete"><Check size={14} aria-hidden="true" />{t('media.explorer.complete')}</span>}
-            {state.canRequest && !state.complete && <PosterRequestButton controls="season-details"
-              label={`${t('media.explorer.request')} — ${label}`} onClick={event => open(season.season_number, true, event.currentTarget)} />}
+            {requestAccess && !state.complete && <SeasonQuickRequest media={props.media} seasonNumber={season.season_number}
+              allowed={state.defaultAllowed} result={submitted[season.season_number]} onRefresh={props.onRefresh}
+              onRequested={result => setSubmitted(previous => ({ ...previous, [season.season_number]: result }))} />}
           </div>
           <h3 className="season-card-title">{label}</h3>
           <p className="season-card-meta">{season.air_date?.slice(0, 4)}{season.air_date && ' · '}{season.episode_count} {t('media.episodes_short')}</p>

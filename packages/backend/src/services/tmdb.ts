@@ -86,7 +86,7 @@ export type {
   TmdbCollection, TmdbCollectionRef, TmdbMovie, TmdbTv, TmdbSeason, TmdbCast, TmdbCrew,
   TmdbVideo, TmdbMedia, TmdbMediaResult, TmdbPerson,
 } from '@oscarr/shared';
-import type { TmdbMovie, TmdbTv, TmdbMediaResult, TmdbPerson, TmdbCollection } from '@oscarr/shared';
+import type { TmdbMovie, TmdbTv, TmdbMediaResult, TmdbPerson, TmdbCollection, TmdbSeasonDetails } from '@oscarr/shared';
 
 /** Extract keywords array from movie or TV details (different TMDB response shapes) */
 export function extractKeywords(details: TmdbMovie | TmdbTv): { id: number; name: string }[] {
@@ -249,6 +249,14 @@ export async function getTvDetails(tvId: number, lang?: string): Promise<TmdbTv>
     const { data } = await getTmdbApi(l).get(`/tv/${tvId}`, {
       params: { append_to_response: 'credits,external_ids,videos,keywords,content_ratings' },
     });
+    return data;
+  }, 24);
+}
+
+export async function getTvSeasonDetails(tvId: number, seasonNumber: number, lang?: string): Promise<TmdbSeasonDetails> {
+  const l = normalizeLang(lang);
+  return cachedRequest(`tv:${tvId}:season:${seasonNumber}:${l}`, async () => {
+    const { data } = await getTmdbApi(l).get(`/tv/${tvId}/season/${seasonNumber}`);
     return data;
   }, 24);
 }

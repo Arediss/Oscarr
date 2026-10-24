@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Calendar, Check, Clock, Download, Minus } from 'lucide-react';
+import { Calendar, Check, Clock, Download, Minus, HelpCircle } from 'lucide-react';
 import { episodeState, episodeTitle, type EpisodeInfo } from '@/utils/episodeStatus';
 import type { DownloadItem } from '@/hooks/useDownloads';
 
-const icons = { available: Check, missing: Minus, upcoming: Calendar, downloading: Download, undated: Clock };
-const filters = ['all', 'available', 'missing', 'upcoming', 'downloading', 'undated'] as const;
+const icons = { available: Check, missing: Minus, upcoming: Calendar, downloading: Download, undated: Clock, unknown: HelpCircle };
+const filters = ['all', 'available', 'missing', 'upcoming', 'downloading', 'undated', 'unknown'] as const;
 
 export function SeasonEpisodes({ episodes, now, downloads }: Readonly<{
   episodes: EpisodeInfo[]; now: number; downloads: DownloadItem[];
@@ -19,7 +19,7 @@ export function SeasonEpisodes({ episodes, now, downloads }: Readonly<{
   const visible = rows.filter(ep => filter === 'all' || ep.state === filter);
   return <>
     <div className="episode-filters" role="group" aria-label={t('media.explorer.filters')}>
-      {filters.map(value => <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>
+      {filters.filter(value => value === 'all' || value === filter || rows.some(ep => ep.state === value)).map(value => <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>
         {t(`media.explorer.${value}`)} <span>{value === 'all' ? rows.length : rows.filter(ep => ep.state === value).length}</span>
       </button>)}
     </div>

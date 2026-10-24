@@ -1216,7 +1216,7 @@
     }
   },
   "media.explorer.title": "Saisons et épisodes",
-  "media.explorer.hint": "Ouvrez une saison pour retrouver chaque épisode et sa disponibilité.",
+  "media.explorer.hint": "Choisissez une saison pour voir ses épisodes, ou utilisez + pour la demander.",
   "media.explorer.available": "Disponibles",
   "media.explorer.missing": "Manquants",
   "media.explorer.upcoming": "À venir",
@@ -1239,8 +1239,15 @@
   "media.explorer.missing_count_one": "{{count}} manquant",
   "media.explorer.missing_count_other": "{{count}} manquants",
   "media.explorer.choose_quality": "Choisissez une autre qualité disponible pour cette demande.",
-  "media.explorer.untracked": "Les épisodes ne sont pas encore disponibles dans Sonarr.",
-  "media.explorer.unavailable": "Impossible de récupérer les épisodes depuis Sonarr. Leur disponibilité reste inconnue.",
+  "media.explorer.unavailable": "Impossible de charger les épisodes pour le moment.",
   "media.explorer.refresh": "Actualiser",
-  "media.explorer.disabled": "Les demandes sont désactivées sur cette instance."
+  "media.explorer.disabled": "Les demandes sont désactivées sur cette instance.",
+  "media.explorer.request_series": "Demander la série",
+  "media.explorer.request_short": "Demander",
+  "media.explorer.view_episodes": "Voir les épisodes",
+  "media.explorer.unknown": "Disponibilité inconnue",
+  "media.explorer.requested": "Demandée",
+  "media.explorer.partial": "Partiellement disponible",
+  "media.explorer.not_available": "Non disponible",
+  "media.explorer.not_requested": "Non demandée"
 }

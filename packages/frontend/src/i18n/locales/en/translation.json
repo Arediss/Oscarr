@@ -1216,7 +1216,7 @@
     }
   },
   "media.explorer.title": "Seasons and episodes",
-  "media.explorer.hint": "Open a season to see each episode and its availability.",
+  "media.explorer.hint": "Choose a season to see its episodes, or use + to request it.",
   "media.explorer.available": "Available",
   "media.explorer.missing": "Missing",
   "media.explorer.upcoming": "Upcoming",
@@ -1239,8 +1239,15 @@
   "media.explorer.missing_count_one": "{{count}} missing",
   "media.explorer.missing_count_other": "{{count}} missing",
   "media.explorer.choose_quality": "Choose another available quality for this request.",
-  "media.explorer.untracked": "Episodes are not available in Sonarr yet.",
-  "media.explorer.unavailable": "Unable to retrieve episodes from Sonarr. Their availability is unknown.",
+  "media.explorer.unavailable": "Unable to load episodes right now.",
   "media.explorer.refresh": "Refresh",
-  "media.explorer.disabled": "Requests are disabled on this instance."
+  "media.explorer.disabled": "Requests are disabled on this instance.",
+  "media.explorer.request_series": "Request series",
+  "media.explorer.request_short": "Request",
+  "media.explorer.view_episodes": "View episodes",
+  "media.explorer.unknown": "Availability unknown",
+  "media.explorer.requested": "Requested",
+  "media.explorer.partial": "Partially available",
+  "media.explorer.not_available": "Not available",
+  "media.explorer.not_requested": "Not requested"
 }

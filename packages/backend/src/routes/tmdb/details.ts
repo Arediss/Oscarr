@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   getMovieDetails,
   getTvDetails,
+  getTvSeasonDetails,
   getPersonDetails,
   getCollection,
 } from '../../services/tmdb.js';
@@ -14,6 +15,19 @@ import { getLang, idParamSchema } from './helpers.js';
  * fetches the full details, and kicks off a background keyword-tracking update when relevant.
  */
 export async function detailsRoutes(app: FastifyInstance) {
+  app.get('/tv/:id/season/:seasonNumber', {
+    schema: { params: {
+      type: 'object', required: ['id', 'seasonNumber'],
+      properties: {
+        id: { type: 'integer', minimum: 1, maximum: 2147483647 },
+        seasonNumber: { type: 'integer', minimum: 0, maximum: 2147483647 },
+      },
+    } },
+  }, async (request) => {
+    const { id, seasonNumber } = request.params as { id: number; seasonNumber: number };
+    return getTvSeasonDetails(id, seasonNumber, getLang(request));
+  });
+
   app.get('/movie/:id', { schema: { params: idParamSchema } }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const movieId = parseId(id);

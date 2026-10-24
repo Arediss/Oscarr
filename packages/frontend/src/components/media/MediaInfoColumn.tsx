@@ -110,7 +110,7 @@ export function MediaInfoColumn({
           )}
 
           {onBrowseSeasons ? (
-            <button className="btn-primary" onClick={onBrowseSeasons}>{t('media.explorer.title')}</button>
+            <button className="btn-primary" onClick={onBrowseSeasons}>{t('media.explorer.request_series')}</button>
           ) : <ActionButton
             state={buttonState}
             requesting={requesting}

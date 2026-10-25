@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useId, memo, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, useRef, useId, memo, type Dispatch, type SetStateAction, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -27,7 +27,7 @@ import type { MediaRequest } from '@/types';
 import { useModal } from '@/hooks/useModal';
 import { parseRequestSeasons } from '@/utils/requestSeasons';
 import { groupRequests } from '@/utils/requestGroups';
-import { useRequestPopover } from '@/hooks/useRequestPopover';
+import { useExpandableRequestCard } from '@/hooks/useExpandableRequestCard';
 
 const STATUS_CONFIG: Record<string, { labelKey: string; icon: typeof Clock; color: string; bg: string; dot: string }> = {
   pending: { labelKey: 'pending', icon: Clock, color: 'text-ndp-warning', bg: 'bg-ndp-warning', dot: 'bg-ndp-warning' },
@@ -62,6 +62,7 @@ export default function RequestsPage() {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const [requests, setRequests] = useState<MediaRequest[]>([]);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [stats, setStats] = useState<RequestStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [filtering, setFiltering] = useState(false);
@@ -99,7 +100,10 @@ export default function RequestsPage() {
   }, [canAccessAdmin]);
 
   const fetchRequests = useCallback(async (pageNum: number, append = false) => {
-    if (!append) setFiltering(true);
+    if (!append) {
+      setFiltering(true);
+      setExpandedGroupId(null);
+    }
     try {
       const params = new URLSearchParams();
       params.set('groupBy', 'mediaUser');
@@ -277,7 +281,7 @@ export default function RequestsPage() {
                       </h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                         {pendingRequests.map((group, index) => (
-                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
+                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} expandedGroupId={expandedGroupId} setExpandedGroupId={setExpandedGroupId} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
                         ))}
                       </div>
                     </div>
@@ -292,7 +296,7 @@ export default function RequestsPage() {
                       )}
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                         {otherRequests.map((group, index) => (
-                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
+                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} expandedGroupId={expandedGroupId} setExpandedGroupId={setExpandedGroupId} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
                         ))}
                       </div>
                     </div>
@@ -474,38 +478,40 @@ interface RequestCardProps {
   index: number;
 }
 
-function RequestGroupCard({ requests, ...props }: Omit<RequestCardProps, 'request' | 'compact' | 'groupDetails' | 'onSettingsChange'> & { requests: MediaRequest[] }) {
+function RequestGroupCard({ requests, expandedGroupId, setExpandedGroupId, ...props }: Omit<RequestCardProps, 'request' | 'compact' | 'groupDetails' | 'onSettingsChange'> & {
+  requests: MediaRequest[];
+  expandedGroupId: string | null;
+  setExpandedGroupId: Dispatch<SetStateAction<string | null>>;
+}) {
   const { t } = useTranslation();
-  const popover = useRequestPopover();
   const panelId = useId();
   const first = requests[0];
+  const expansion = useExpandableRequestCard(`${first.mediaId}:${first.userId}`, expandedGroupId, setExpandedGroupId);
   if (requests.length === 1) return <RequestCard request={first} {...props} />;
   const title = first.media?.title || t('requests.unknown_media');
   return (
-    <div ref={popover.anchorRef} className="self-start" onPointerEnter={popover.enter} onPointerLeave={popover.leave} onBlurCapture={popover.blur}>
-      <RequestCard request={first} {...props} groupDetails={
-        <button ref={popover.triggerRef} type="button" aria-expanded={popover.open} aria-controls={panelId}
-          aria-label={t('requests.show_all_requests', { count: requests.length })}
-          onClick={event => popover.open ? popover.close() : popover.show(event.detail === 0)}
-          onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); popover.show(true); } }}
-          className="relative z-10 pointer-events-auto flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-ndp-accent hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent">
-          <span>{t('requests.group_count', { count: requests.length })}</span>
-          <ChevronDown className={clsx('w-4 h-4 transition-transform', popover.open && 'rotate-180')} />
-        </button>
-      } />
-      {popover.open && createPortal(
-        <div ref={popover.panelRef} id={panelId} role="region" aria-labelledby={`${panelId}-title`} tabIndex={-1}
-          style={popover.position} onPointerEnter={popover.enter} onPointerLeave={popover.leave} onBlurCapture={popover.blur}
-          className="fixed z-40 flex flex-col overflow-hidden rounded-2xl border border-white/15 bg-ndp-surface shadow-2xl shadow-black/60 focus:outline-none">
-          <div className="flex items-center gap-3 border-b border-white/10 px-3.5 py-3 shrink-0">
-            <h3 id={`${panelId}-title`} className="flex-1 min-w-0 text-sm font-bold text-ndp-text truncate">{title}</h3>
-            <button type="button" onClick={() => popover.close(true)} aria-label={t('common.close')} className="p-1 rounded text-ndp-text-muted hover:text-ndp-text focus-visible:ring-2 focus-visible:ring-ndp-accent"><X className="w-4 h-4" /></button>
+    <div ref={expansion.anchorRef} className="relative self-start h-[160px]" onPointerEnter={expansion.enter} onPointerLeave={expansion.leave} onBlurCapture={expansion.blur}>
+      <div ref={expansion.panelRef} role="group" aria-label={title} tabIndex={-1}
+        style={expansion.open ? expansion.position : undefined}
+        className={clsx('absolute inset-x-0 top-0 flex flex-col overflow-hidden rounded-2xl border bg-ndp-surface focus:outline-none', expansion.open ? 'z-40 border-white/15 shadow-2xl shadow-black/60' : 'border-white/5')}>
+        <RequestCard request={first} {...props} groupDetails={
+          <button ref={expansion.triggerRef} type="button" aria-expanded={expansion.open} aria-controls={panelId}
+            aria-label={t('requests.show_all_requests', { count: requests.length })}
+            onClick={event => expansion.open ? expansion.close() : expansion.show(event.detail === 0)}
+            onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); expansion.show(true); } }}
+            className="relative z-10 pointer-events-auto flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-ndp-accent hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent">
+            <span>{t('requests.group_count', { count: requests.length })}</span>
+            <ChevronDown className={clsx('w-4 h-4 transition-transform', expansion.open && 'rotate-180')} />
+          </button>
+        } />
+        {expansion.open && (
+          <div id={panelId} className="relative min-h-0 overflow-y-auto overscroll-contain px-3.5 pb-3.5">
+            <div className="flex flex-wrap items-start gap-2">
+              {requests.map(request => <RequestCard key={request.id} request={request} {...props} compact onSettingsChange={expansion.setModalOpen} />)}
+            </div>
           </div>
-          <div className="min-h-0 overflow-y-auto overscroll-contain divide-y divide-white/5">
-            {requests.map(request => <RequestCard key={request.id} request={request} {...props} compact onSettingsChange={popover.setModalOpen} />)}
-          </div>
-        </div>
-        , document.body)}
+        )}
+      </div>
     </div>
   );
 }
@@ -566,8 +572,9 @@ function RequestCardInner({
     // The clickable area is a sibling <Link className="absolute inset-0"> positioned under the
     // buttons via z-index — screen readers announce one link + the buttons independently.
     <div
-      className={compact ? 'relative flex' : clsx('group self-start relative rounded-2xl overflow-hidden flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5', groupDetails ? 'h-[160px]' : 'min-h-[160px]')}
-      style={compact ? undefined : { animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
+      className={compact ? clsx('relative flex flex-col max-w-full rounded-lg border border-white/10 bg-white/[0.03]', isPending && 'w-full') : groupDetails ? 'group relative flex h-[158px] shrink-0 overflow-hidden' : 'group self-start relative rounded-2xl overflow-hidden min-h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5'}
+      style={compact || groupDetails ? undefined : { animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
+      title={compact ? `${localizedDate(req.createdAt)} · ${req.qualityOption?.label || t('requests.no_quality')}` : undefined}
     >
       {hasValidTmdbId && !compact && (
         <Link
@@ -579,30 +586,31 @@ function RequestCardInner({
 {/* No left bar — status shown inline */}
 
       {/* Background — subtle backdrop hint */}
-      <div className="absolute inset-0 bg-ndp-surface">
+      {!compact && <div className="absolute inset-0 bg-ndp-surface">
         {backdrop && !compact && (
           <>
             <img src={backdropUrl(backdrop, 'w300')} alt="" className="absolute right-0 top-0 h-full w-2/3 object-cover opacity-[0.07]" />
             <div className="absolute inset-0 bg-gradient-to-r from-ndp-surface via-ndp-surface/95 to-transparent" />
           </>
         )}
-      </div>
+      </div>}
 
       {/* Content */}
-      <div className={clsx('relative flex w-full p-3.5 pointer-events-none', isPending && 'pb-12')}>
+      <div className={clsx('relative flex pointer-events-none', compact ? 'px-2.5 py-2' : 'w-full p-3.5', isPending && !compact && 'pb-12')}>
         {/* Left: info */}
-        <div className={compact ? 'flex-1 grid grid-cols-[1fr_auto] gap-x-3 min-w-0' : 'flex-1 flex flex-col min-w-0 pr-3'}>
+        <div className={compact ? 'flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0' : 'flex-1 flex flex-col min-w-0 pr-3'}>
           {!compact && <h3 className="text-base font-bold text-white leading-tight line-clamp-1 shrink-0">
             {req.media?.title || t('requests.unknown_media')}
           </h3>}
 
-          {seasonLabel && <p className="mt-1 text-xs font-semibold text-ndp-accent shrink-0">{seasonLabel}</p>}
+          {seasonLabel && <p className={clsx('text-xs font-semibold', compact ? 'text-ndp-text' : 'mt-1 shrink-0 text-ndp-accent')}>{seasonLabel}</p>}
+          {compact && <span className="sr-only">{localizedDate(req.createdAt)} · {req.qualityOption?.label || t('requests.no_quality')}</span>}
 
-          <div className={clsx('flex items-center gap-1.5 mt-1.5 text-xs text-white/50', compact && 'row-start-2 col-start-1')}>
+          {!compact && <div className="flex items-center gap-1.5 mt-1.5 text-xs text-white/50">
             {year && !compact && <span className="text-white/70">{year}</span>}
             {year && !compact && <span>·</span>}
             <span>{localizedDate(req.createdAt)}</span>
-          </div>
+          </div>}
 
           {!compact && <div className="flex items-center gap-1.5 mt-2">
             {req.user?.avatar ? (
@@ -615,8 +623,8 @@ function RequestCardInner({
             <span className="text-xs text-white/60 truncate">{req.user?.displayName}</span>
           </div>}
 
-          {qualityOptions.length > 0 && !groupDetails && (
-            <div className={clsx('mt-1.5', compact && 'row-start-2 col-start-2 text-right')}>
+          {qualityOptions.length > 0 && !groupDetails && (!compact || req.mediaType === 'movie' || req.qualityOption) && (
+            <div className={compact ? 'order-last' : 'mt-1.5'}>
               <span className={clsx('text-[11px] font-semibold', req.qualityOption ? 'text-ndp-accent' : 'text-ndp-text-dim')}>
                 {req.qualityOption?.label || t('requests.no_quality')}
               </span>
@@ -625,7 +633,7 @@ function RequestCardInner({
 
           {/* Status badge — hidden when pending (bottom bar shows intent) */}
           {!groupDetails && (!isPending || compact) && (
-            <div className={compact ? 'row-start-1 col-start-2 text-right' : 'mt-auto pt-1.5'}>
+            <div className={compact ? '' : 'mt-auto pt-1.5'}>
               <span className={clsx('inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-md', status.color,
                 req.status === 'available' ? 'bg-ndp-success/15' :
                 req.status === 'approved' ? 'bg-ndp-accent/15' :
@@ -665,7 +673,7 @@ function RequestCardInner({
       </div>
       {/* Bottom action bar */}
       {isPending && (
-        <div className={clsx('absolute bottom-2 left-2 z-10 flex items-center bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07] rounded-xl', compact ? 'right-2' : 'right-[108px]')} onClick={(e) => e.preventDefault()}>
+        <div className={clsx('z-10 flex items-center bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07] rounded-xl', compact ? 'relative mx-2 mb-2' : 'absolute bottom-2 left-2 right-[108px]')} onClick={(e) => e.preventDefault()}>
           {canApprove ? (
             <>
               <button

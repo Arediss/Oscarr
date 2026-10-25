@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type PointerEvent } from 'react';
-import { positionRequestPopover } from '@/utils/requestPopover';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction, type FocusEvent, type PointerEvent } from 'react';
+import { positionRequestExpansion } from '@/utils/requestExpansion';
 
-/** Keeps the card/panel hover bridge open; nested request settings retain their own lifetime. */
-export function useRequestPopover() {
+/** Expands a card over the grid while keeping nested request settings usable. */
+export function useExpandableRequestCard(groupId: string, activeGroupId: string | null, setActiveGroupId: Dispatch<SetStateAction<string | null>>) {
   const anchorRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -10,7 +10,7 @@ export function useRequestPopover() {
   const hovered = useRef(false);
   const keyboard = useRef(false);
   const modalOpen = useRef(false);
-  const [open, setOpen] = useState(false);
+  const open = activeGroupId === groupId;
   const [position, setPosition] = useState<CSSProperties>({});
   const cancelClose = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -18,15 +18,15 @@ export function useRequestPopover() {
   }, []);
   const close = useCallback((restoreFocus = false) => {
     cancelClose();
-    setOpen(false);
+    setActiveGroupId(current => current === groupId ? null : current);
     if (restoreFocus) triggerRef.current?.focus();
-  }, [cancelClose]);
+  }, [cancelClose, groupId, setActiveGroupId]);
   const show = (fromKeyboard = false) => {
     if (!anchorRef.current) return;
     cancelClose();
     keyboard.current = fromKeyboard;
-    setPosition(positionRequestPopover(anchorRef.current.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight }));
-    setOpen(true);
+    setPosition(positionRequestExpansion(anchorRef.current.getBoundingClientRect().top, window.innerHeight));
+    setActiveGroupId(groupId);
   };
   const enter = (event: PointerEvent) => {
     if (event.pointerType !== 'mouse') return;
@@ -53,7 +53,7 @@ export function useRequestPopover() {
   }, [cancelClose, close]);
 
   useLayoutEffect(() => {
-    if (open && keyboard.current) panelRef.current?.focus();
+    if (open && keyboard.current) panelRef.current?.focus({ preventScroll: true });
   }, [open]);
   useEffect(() => cancelClose, [cancelClose]);
   useEffect(() => {
@@ -68,19 +68,13 @@ export function useRequestPopover() {
       if (modalOpen.current || !(event.target instanceof Node)) return;
       if (!anchorRef.current?.contains(event.target) && !panelRef.current?.contains(event.target)) close();
     };
-    const scroll = (event: Event) => {
-      if (modalOpen.current || (event.target instanceof Node && panelRef.current?.contains(event.target))) return;
-      close();
-    };
     const resize = () => { if (!modalOpen.current) close(); };
     document.addEventListener('keydown', keydown);
     document.addEventListener('pointerdown', outside);
-    window.addEventListener('scroll', scroll, true);
     window.addEventListener('resize', resize);
     return () => {
       document.removeEventListener('keydown', keydown);
       document.removeEventListener('pointerdown', outside);
-      window.removeEventListener('scroll', scroll, true);
       window.removeEventListener('resize', resize);
     };
   }, [open, close]);

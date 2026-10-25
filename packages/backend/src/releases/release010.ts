@@ -7,7 +7,7 @@ export const release010 = {
   entries: '[]',
   bodyFr: `## Les saisons ont leur affiche
 
-Les fiches films et séries adoptent un fond panoramique plus lisible, des portraits de casting arrondis et une présentation harmonisée des collections. Chaque saison possède désormais sa propre affiche, avec celle de la série en secours. Les informations sous les covers sont hiérarchisées : année et nombre d’épisodes, badge d’état avec icône, compteur et jauge des épisodes disponibles. Une disponibilité inconnue est signalée sans afficher de faux zéro.
+Les fiches films et séries adoptent un fond panoramique plus lisible, des portraits de casting arrondis et une présentation harmonisée des collections. Chaque saison possède désormais sa propre affiche, avec celle de la série en secours. Les informations sous les covers sont limitées au titre, à l’année avec le nombre d’épisodes et à un badge d’état discret. Les détails des épisodes restent accessibles en ouvrant la saison.
 
 Le bouton **Demander la série** mène aux saisons. Leur disponibilité et leurs demandes en cours sont visibles sur les covers. Le **+**, identique à celui du portail, demande directement la saison complète. Un clic sur l’affiche ouvre les épisodes dans la page.
 
@@ -32,7 +32,7 @@ Les dépendances de l’application et les actions GitHub de construction, de si
 Cette version ne modifie pas le schéma de la base. Ces notes sont enregistrées au démarrage de façon idempotente.`,
   bodyEn: `## Season covers
 
-Movie and series pages have a more readable panoramic backdrop, round cast portraits and a consistent collection layout. Each season now has its own poster, falling back to the series poster when needed. Information below each cover has a clearer hierarchy: year and episode count, an icon status badge, and a count and meter for available episodes. Unknown availability is shown explicitly without a misleading zero.
+Movie and series pages have a more readable panoramic backdrop, round cast portraits and a consistent collection layout. Each season now has its own poster, falling back to the series poster when needed. Information below each cover is limited to its title, year and episode count, and a discreet status badge. Episode details remain available by opening the season.
 
 **Request series** leads to the seasons. Covers show availability and existing requests. The **+**, shared with the portal, requests the entire season directly. Clicking the poster opens its episodes within the page.
 

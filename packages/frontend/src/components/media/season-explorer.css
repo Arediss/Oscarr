@@ -9,23 +9,11 @@
 .season-card-info { padding: .75rem .125rem 0; }
 .season-card-title { font-size: .875rem; line-height: 1.25rem; font-weight: 600; color: theme('colors.ndp.text'); }
 .season-card-meta { display: flex; align-items: center; gap: .375rem; margin-top: .25rem; font-size: .75rem; color: theme('colors.ndp.text-muted'); }
-.season-card-status { display: inline-flex; align-items: center; gap: .375rem; max-width: 100%; margin-top: .625rem; padding: .25rem .5rem; border-radius: .375rem; font-size: .6875rem; line-height: 1rem; font-weight: 600; color: theme('colors.ndp.text-muted'); background: rgb(255 255 255 / .05); }
+.season-card-status { display: inline-flex; align-items: center; gap: .375rem; max-width: 100%; margin-top: .5rem; padding: .25rem .5rem; border-radius: .375rem; font-size: .6875rem; line-height: 1rem; font-weight: 600; color: theme('colors.ndp.text-muted'); background: rgb(255 255 255 / .05); }
 .season-card-status svg { flex-shrink: 0; }
 .season-status-complete { color: theme('colors.ndp.success'); background: rgb(16 185 129 / .1); }
 .season-status-partial { color: theme('colors.ndp.warning'); background: rgb(245 158 11 / .1); }
 .season-status-requested, .season-status-downloading { color: theme('colors.ndp.accent-hover'); background: rgb(99 102 241 / .12); }
-.season-card-availability { min-height: 2rem; margin-top: .625rem; }
-.season-card-availability-label { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; font-size: .6875rem; color: theme('colors.ndp.text-muted'); }
-.season-card-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
-.season-card-count strong { font-weight: 600; color: theme('colors.ndp.text'); }
-.season-card-progress { display: block; width: 100%; height: .25rem; margin-top: .375rem; overflow: hidden; border: 0; border-radius: 999px; appearance: none; background: rgb(255 255 255 / .08); color: theme('colors.ndp.success'); }
-.season-card-progress::-webkit-progress-bar { border-radius: inherit; background: rgb(255 255 255 / .08); }
-.season-card-progress::-webkit-progress-value { border-radius: inherit; background: theme('colors.ndp.success'); }
-.season-card-progress::-moz-progress-bar { border-radius: inherit; background: theme('colors.ndp.success'); }
-.season-card-unknown { display: flex; align-items: center; gap: .375rem; font-size: .6875rem; line-height: 1rem; color: theme('colors.ndp.text-muted'); }
-.season-card-unknown svg { flex-shrink: 0; }
-.season-complete { position: absolute; bottom: .5rem; right: .5rem; display: flex; align-items: center; gap: .25rem; padding: .25rem .5rem; border-radius: .375rem; font-size: .6875rem; font-weight: 600; color: theme('colors.ndp.text'); background: rgb(0 0 0 / .8); }
-.season-complete svg { color: #34d399; }
 .season-details { margin-top: 1rem; border: 1px solid theme('colors.ndp.border'); border-radius: .75rem; background: theme('colors.ndp.bg'); scroll-margin-top: 6rem; }
 .season-details-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.25rem; }
 .season-details-close { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; flex-shrink: 0; border-radius: .5rem; color: theme('colors.ndp.text-muted'); }

@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check } from 'lucide-react';
 import { SeasonQuickRequest, type SeasonRequestResult } from './SeasonQuickRequest';
 import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
 import { useFeatures } from '@/context/FeaturesContext';
@@ -64,7 +63,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
     const downloading = downloads.some(item => item.episode?.seasonNumber === season.season_number);
     const status: SeasonCardStatus = complete ? 'complete' : downloading ? 'downloading' : ownRequest || activeRequests.length ? 'requested'
       : sonarr?.episodeFileCount ? 'partial' : sonarr ? 'not_available' : 'not_requested';
-    return { season, sonarr, status, state: { complete, ownRequest, takenQualityIds, defaultAllowed, canRequest } };
+    return { season, status, state: { complete, ownRequest, takenQualityIds, defaultAllowed, canRequest } };
   });
   const selected = seasons.find(item => item.season.season_number === selection?.number);
   const open = (number: number, requesting: boolean, button: HTMLButtonElement) => {
@@ -81,7 +80,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
       </div>
     </div>
     <div className="season-cards">
-      {seasons.map(({ season, sonarr, state, status }) => {
+      {seasons.map(({ season, state, status }) => {
         const label = t('media.season_label', { number: season.season_number });
         const active = selection?.number === season.season_number;
         return <article className="season-card" key={season.season_number}>
@@ -90,12 +89,11 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
               aria-expanded={active} aria-controls="season-details" onClick={event => open(season.season_number, false, event.currentTarget)}>
               <SeasonPoster posterPath={season.poster_path} seriesPosterPath={props.media.poster_path} blurred={props.blurred} />
             </button>
-            {state.complete && <span className="season-complete"><Check size={14} aria-hidden="true" />{t('media.explorer.complete')}</span>}
             {requestAccess && !state.complete && <SeasonQuickRequest media={props.media} seasonNumber={season.season_number}
               allowed={state.defaultAllowed} result={submitted[season.season_number]} onRefresh={props.onRefresh}
               onRequested={result => setSubmitted(previous => ({ ...previous, [season.season_number]: result }))} />}
           </div>
-          <SeasonCardInfo season={season} sonarr={sonarr} status={status} />
+          <SeasonCardInfo season={season} status={status} />
         </article>;
       })}
     </div>

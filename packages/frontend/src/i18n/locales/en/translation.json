@@ -1254,7 +1254,6 @@
   "media.explorer.requested": "Requested",
   "media.explorer.partial": "Partially available",
   "media.explorer.partial_short": "Partial",
-  "media.explorer.available_episodes": "{{available}} of {{total}} episodes available",
   "media.explorer.not_available": "Not available",
   "media.explorer.not_requested": "Not requested"
 }

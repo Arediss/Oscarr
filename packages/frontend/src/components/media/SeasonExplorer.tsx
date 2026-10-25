@@ -10,6 +10,7 @@ import { fillOf, type SonarrSeasonLike } from '@/utils/seasonFill';
 import type { MediaRequest, TmdbMedia, TmdbSeason } from '@/types';
 import { SeasonPanel } from './SeasonPanel';
 import { SeasonPoster } from './SeasonPoster';
+import { SeasonCardInfo, type SeasonCardStatus } from './SeasonCardInfo';
 import './season-explorer.css';
 
 export interface SeasonExplorerProps {
@@ -61,7 +62,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
     const defaultAllowed = !complete && !ownRequest;
     const canRequest = requestAccess && (defaultAllowed || props.qualityOptions.some(option => !takenQualityIds.has(option.id)));
     const downloading = downloads.some(item => item.episode?.seasonNumber === season.season_number);
-    const status = complete ? 'complete' : downloading ? 'downloading' : ownRequest || activeRequests.length ? 'requested'
+    const status: SeasonCardStatus = complete ? 'complete' : downloading ? 'downloading' : ownRequest || activeRequests.length ? 'requested'
       : sonarr?.episodeFileCount ? 'partial' : sonarr ? 'not_available' : 'not_requested';
     return { season, sonarr, status, state: { complete, ownRequest, takenQualityIds, defaultAllowed, canRequest } };
   });
@@ -94,10 +95,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
               allowed={state.defaultAllowed} result={submitted[season.season_number]} onRefresh={props.onRefresh}
               onRequested={result => setSubmitted(previous => ({ ...previous, [season.season_number]: result }))} />}
           </div>
-          <h3 className="season-card-title">{label}</h3>
-          <p className="season-card-meta">{season.air_date?.slice(0, 4)}{season.air_date && ' · '}{season.episode_count} {t('media.episodes_short')}</p>
-          <p className={`season-card-status season-status-${status}`}>{t(`media.explorer.${status}`)}</p>
-          {sonarr && !state.complete && <p className="season-card-meta">{sonarr.episodeFileCount}/{sonarr.totalEpisodeCount || season.episode_count} {t('media.explorer.available').toLowerCase()}</p>}
+          <SeasonCardInfo season={season} sonarr={sonarr} status={status} />
         </article>;
       })}
     </div>

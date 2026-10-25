@@ -26,7 +26,7 @@ import { localizedDate } from '@/i18n/formatters';
 import type { MediaRequest } from '@/types';
 import { useModal } from '@/hooks/useModal';
 import { parseRequestSeasons } from '@/utils/requestSeasons';
-import { groupRequests } from '@/utils/requestGroups';
+import { groupRequests, sortRequestsBySeason } from '@/utils/requestGroups';
 import { useExpandableRequestCard } from '@/hooks/useExpandableRequestCard';
 
 const STATUS_CONFIG: Record<string, { labelKey: string; icon: typeof Clock; color: string; bg: string; dot: string }> = {
@@ -507,7 +507,7 @@ function RequestGroupCard({ requests, expandedGroupId, setExpandedGroupId, ...pr
         {expansion.open && (
           <div id={panelId} className="relative min-h-0 overflow-y-auto overscroll-contain px-3.5 pb-3.5">
             <div className="flex flex-wrap items-start gap-2">
-              {requests.map(request => <RequestCard key={request.id} request={request} {...props} compact onSettingsChange={expansion.setModalOpen} />)}
+              {sortRequestsBySeason(requests).map(request => <RequestCard key={request.id} request={request} {...props} compact onSettingsChange={expansion.setModalOpen} />)}
             </div>
           </div>
         )}

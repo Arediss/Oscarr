@@ -32,6 +32,8 @@
   background: linear-gradient(180deg, rgb(10 14 23 / .15), transparent 10rem, #0a0e17 27rem);
 }
 
+.media-detail-veil { display: none; }
+
 .media-detail-title {
   font-size: clamp(2.5rem, 4.8vw, 4.5rem);
   line-height: 1.08;
@@ -63,16 +65,20 @@
   }
 
   .media-detail-shade {
-    /* Anchor the clear area at the top right so the fade curves from top left to bottom right. */
-    background: radial-gradient(ellipse 100% 100% at 100% 0%,
-      transparent 0%,
-      rgb(10 14 23 / .07) 20%,
-      rgb(10 14 23 / .22) 40%,
-      rgb(10 14 23 / .45) 60%,
-      rgb(10 14 23 / .7) 80%,
-      rgb(10 14 23 / .87) 92%,
-      rgb(10 14 23 / .96) 97%,
-      #0a0e17 100%);
+    /* Seal the image boundaries; the diffuse SVG supplies the irregular interior shading. */
+    background:
+      linear-gradient(90deg, #0a0e17, transparent 20%),
+      linear-gradient(0deg, #0a0e17, transparent 28%),
+      rgb(10 14 23 / .1);
   }
 
+  .media-detail-veil {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    color: #0a0e17;
+    pointer-events: none;
+  }
 }

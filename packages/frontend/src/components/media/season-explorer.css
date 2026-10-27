@@ -14,30 +14,34 @@
 .season-status-complete { color: theme('colors.ndp.success'); background: rgb(16 185 129 / .1); }
 .season-status-partial { color: theme('colors.ndp.warning'); background: rgb(245 158 11 / .1); }
 .season-status-requested, .season-status-downloading { color: theme('colors.ndp.accent-hover'); background: rgb(99 102 241 / .12); }
-.season-details { margin-top: 1rem; border: 1px solid theme('colors.ndp.border'); border-radius: .75rem; background: theme('colors.ndp.bg'); scroll-margin-top: 6rem; }
-.season-details-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.25rem; }
+.season-details { margin-top: 1.5rem; scroll-margin-top: 6rem; }
+.season-details-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; scroll-margin-top: 6rem; }
+.season-details-intro { flex: 1; min-width: 0; }
+.season-details-actions { display: flex; align-items: center; gap: .5rem; }
 .season-details-close { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; flex-shrink: 0; border-radius: .5rem; color: theme('colors.ndp.text-muted'); }
 .season-details-close:hover { background: theme('colors.ndp.surface-light'); color: theme('colors.ndp.text'); }
 .season-explorer button:focus-visible, .season-explorer select:focus-visible, .season-details:focus-visible { outline: 2px solid theme('colors.ndp.accent-hover'); outline-offset: 2px; }
 .season-explorer .season-card-button:focus-visible { outline-offset: -3px; }
-.season-counts { display: flex; flex-wrap: wrap; gap: .25rem 1rem; color: #9ca3af; font-size: .75rem; margin-top: .25rem; }
 .season-next { display: flex; align-items: center; gap: .5rem; color: #9ca3af; font-size: .75rem; }
-.episode-filters { display: flex; flex-wrap: wrap; gap: .5rem; padding: 1rem 1.25rem; border-bottom: 1px solid #ffffff0a; }
-.episode-filters button { padding: .375rem .75rem; font-size: .75rem; color: #9ca3af; border-radius: .375rem; border: 1px solid transparent; }
+.episode-filters { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.episode-filters button { min-height: 2.5rem; padding: .375rem .75rem; font-size: .75rem; color: #9ca3af; border-radius: .5rem; border: 1px solid transparent; }
 .episode-filters button[aria-pressed=true] { color: #e0e7ff; background: #818cf812; border-color: #818cf840; }
 .episode-filters span { margin-left: .375rem; opacity: .65; font-variant-numeric: tabular-nums; }
-.episode-list { padding: 0 1.25rem; }
-.episode-line { display: flex; align-items: center; gap: 1rem; padding: .875rem 0; border-bottom: 1px solid #ffffff08; }
-.episode-line:last-child { border-bottom: 0; }
-.episode-number { font-size: .75rem; color: #6b7280; width: 2.75rem; flex-shrink: 0; text-align: center; font-variant-numeric: tabular-nums; }
+.episode-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: .5rem .75rem; }
+.episode-empty { grid-column: 1 / -1; }
+.episode-line { display: flex; align-items: flex-start; gap: .75rem; min-width: 0; padding: .875rem; border-radius: .625rem; background: rgb(255 255 255 / .025); }
+.episode-number { display: grid; place-items: center; min-width: 2.25rem; min-height: 2.25rem; padding: .25rem; flex-shrink: 0; border-radius: .375rem; background: rgb(255 255 255 / .04); font-size: .6875rem; font-weight: 600; color: theme('colors.ndp.text-muted'); font-variant-numeric: tabular-nums; }
 .episode-info { flex: 1; min-width: 0; }
-.episode-quality { font-size: .6875rem; color: #9ca3af; padding: .125rem .5rem; border: 1px solid #ffffff10; border-radius: .25rem; }
-.episode-state { font-size: .75rem; display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: .375rem; min-width: 9rem; }
+.episode-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .75rem; margin-top: .375rem; font-size: .6875rem; line-height: 1rem; color: theme('colors.ndp.text-muted'); }
+.episode-meta time { white-space: nowrap; }
+.episode-quality { overflow-wrap: anywhere; }
+.episode-state { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .25rem; }
+.episode-state svg { flex-shrink: 0; }
 .episode-state-available { color: #34d399; }
 .episode-state-missing { color: #fbbf24; }
 .episode-state-upcoming, .episode-state-undated, .episode-state-unknown { color: #9ca3af; }
 .episode-state-downloading, .episode-state-requested { color: #a5b4fc; }
-.season-footer { border-top: 1px solid #ffffff0a; padding: 1rem 1.25rem; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; background: #ffffff02; }
+.season-request { margin-top: 1rem; padding: 1rem; border-radius: .625rem; background: rgb(255 255 255 / .025); }
 @media (min-width: 640px) {
   .season-cards { grid-auto-columns: 10rem; }
 }
@@ -49,9 +53,8 @@
 }
 @media (max-width: 640px) {
   .season-explorer-heading { align-items: flex-start; }
-  .season-next, .episode-quality { display: none; }
-  .episode-list { padding-inline: 1rem; }
-  .episode-line { display: grid; grid-template-columns: 2rem minmax(0, 1fr); gap: .5rem; }
-  .episode-number { width: 2rem; }
-  .episode-state { grid-column: 2; justify-content: flex-start; min-width: 0; font-size: .6875rem; }
+  .season-details-heading { flex-wrap: wrap; }
+  .season-details-intro { flex-basis: 100%; }
+  .season-details-actions { width: 100%; justify-content: space-between; }
+  .season-details-close { margin-left: auto; }
 }

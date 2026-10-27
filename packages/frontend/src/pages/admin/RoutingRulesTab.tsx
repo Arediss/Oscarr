@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useId, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, XCircle, Pencil, Copy, Power, GripVertical, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, X, XCircle, Pencil, Copy, Power, GripVertical, AlertTriangle } from 'lucide-react';
 import { RULE_FIELDS, criterionField, criterionIdOf, operatorsForAnyField } from '@oscarr/shared';
 import api from '@/lib/api';
 import { Spinner } from './Spinner';
 import type { RootFolder } from '@/types';
 import { extractApiError } from '@/utils/toast';
 import { RuleActionsEditor, type RuleAction } from './RuleActionsEditor';
+import { useModal } from '@/hooks/useModal';
 
 interface FolderRule {
   id: number; name: string; priority: number; mediaType: string;
@@ -147,6 +149,16 @@ export function RoutingRulesTab() {
     setNewMediaType('tv');
     setNewConditions([{ field: 'genre', operator: 'contains', value: '' }]);
   };
+
+  const closeForm = () => { if (!saving) resetForm(); };
+  const { dialogRef, titleId } = useModal({ open: showForm, onClose: closeForm });
+
+  useEffect(() => {
+    if (!showForm) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [showForm]);
 
   const startEdit = (rule: FolderRule) => {
     let conds: RuleCondition[];
@@ -357,9 +369,21 @@ export function RoutingRulesTab() {
         })}
       </div>
 
-      {/* New rule form */}
-      {showForm && (
-        <div className="card mt-4 space-y-5 border border-ndp-accent/20 p-5 animate-fade-in">
+      {/* Create and edit share one modal; its footer stays visible as actions grow. */}
+      {showForm && createPortal(
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-fade-in"
+          onClick={e => { if (e.target === e.currentTarget) closeForm(); }}>
+        <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-busy={saving}
+          className="flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ndp-surface shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-white/5 px-5 py-4">
+            <h2 id={titleId} className="text-lg font-semibold text-ndp-text">{editingId ? t('admin.paths.edit_rule') : t('admin.paths.new_rule')}</h2>
+            <button type="button" onClick={closeForm} disabled={saving} aria-label={t('common.close')}
+              className="rounded-lg p-2 text-ndp-text-dim transition-colors hover:bg-white/5 hover:text-ndp-text disabled:opacity-50">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="min-h-0 overflow-y-auto">
+          <fieldset disabled={saving} className="min-w-0 space-y-5 p-5">
           <FormSection step={1} title={t('admin.paths.section_info')}>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
@@ -396,11 +420,15 @@ export function RoutingRulesTab() {
           </FormSection>
 
           {saveError && <p role="alert" className="text-sm text-ndp-danger">{saveError}</p>}
-          <div className="flex gap-2 border-t border-white/5 pt-4">
+          </fieldset>
+          </div>
+          <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-white/5 px-5 py-4">
             <button onClick={saveRule} disabled={!canSave || saving} className="btn-primary text-sm">{saving ? t('admin.paths.saving') : editingId ? t('common.save') : t('admin.paths.create_rule')}</button>
-            <button onClick={resetForm} disabled={saving} className="btn-secondary text-sm">{t('common.cancel')}</button>
+            <button onClick={closeForm} disabled={saving} className="btn-secondary text-sm">{t('common.cancel')}</button>
           </div>
         </div>
+        </div>,
+        document.body,
       )}
 
       {/* Delete confirmation modal */}

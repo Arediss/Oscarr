@@ -1241,7 +1241,8 @@
       "rule_tag_count_one": "{{count}} tag",
       "rule_tag_count_other": "{{count}} tags",
       "save_error": "Impossible de sauvegarder la règle.",
-      "saving": "Sauvegarde…"
+      "saving": "Sauvegarde…",
+      "edit_rule": "Modifier la règle"
     }
   },
   "media.explorer.title": "Saisons et épisodes",

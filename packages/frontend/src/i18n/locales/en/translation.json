@@ -1241,7 +1241,8 @@
       "rule_tag_count_one": "{{count}} tag",
       "rule_tag_count_other": "{{count}} tags",
       "save_error": "Unable to save the rule.",
-      "saving": "Saving…"
+      "saving": "Saving…",
+      "edit_rule": "Edit rule"
     }
   },
   "media.explorer.title": "Seasons and episodes",

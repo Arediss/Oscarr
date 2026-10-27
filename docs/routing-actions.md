@@ -4,6 +4,11 @@ Rules still use the first matching enabled rule. Its actions can combine a root 
 a Sonarr series type, and one or more existing Sonarr/Radarr tags. The editor offers
 « Ajouter une action » and removable action rows, using the existing admin styling.
 
+Creation and editing open in a modal above the rules list. The content scrolls while the
+title and save/cancel controls stay visible. Escape, the close button and the backdrop close
+it; focus is trapped and returned to the trigger. Closing and form inputs are disabled during
+saving, and a failed save keeps the form and its error visible.
+
 Tags belong to an explicit service instance, even when no folder override is selected.
 Changing the instance clears selected tag IDs. Tags are fetched through the authenticated
 admin API; loading, empty, unavailable and deleted-tag states are visible. French and

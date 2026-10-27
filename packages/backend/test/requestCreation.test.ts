@@ -26,6 +26,7 @@ vi.mock('../src/utils/safeNotify.js', () => ({
 vi.mock('../src/services/tmdb.js', async (original) => ({
   ...await original<typeof import('../src/services/tmdb.js')>(),
   getMovieDetails: vi.fn(async () => ({ id: 101, title: 'Test movie', genres: [], original_language: 'en' })),
+  getTvDetails: vi.fn(async () => ({ id: 202, name: 'Test series', genres: [], original_language: 'en' })),
 }));
 
 let userId: number;

@@ -1217,7 +1217,31 @@
       "builtin_fields": "Champs intégrés",
       "criteria_fields": "Critères",
       "language": "Langue d'origine",
-      "any_media_type": "Peu importe"
+      "any_media_type": "Peu importe",
+      "rules_help": "Les règles sont évaluées par priorité. Toutes les actions de la première règle correspondante sont appliquées. Sinon, les paramètres par défaut sont utilisés.",
+      "action_service": "Instance cible",
+      "default_service": "Instance par défaut",
+      "actions_help": "Cumulez les actions à appliquer lorsque toutes les conditions sont remplies.",
+      "action_folder": "Définir le dossier",
+      "action_seriesType": "Définir le type Sonarr",
+      "action_tag": "Ajouter un tag",
+      "action_kind": "Type de l’action {{number}}",
+      "add_action": "Ajouter une action",
+      "remove_action": "Supprimer l’action {{number}}",
+      "service_tag": "Tag de l’action {{number}}",
+      "select_service_tag": "Choisir un tag Sonarr / Radarr",
+      "tags_choose_service": "Sélectionnez une instance cible pour récupérer ses tags.",
+      "tags_loading": "Chargement des tags…",
+      "tags_unavailable": "Impossible de récupérer les tags de cette instance.",
+      "tags_retry": "Réessayer",
+      "tags_refresh": "Actualiser les tags",
+      "tags_empty": "Aucun tag disponible. Créez vos tags dans Sonarr ou Radarr, puis actualisez.",
+      "tags_help": "Les tags sélectionnés seront ajoutés au média sans retirer ses tags existants.",
+      "tag_missing": "Tag #{{id}} introuvable — choisissez un autre tag",
+      "rule_tag_count_one": "{{count}} tag",
+      "rule_tag_count_other": "{{count}} tags",
+      "save_error": "Impossible de sauvegarder la règle.",
+      "saving": "Sauvegarde…"
     }
   },
   "media.explorer.title": "Saisons et épisodes",
@@ -1255,5 +1279,12 @@
   "media.explorer.partial": "Partiellement disponible",
   "media.explorer.partial_short": "Partielle",
   "media.explorer.not_available": "Non disponible",
-  "media.explorer.not_requested": "Non demandée"
+  "media.explorer.not_requested": "Non demandée",
+  "errors": {
+    "RULE_TAGS_INVALID": "Les tags doivent être des identifiants valides (100 maximum).",
+    "RULE_TAGS_REQUIRE_SERVICE": "Choisissez Film ou Série et une instance Sonarr / Radarr active pour appliquer des tags.",
+    "RULE_TAGS_NOT_FOUND": "Un tag sélectionné n’existe plus sur cette instance. Actualisez les tags et modifiez la règle.",
+    "RULE_TAGS_UNAVAILABLE": "Impossible de vérifier les tags. Vérifiez la connexion à Sonarr / Radarr et réessayez.",
+    "RULE_TAGS_RESELECT": "Sélectionnez à nouveau les tags après un changement d’instance."
+  }
 }

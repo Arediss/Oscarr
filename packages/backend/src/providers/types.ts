@@ -108,6 +108,8 @@ export interface ArrClient {
   // Request dispatch
   findByExternalId(externalId: number): Promise<{ id: number } | null>;
   addMedia(options: ArrAddMediaOptions): Promise<void>;
+  /** Add tags without replacing existing tags or changing other media settings. */
+  addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void>;
   searchMedia(serviceMediaId: number): Promise<void>;
   /** Monitor and search only these seasons of an existing series. */
   requestSeasons?(serviceMediaId: number, seasons: number[]): Promise<void>;

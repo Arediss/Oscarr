@@ -100,6 +100,19 @@ export async function servicesHelperRoutes(app: FastifyInstance) {
   app.get('/sonarr/profiles', (_request, reply) => reachArr(reply, 'sonarr', (c) => c.getQualityProfiles()));
   app.get('/sonarr/rootfolders', (_request, reply) => reachArr(reply, 'sonarr', (c) => c.getRootFolders()));
 
+  app.get('/services/:id/tags', async (request, reply) => {
+    const serviceId = parseId((request.params as { id: string }).id);
+    if (!serviceId) return reply.status(400).send({ error: 'Invalid ID' });
+    const service = await getServiceById(serviceId);
+    if (!service) return reply.status(404).send({ error: 'RULE_TAGS_REQUIRE_SERVICE' });
+    if (service.type !== 'sonarr' && service.type !== 'radarr') {
+      return reply.status(400).send({ error: 'RULE_TAGS_REQUIRE_SERVICE' });
+    }
+    try {
+      return await createArrClient(service.type, service.config).getTags();
+    } catch { return reply.status(502).send({ error: 'RULE_TAGS_UNAVAILABLE' }); }
+  });
+
   app.get('/services/:id/profiles', {
     schema: {
       params: {

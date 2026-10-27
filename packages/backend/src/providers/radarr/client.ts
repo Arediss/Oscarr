@@ -19,6 +19,10 @@ export class RadarrClient extends ArrClientBase implements ArrClient {
     return data;
   }
 
+  async addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void> {
+    await this.api.put('/movie/editor', { movieIds: [serviceMediaId], tags: tagIds, applyTags: 'add' });
+  }
+
   async getMovie(id: number): Promise<RadarrMovie> {
     const { data } = await this.api.get(`/movie/${id}`);
     return data;

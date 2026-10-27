@@ -6,13 +6,15 @@ import {
   type RuleOperator,
 } from '@oscarr/shared';
 import { checkRuleService } from './folderRules.js';
-import { findServiceTypeForMedia } from '../providers/index.js';
+import { createArrClient, findServiceTypeForMedia } from '../providers/index.js';
+import { getServiceById } from '../utils/services.js';
 
 export interface RulePayload {
   mediaType: string;
   conditions: unknown;
   seriesType?: string | null;
   serviceId?: number | null;
+  tagIds?: unknown;
 }
 
 /** On a partial PUT, skip a cross-field check when the field it depends on isn't being changed, so
@@ -21,6 +23,7 @@ export interface RulePayload {
 export interface ValidateRuleOptions {
   skipConditions?: boolean;
   skipService?: boolean;
+  skipTags?: boolean;
 }
 
 /** Write-time semantic validation shared by POST and PUT /folder-rules. Rejects rules that would be
@@ -50,7 +53,23 @@ export async function validateRulePayload(input: RulePayload, opts: ValidateRule
     // 'disabled' is allowed at write time (the service may be re-enabled); GET flags it as a warning.
   }
 
+  if (!opts.skipTags) return validateRuleTags(input.tagIds === undefined ? [] : input.tagIds, serviceId, mediaType);
   return null;
+}
+
+async function validateRuleTags(tagIds: unknown, serviceId: number | null | undefined, mediaType: string): Promise<string | null> {
+  if (!Array.isArray(tagIds) || tagIds.length > 100 || !tagIds.every(id => Number.isSafeInteger(id) && id > 0)) {
+    return 'RULE_TAGS_INVALID';
+  }
+  if (tagIds.length === 0) return null;
+  if (!serviceId || mediaType === 'any') return 'RULE_TAGS_REQUIRE_SERVICE';
+  const service = await getServiceById(serviceId);
+  if (!service || service.type !== findServiceTypeForMedia(mediaType)) return 'RULE_TAGS_REQUIRE_SERVICE';
+  try {
+    const tags = await createArrClient(service.type, service.config).getTags();
+    const knownIds = new Set(tags.map(tag => tag.id));
+    return tagIds.every(id => knownIds.has(id)) ? null : 'RULE_TAGS_NOT_FOUND';
+  } catch { return 'RULE_TAGS_UNAVAILABLE'; }
 }
 
 function unknownLabels(value: string, known: Set<string>): string[] {

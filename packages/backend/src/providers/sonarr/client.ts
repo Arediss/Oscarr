@@ -19,6 +19,10 @@ export class SonarrClient extends ArrClientBase implements ArrClient {
     return data;
   }
 
+  async addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void> {
+    await this.api.put('/series/editor', { seriesIds: [serviceMediaId], tags: tagIds, applyTags: 'add' });
+  }
+
   async getSeriesById(id: number): Promise<SonarrSeries> {
     const { data } = await this.api.get(`/series/${id}`);
     return data;

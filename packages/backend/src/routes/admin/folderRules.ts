@@ -1,8 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../utils/prisma.js';
 import { parseId } from '../../utils/params.js';
-import { classifyRuleService } from '../../services/folderRules.js';
+import { classifyRuleService, parseRuleTagIds } from '../../services/folderRules.js';
 import { validateRulePayload } from '../../services/folderRuleValidation.js';
+
+const tagIdsSchema = { type: 'array', maxItems: 100, items: { type: 'integer', minimum: 1 } };
+const serializeRule = <T extends { tagIds: string }>(rule: T) => ({ ...rule, tagIds: parseRuleTagIds(rule.tagIds) ?? [] });
 
 export async function folderRulesRoutes(app: FastifyInstance) {
   // === FOLDER RULES ===
@@ -14,7 +17,11 @@ export async function folderRulesRoutes(app: FastifyInstance) {
     const rules = await prisma.folderRule.findMany({ orderBy: [{ priority: 'asc' }, { id: 'asc' }] });
     const services = await prisma.service.findMany({ select: { id: true, enabled: true, type: true } });
     const byId = new Map(services.map((s) => [s.id, s]));
-    return rules.map((r) => ({ ...r, serviceStatus: classifyRuleService(r.serviceId != null ? byId.get(r.serviceId) : null, r.serviceId, r.mediaType) }));
+    return rules.map((r) => ({
+      ...serializeRule(r),
+      serviceStatus: r.serviceId == null && (parseRuleTagIds(r.tagIds)?.length ?? 1) > 0 ? 'missing'
+        : classifyRuleService(r.serviceId != null ? byId.get(r.serviceId) : null, r.serviceId, r.mediaType),
+    }));
   });
 
   app.post('/folder-rules', {
@@ -27,21 +34,22 @@ export async function folderRulesRoutes(app: FastifyInstance) {
           mediaType: { type: 'string', description: 'Media type this rule applies to (movie, tv)' },
           conditions: { type: 'array', description: 'Array of condition objects for matching' },
           folderPath: { type: 'string', description: 'Target root folder path' },
-          seriesType: { type: 'string', description: 'Series type filter (e.g. anime)' },
+          seriesType: { type: ['string', 'null'], description: 'Series type override (e.g. anime)' },
           priority: { type: 'number', description: 'Rule priority (lower = higher priority)' },
-          serviceId: { type: 'number', description: 'Associated service ID' },
+          serviceId: { type: ['integer', 'null'], minimum: 1, description: 'Associated service ID' },
+          tagIds: tagIdsSchema,
         },
       },
     },
   }, async (request, reply) => {
 
-    const { name, mediaType, conditions, folderPath, seriesType, priority, serviceId } = request.body as {
-      name: string; mediaType: string; conditions: unknown[]; folderPath: string; seriesType?: string; priority?: number; serviceId?: number;
+    const { name, mediaType, conditions, folderPath, seriesType, priority, serviceId, tagIds = [] } = request.body as {
+      name: string; mediaType: string; conditions: unknown[]; folderPath: string; seriesType?: string | null; priority?: number; serviceId?: number | null; tagIds?: number[];
     };
-    if (!name || !mediaType || !conditions || !folderPath) {
+    if (!name.trim() || !mediaType || !conditions || typeof folderPath !== 'string') {
       return reply.status(400).send({ error: 'All fields are required' });
     }
-    const validationError = await validateRulePayload({ mediaType, conditions, seriesType, serviceId });
+    const validationError = await validateRulePayload({ mediaType, conditions, seriesType, serviceId, tagIds });
     if (validationError) return reply.status(400).send({ error: validationError });
     const rule = await prisma.folderRule.create({
       data: {
@@ -52,9 +60,10 @@ export async function folderRulesRoutes(app: FastifyInstance) {
         seriesType: seriesType || null,
         priority: priority ?? 0,
         serviceId: serviceId ?? null,
+        tagIds: JSON.stringify([...new Set(tagIds)]),
       },
     });
-    return reply.status(201).send(rule);
+    return reply.status(201).send(serializeRule(rule));
   });
 
   app.put('/folder-rules/:id', {
@@ -73,9 +82,10 @@ export async function folderRulesRoutes(app: FastifyInstance) {
           mediaType: { type: 'string', description: 'Media type this rule applies to' },
           conditions: { type: 'array', description: 'Array of condition objects for matching' },
           folderPath: { type: 'string', description: 'Target root folder path' },
-          seriesType: { type: 'string', description: 'Series type filter (e.g. anime)' },
+          seriesType: { type: ['string', 'null'], description: 'Series type override (e.g. anime)' },
           priority: { type: 'number', description: 'Rule priority (lower = higher priority)' },
-          serviceId: { type: ['number', 'null'], description: 'Associated service ID, or null to unset' },
+          serviceId: { type: ['integer', 'null'], minimum: 1, description: 'Associated service ID, or null to unset' },
+          tagIds: tagIdsSchema,
         },
       },
     },
@@ -84,13 +94,19 @@ export async function folderRulesRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const ruleId = parseId(id);
     if (!ruleId) return reply.status(400).send({ error: 'Invalid ID' });
-    const { name, mediaType, conditions, folderPath, seriesType, priority, serviceId } = request.body as {
-      name?: string; mediaType?: string; conditions?: unknown[]; folderPath?: string; seriesType?: string; priority?: number; serviceId?: number | null;
+    const { name, mediaType, conditions, folderPath, seriesType, priority, serviceId, tagIds } = request.body as {
+      name?: string; mediaType?: string; conditions?: unknown[]; folderPath?: string; seriesType?: string | null; priority?: number; serviceId?: number | null; tagIds?: number[];
     };
     // Validate the EFFECTIVE payload (provided fields merged over the stored rule), so a partial
     // update can't leave a rule in a never-fires / wrong-service state.
     const existing = await prisma.folderRule.findUnique({ where: { id: ruleId } });
     if (!existing) return reply.status(404).send({ error: 'Rule not found' });
+    // Numeric tag IDs can name completely different tags on two instances. A partial edit
+    // must explicitly replace/clear them instead of carrying the old instance's IDs across.
+    if (serviceId !== undefined && serviceId !== existing.serviceId && tagIds === undefined
+      && (parseRuleTagIds(existing.tagIds)?.length ?? 1) > 0) {
+      return reply.status(400).send({ error: 'RULE_TAGS_RESELECT' });
+    }
     let effConditions: unknown = conditions;
     if (effConditions === undefined) {
       try { effConditions = JSON.parse(existing.conditions); } catch { effConditions = existing.conditions; }
@@ -105,10 +121,12 @@ export async function folderRulesRoutes(app: FastifyInstance) {
         conditions: effConditions,
         seriesType: seriesType !== undefined ? (seriesType || null) : existing.seriesType,
         serviceId: serviceId !== undefined ? serviceId : existing.serviceId,
+        tagIds: tagIds ?? parseRuleTagIds(existing.tagIds),
       },
       {
         skipConditions: conditions === undefined && !mediaTypeChanged,
         skipService: serviceId === undefined && !mediaTypeChanged,
+        skipTags: tagIds === undefined && serviceId === undefined && !mediaTypeChanged,
       },
     );
     if (validationError) return reply.status(400).send({ error: validationError });
@@ -122,9 +140,10 @@ export async function folderRulesRoutes(app: FastifyInstance) {
         ...(seriesType !== undefined ? { seriesType: seriesType || null } : {}),
         ...(priority !== undefined ? { priority } : {}),
         ...(serviceId !== undefined ? { serviceId } : {}),
+        ...(tagIds !== undefined ? { tagIds: JSON.stringify([...new Set(tagIds)]) } : {}),
       },
     });
-    return reply.send(rule);
+    return reply.send(serializeRule(rule));
   });
 
   app.delete('/folder-rules/:id', {
@@ -179,7 +198,7 @@ export async function folderRulesRoutes(app: FastifyInstance) {
     const rule = await prisma.folderRule.findUnique({ where: { id: ruleId } });
     if (!rule) return reply.status(404).send({ error: 'Rule not found' });
     const updated = await prisma.folderRule.update({ where: { id: ruleId }, data: { enabled: !rule.enabled } });
-    return reply.send(updated);
+    return reply.send(serializeRule(updated));
   });
 
   // Duplicate a folder rule
@@ -207,9 +226,10 @@ export async function folderRulesRoutes(app: FastifyInstance) {
         folderPath: rule.folderPath,
         seriesType: rule.seriesType,
         serviceId: rule.serviceId,
+        tagIds: rule.tagIds,
         enabled: false,
       },
     });
-    return reply.status(201).send(copy);
+    return reply.status(201).send(serializeRule(copy));
   });
 }

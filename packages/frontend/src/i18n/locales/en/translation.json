@@ -1217,7 +1217,31 @@
       "builtin_fields": "Built-in fields",
       "criteria_fields": "Criteria",
       "language": "Original language",
-      "any_media_type": "Any type"
+      "any_media_type": "Any type",
+      "rules_help": "Rules are evaluated by priority. All actions of the first matching rule are applied. Otherwise, the default settings are used.",
+      "action_service": "Target instance",
+      "default_service": "Default instance",
+      "actions_help": "Combine the actions to apply when all conditions match.",
+      "action_folder": "Set root folder",
+      "action_seriesType": "Set Sonarr type",
+      "action_tag": "Add a tag",
+      "action_kind": "Action {{number}} type",
+      "add_action": "Add an action",
+      "remove_action": "Remove action {{number}}",
+      "service_tag": "Action {{number}} tag",
+      "select_service_tag": "Choose a Sonarr / Radarr tag",
+      "tags_choose_service": "Select a target instance to fetch its tags.",
+      "tags_loading": "Loading tags…",
+      "tags_unavailable": "Unable to fetch tags from this instance.",
+      "tags_retry": "Retry",
+      "tags_refresh": "Refresh tags",
+      "tags_empty": "No tags available. Create tags in Sonarr or Radarr, then refresh.",
+      "tags_help": "Selected tags will be added to the media without removing its existing tags.",
+      "tag_missing": "Tag #{{id}} not found — choose another tag",
+      "rule_tag_count_one": "{{count}} tag",
+      "rule_tag_count_other": "{{count}} tags",
+      "save_error": "Unable to save the rule.",
+      "saving": "Saving…"
     }
   },
   "media.explorer.title": "Seasons and episodes",
@@ -1255,5 +1279,12 @@
   "media.explorer.partial": "Partially available",
   "media.explorer.partial_short": "Partial",
   "media.explorer.not_available": "Not available",
-  "media.explorer.not_requested": "Not requested"
+  "media.explorer.not_requested": "Not requested",
+  "errors": {
+    "RULE_TAGS_INVALID": "Tags must be valid IDs (up to 100).",
+    "RULE_TAGS_REQUIRE_SERVICE": "Choose Movie or Series and an active Sonarr / Radarr instance to apply tags.",
+    "RULE_TAGS_NOT_FOUND": "A selected tag no longer exists on this instance. Refresh the tags and edit the rule.",
+    "RULE_TAGS_UNAVAILABLE": "Unable to verify tags. Check the Sonarr / Radarr connection and try again.",
+    "RULE_TAGS_RESELECT": "Select tags again after changing the target instance."
+  }
 }

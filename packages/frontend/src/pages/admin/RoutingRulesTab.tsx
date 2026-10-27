@@ -5,11 +5,14 @@ import { RULE_FIELDS, criterionField, criterionIdOf, operatorsForAnyField } from
 import api from '@/lib/api';
 import { Spinner } from './Spinner';
 import type { RootFolder } from '@/types';
+import { extractApiError } from '@/utils/toast';
+import { RuleActionsEditor, type RuleAction } from './RuleActionsEditor';
 
 interface FolderRule {
   id: number; name: string; priority: number; mediaType: string;
   conditions: string; folderPath: string; seriesType: string | null; serviceId: number | null;
   enabled: boolean;
+  tagIds: number[];
   serviceStatus?: string; // 'ok' | 'no-service' | 'missing' | 'disabled' | 'wrong-type' (from GET)
 }
 interface RuleCondition { field: string; operator: string; value: string; }
@@ -82,10 +85,17 @@ export function RoutingRulesTab() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [newName, setNewName] = useState('');
   const [newMediaType, setNewMediaType] = useState('tv');
-  const [newFolder, setNewFolder] = useState('');
-  const [newSeriesType, setNewSeriesType] = useState('');
+  const [actions, setActions] = useState<RuleAction[]>([{ type: 'folder', value: '' }]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [newServiceId, setNewServiceId] = useState('');
   const [newConditions, setNewConditions] = useState<RuleCondition[]>([{ field: 'genre', operator: 'contains', value: '' }]);
+  const newFolder = actions.find(action => action.type === 'folder')?.value ?? '';
+  const newSeriesType = actions.find(action => action.type === 'seriesType')?.value ?? '';
+  const tagIds = actions.filter(action => action.type === 'tag' && action.value).map(action => Number(action.value));
+  const canSave = !!newName.trim() && newConditions.every(condition => condition.value.trim()) && actions.length > 0
+    && actions.every(action => action.type === 'folder' || !!action.value)
+    && (tagIds.length === 0 || !!newServiceId);
 
   useEffect(() => {
     async function load() {
@@ -132,7 +142,8 @@ export function RoutingRulesTab() {
 
   const resetForm = () => {
     setShowForm(false); setEditingId(null);
-    setNewName(''); setNewFolder(''); setNewSeriesType(''); setNewServiceId('');
+    setNewName(''); setNewServiceId(''); setSaveError('');
+    setActions([{ type: 'folder', value: '' }]);
     setNewMediaType('tv');
     setNewConditions([{ field: 'genre', operator: 'contains', value: '' }]);
   };
@@ -143,20 +154,26 @@ export function RoutingRulesTab() {
     setEditingId(rule.id);
     setNewName(rule.name);
     setNewMediaType(rule.mediaType);
-    setNewFolder(rule.folderPath);
-    setNewSeriesType(rule.seriesType || '');
+    const savedActions: RuleAction[] = [];
+    if (rule.folderPath) savedActions.push({ type: 'folder', value: rule.folderPath });
+    if (rule.seriesType) savedActions.push({ type: 'seriesType', value: rule.seriesType });
+    for (const id of rule.tagIds ?? []) savedActions.push({ type: 'tag', value: String(id) });
+    setActions(savedActions.length > 0 ? savedActions : [{ type: 'folder', value: '' }]);
+    setSaveError('');
     setNewServiceId(rule.serviceId?.toString() || '');
     setNewConditions(conds.length > 0 ? conds : [{ field: 'genre', operator: 'contains', value: '' }]);
     setShowForm(true);
   };
 
   const saveRule = async () => {
-    if (!newName || newConditions.some(c => !c.value)) return;
+    if (!canSave || saving) return;
+    setSaving(true); setSaveError('');
     const payload = {
       name: newName, mediaType: newMediaType, folderPath: newFolder,
       seriesType: newSeriesType || null,
       serviceId: newServiceId ? Number.parseInt(newServiceId) : null,
       conditions: newConditions,
+      tagIds,
     };
     try {
       if (editingId) {
@@ -167,7 +184,8 @@ export function RoutingRulesTab() {
         setRules(prev => [...prev, data]);
       }
       resetForm();
-    } catch (err) { console.error(err); }
+    } catch (err) { setSaveError(extractApiError(err, t('admin.paths.save_error'))); }
+    finally { setSaving(false); }
   };
 
   const deleteRule = async (id: number) => {
@@ -217,15 +235,16 @@ export function RoutingRulesTab() {
   };
 
 
-  const handleFolderChange = (path: string) => {
-    setNewFolder(path);
-    const folder = labeledFolders.find(f => f.path === path);
-    setNewServiceId(folder?.serviceId?.toString() || '');
+  const handleServiceChange = (serviceId: string) => {
+    if (serviceId === newServiceId) return;
+    setNewServiceId(serviceId);
+    setActions(previous => previous.map(action => action.type === 'folder' || action.type === 'tag' ? { ...action, value: '' } : action));
   };
 
   const renderConditionRow = (cond: RuleCondition, i: number) => (
-    <div key={`cond-${i}`} className="flex items-center gap-2">
-      <select value={cond.field} onChange={(e) => updateConditionField(i, e.target.value)} className="input text-sm py-1.5 w-36">
+    <div key={`cond-${i}`} className="flex items-start gap-2">
+      <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-[9rem_8rem_minmax(0,1fr)]">
+      <select value={cond.field} onChange={(e) => updateConditionField(i, e.target.value)} className="input min-w-0 w-full text-sm py-1.5">
         {/* Two families, kept visibly apart: the seven built-ins read a fact about the title or
             the requester, a criterion reads what the person asked for. Without the divider a
             criterion named "Langue" sat next to the built-in one with no way to tell them apart. */}
@@ -242,12 +261,13 @@ export function RoutingRulesTab() {
           </optgroup>
         )}
       </select>
-      <select value={cond.operator} onChange={(e) => { const c = [...newConditions]; c[i].operator = e.target.value; setNewConditions(c); }} className="input text-sm py-1.5 w-32">
+      <select value={cond.operator} onChange={(e) => { const c = [...newConditions]; c[i].operator = e.target.value; setNewConditions(c); }} className="input min-w-0 w-full text-sm py-1.5">
         {getOperatorsForField(cond.field).map(op => (
           <option key={op} value={op}>{t(`admin.paths.${op}`)}</option>
         ))}
       </select>
-      {renderValueInput(cond, i)}
+      <div className="col-span-2 flex min-w-0 sm:col-span-1">{renderValueInput(cond, i)}</div>
+      </div>
       {newConditions.length > 1 && (
         <button onClick={() => setNewConditions(prev => prev.filter((_, j) => j !== i))} className="text-ndp-text-dim hover:text-ndp-danger"><XCircle className="w-4 h-4" /></button>
       )}
@@ -298,6 +318,7 @@ export function RoutingRulesTab() {
                     <span className="text-sm font-semibold text-ndp-text">{rule.name}</span>
                     <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{rule.mediaType === 'movie' ? t('common.movie') : rule.mediaType === 'tv' ? t('common.series') : t('admin.paths.any_media_type')}</span>
                     {rule.seriesType && <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded">{rule.seriesType}</span>}
+                    {(rule.tagIds?.length ?? 0) > 0 && <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{t('admin.paths.rule_tag_count', { count: rule.tagIds.length })}</span>}
                     {service && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">{service.name}{service.config?.url ? ` · ${service.config.url}` : ''}</span>}
                     {rule.enabled && rule.serviceStatus && BROKEN_SERVICE_STATUSES.has(rule.serviceStatus) && (
                       <span className="text-[10px] bg-ndp-danger/10 text-ndp-danger px-1.5 py-0.5 rounded inline-flex items-center gap-1" title={t(`admin.paths.rule_broken_reason.${rule.serviceStatus}`)}>
@@ -347,7 +368,7 @@ export function RoutingRulesTab() {
               </div>
               <div>
                 <label htmlFor={`${fieldId}-type`} className="mb-1 block text-xs text-ndp-text-dim">{t('common.type')}</label>
-                <select id={`${fieldId}-type`} value={newMediaType} onChange={(e) => { setNewMediaType(e.target.value); setNewFolder(''); setNewServiceId(''); setNewSeriesType(''); }} className="input w-full text-sm">
+                <select id={`${fieldId}-type`} value={newMediaType} onChange={(e) => { setNewMediaType(e.target.value); setActions([{ type: 'folder', value: '' }]); setNewServiceId(''); }} className="input w-full text-sm">
                   <option value="tv">{t('common.series')}</option>
                   <option value="movie">{t('common.movie')}</option>
                   <option value="any">{t('admin.paths.any_media_type')}</option>
@@ -370,39 +391,14 @@ export function RoutingRulesTab() {
           </FormSection>
 
           <FormSection step={3} title={t('admin.paths.section_then')}>
-            <div className="space-y-3">
-              <div>
-                <label htmlFor={`${fieldId}-folder`} className="mb-1 block text-xs text-ndp-text-dim">{t('admin.paths.target_folder')}</label>
-                <select id={`${fieldId}-folder`} value={newFolder} onChange={(e) => handleFolderChange(e.target.value)} className="input w-full text-sm">
-                  <option value="">{t('common.choose')}</option>
-                  {labeledFolders
-                    .filter(f => {
-                      // An `any` rule can land on either side, so nothing is filtered out — the
-                      // admin picks, and a Radarr folder for a series is their call to make.
-                      if (newMediaType === 'any' || !f.serviceId) return true;
-                      const svc = services.find(s => s.id === f.serviceId);
-                      return svc ? (newMediaType === 'movie' ? svc.type === 'radarr' : svc.type === 'sonarr') : true;
-                    })
-                    .map(f => <option key={f.path} value={f.path}>{f.label}</option>)}
-                </select>
-              </div>
-
-              {/* A movie has no series type, so offering one was pure noise. Kept for `any`: the
-                  engine only applies it when the media actually is a series. */}
-              {newMediaType !== 'movie' && (
-                <div>
-                  <label htmlFor={`${fieldId}-sonarr-type`} className="mb-1 block text-xs text-ndp-text-dim">{t('admin.paths.sonarr_type')}</label>
-                  <select id={`${fieldId}-sonarr-type`} value={newSeriesType} onChange={(e) => setNewSeriesType(e.target.value)} className="input w-full text-sm">
-                    <option value="">{t('admin.paths.standard')}</option><option value="anime">{t('admin.paths.anime_rule')}</option><option value="daily">{t('admin.paths.daily')}</option>
-                  </select>
-                </div>
-              )}
-            </div>
+            <RuleActionsEditor actions={actions} onChange={setActions} serviceId={newServiceId} onServiceChange={handleServiceChange}
+              mediaType={newMediaType} services={services} folders={labeledFolders} />
           </FormSection>
 
+          {saveError && <p role="alert" className="text-sm text-ndp-danger">{saveError}</p>}
           <div className="flex gap-2 border-t border-white/5 pt-4">
-            <button onClick={saveRule} disabled={!newName || newConditions.some(c => !c.value)} className="btn-primary text-sm">{editingId ? t('common.save') : t('admin.paths.create_rule')}</button>
-            <button onClick={resetForm} className="btn-secondary text-sm">{t('common.cancel')}</button>
+            <button onClick={saveRule} disabled={!canSave || saving} className="btn-primary text-sm">{saving ? t('admin.paths.saving') : editingId ? t('common.save') : t('admin.paths.create_rule')}</button>
+            <button onClick={resetForm} disabled={saving} className="btn-secondary text-sm">{t('common.cancel')}</button>
           </div>
         </div>
       )}
@@ -431,35 +427,35 @@ export function RoutingRulesTab() {
     switch (cond.field) {
       case 'genre':
         return (
-          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input text-sm py-1.5 flex-1">
+          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input min-w-0 w-full text-sm py-1.5 flex-1">
             <option value="">{t('common.choose')}</option>
             {Object.entries(newMediaType === 'movie' ? MOVIE_GENRES : TV_GENRES).map(([key, tmdbName]) => <option key={key} value={tmdbName}>{t(`genre.${key}`)}</option>)}
           </select>
         );
       case 'user':
         return (
-          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input text-sm py-1.5 flex-1">
+          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input min-w-0 w-full text-sm py-1.5 flex-1">
             <option value="">{t('admin.paths.select_user')}</option>
             {users.map(u => <option key={u.id} value={u.id.toString()}>{u.displayName || u.email}</option>)}
           </select>
         );
       case 'role':
         return (
-          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input text-sm py-1.5 flex-1">
+          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input min-w-0 w-full text-sm py-1.5 flex-1">
             <option value="">{t('admin.paths.select_role')}</option>
             {roles.map(r => <option key={r.id} value={r.name}>{r.name}</option>)}
           </select>
         );
       case 'tag':
         return (
-          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input text-sm py-1.5 flex-1">
+          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input min-w-0 w-full text-sm py-1.5 flex-1">
             <option value="">{t('admin.paths.select_tag')}</option>
             {tags.map(tag => <option key={tag} value={tag}>{tag}</option>)}
           </select>
         );
       case 'quality':
         return (
-          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input text-sm py-1.5 flex-1">
+          <select value={cond.value} onChange={(e) => setValue(e.target.value)} className="input min-w-0 w-full text-sm py-1.5 flex-1">
             <option value="">{t('admin.paths.select_quality')}</option>
             {qualityOptions.map(q => <option key={q.id} value={q.label.toLowerCase()}>{q.label}</option>)}
           </select>
@@ -468,7 +464,7 @@ export function RoutingRulesTab() {
         return (
           <input value={cond.value} onChange={(e) => setValue(e.target.value)}
             placeholder={cond.field === 'language' ? 'ja, ko, zh' : 'JP, KR, CN'}
-            className="input text-sm py-1.5 flex-1" />
+            className="input min-w-0 w-full text-sm py-1.5 flex-1" />
         );
     }
   }
@@ -490,7 +486,7 @@ function FormSection({ step, title, children }: Readonly<{ step: number; title: 
         </span>
         <h3 className="text-sm font-semibold text-ndp-text">{title}</h3>
       </div>
-      <div className="pl-8">{children}</div>
+      <div className="sm:pl-8">{children}</div>
     </section>
   );
 }

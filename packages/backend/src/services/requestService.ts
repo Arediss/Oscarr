@@ -250,17 +250,25 @@ async function sendToArrService(
   const requested = rootFolderOverride || ctx.ruleMatch?.folderPath || ctx.defaultFolder;
   const folderPath = await resolveRootFolder(client, requested, ctx);
 
-  // User tagging is opt-in via AppSettings.arrUserTaggingEnabled. When off (default), no
-  // tag is created or attached — the *arr UI stays free of Oscarr-internal username tags.
-  // Read each call so the toggle takes effect without a server restart.
+  // Rule tags are instance-local and independent of optional requester tagging.
+  const ruleTags = ctx.ruleMatch?.tagIds ?? [];
+  if (ruleTags.length > 0) {
+    if (!ctx.targetService || ctx.ruleMatch?.serviceId !== ctx.targetService.id) {
+      throw new Error('RULE_TAGS_REQUIRE_SERVICE');
+    }
+    const knownIds = new Set((await client.getTags()).map(tag => tag.id));
+    if (ruleTags.some(id => !knownIds.has(id))) throw new Error('RULE_TAGS_NOT_FOUND');
+  }
   const settings = await getAppSettings();
-  const tags: number[] = settings?.arrUserTaggingEnabled ? [await client.getOrCreateTag(username)] : [];
+  const userTags = settings?.arrUserTaggingEnabled ? [await client.getOrCreateTag(username)] : [];
+  const tags = [...new Set([...ruleTags, ...userTags])];
 
   const externalId = mediaType === 'movie' ? media.tmdbId : media.tvdbId;
   if (!externalId) throw new Error(`Missing external ID for ${mediaType} "${media.title}"`);
 
   const existing = await client.findByExternalId(externalId);
   if (existing) {
+    if (ruleTags.length > 0) await client.addTagsToMedia(existing.id, ruleTags);
     if (mediaType === 'tv' && seasons?.length) {
       if (!client.requestSeasons) throw new Error('This service does not support season requests');
       await client.requestSeasons(existing.id, seasons);

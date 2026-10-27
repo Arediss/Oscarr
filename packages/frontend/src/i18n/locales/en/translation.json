@@ -1229,7 +1229,11 @@
       "add_action": "Add an action",
       "remove_action": "Remove action {{number}}",
       "service_tag": "Action {{number}} tag",
-      "select_service_tag": "Choose a Sonarr / Radarr tag",
+      "select_service_tag": "Choose a tag from this instance",
+      "tag_service_missing": "Deleted instance",
+      "tag_reference": "Tag #{{id}}",
+      "tag_unavailable_short": "unavailable",
+      "tag_missing_short": "not found",
       "tags_choose_service": "Select a target instance to fetch its tags.",
       "tags_loading": "Loading tags…",
       "tags_unavailable": "Unable to fetch tags from this instance.",
@@ -1283,9 +1287,10 @@
   "media.explorer.not_requested": "Not requested",
   "errors": {
     "RULE_TAGS_INVALID": "Tags must be valid IDs (up to 100).",
-    "RULE_TAGS_REQUIRE_SERVICE": "Choose Movie or Series and an active Sonarr / Radarr instance to apply tags.",
+    "RULE_TAGS_REQUIRE_SERVICE": "Choose a media type and an active compatible instance to apply tags.",
+    "SERVICE_TAGS_UNSUPPORTED": "This instance does not support tags.",
     "RULE_TAGS_NOT_FOUND": "A selected tag no longer exists on this instance. Refresh the tags and edit the rule.",
-    "RULE_TAGS_UNAVAILABLE": "Unable to verify tags. Check the Sonarr / Radarr connection and try again.",
+    "RULE_TAGS_UNAVAILABLE": "Unable to verify tags. Check the service connection and try again.",
     "RULE_TAGS_RESELECT": "Select tags again after changing the target instance."
   }
 }

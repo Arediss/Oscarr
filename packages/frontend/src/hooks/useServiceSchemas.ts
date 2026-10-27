@@ -17,6 +17,9 @@ export interface ServiceSchema {
   fields: ServiceField[];
   untested?: boolean;
   requiredForInstall?: boolean;
+  handlesMediaTypes?: string[];
+  supportsRouting?: boolean;
+  supportsTags?: boolean;
 }
 
 export interface ServiceData {

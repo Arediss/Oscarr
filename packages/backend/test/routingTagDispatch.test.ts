@@ -19,6 +19,7 @@ vi.mock('../src/providers/index.js', async original => ({
   ...await original<typeof import('../src/providers/index.js')>(),
   getArrClientForService: vi.fn(() => transport),
   getArrClient: vi.fn(async () => transport),
+  createServiceTagClient: vi.fn(() => transport),
 }));
 vi.mock('../src/utils/logEvent.js', () => ({ logEvent: vi.fn() }));
 vi.mock('../src/services/tmdb.js', async original => ({

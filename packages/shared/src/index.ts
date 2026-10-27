@@ -8,3 +8,4 @@ export * from './notificationTemplates.js';
 export * from './mediaState.js';
 export * from './canRequest.js';
 export * from './folderRuleSchema.js';
+export * from './serviceTags.js';

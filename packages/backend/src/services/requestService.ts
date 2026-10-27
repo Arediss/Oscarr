@@ -1,7 +1,8 @@
 import { requestQualityAliases } from './requestQualityAliases.js';
 import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
-import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService } from '../providers/index.js';
+import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService, createServiceTagClient } from '../providers/index.js';
+import type { ServiceTagClient } from '../providers/types.js';
 import { getMovieDetails, getTvDetails } from './tmdb.js';
 import { findTvPlaceholder, upgradeOrMergeTvPlaceholder } from './mediaService.js';
 import { matchFolderRule } from './folderRules.js';
@@ -252,11 +253,13 @@ async function sendToArrService(
 
   // Rule tags are instance-local and independent of optional requester tagging.
   const ruleTags = ctx.ruleMatch?.tagIds ?? [];
+  let tagClient: ServiceTagClient | undefined;
   if (ruleTags.length > 0) {
     if (!ctx.targetService || ctx.ruleMatch?.serviceId !== ctx.targetService.id) {
       throw new Error('RULE_TAGS_REQUIRE_SERVICE');
     }
-    const knownIds = new Set((await client.getTags()).map(tag => tag.id));
+    tagClient = createServiceTagClient(serviceType, ctx.targetService.config);
+    const knownIds = new Set((await tagClient.getTags()).map(tag => tag.id));
     if (ruleTags.some(id => !knownIds.has(id))) throw new Error('RULE_TAGS_NOT_FOUND');
   }
   const settings = await getAppSettings();
@@ -268,7 +271,7 @@ async function sendToArrService(
 
   const existing = await client.findByExternalId(externalId);
   if (existing) {
-    if (ruleTags.length > 0) await client.addTagsToMedia(existing.id, ruleTags);
+    if (tagClient) await tagClient.addTagsToMedia(existing.id, ruleTags);
     if (mediaType === 'tv' && seasons?.length) {
       if (!client.requestSeasons) throw new Error('This service does not support season requests');
       await client.requestSeasons(existing.id, seasons);

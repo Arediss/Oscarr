@@ -31,6 +31,9 @@ export const sonarrProvider: Provider = {
     createClient(config) {
       return new SonarrClient(config.url || '', config.apiKey || '');
     },
+    createTagClient(config) {
+      return new SonarrClient(config.url || '', config.apiKey || '');
+    },
   },
 };
 

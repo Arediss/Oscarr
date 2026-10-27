@@ -6,7 +6,7 @@ import {
   type RuleOperator,
 } from '@oscarr/shared';
 import { checkRuleService } from './folderRules.js';
-import { createArrClient, findServiceTypeForMedia } from '../providers/index.js';
+import { createServiceTagClient, getServiceDefinition, findServiceTypeForMedia } from '../providers/index.js';
 import { getServiceById } from '../utils/services.js';
 
 export interface RulePayload {
@@ -65,8 +65,9 @@ async function validateRuleTags(tagIds: unknown, serviceId: number | null | unde
   if (!serviceId || mediaType === 'any') return 'RULE_TAGS_REQUIRE_SERVICE';
   const service = await getServiceById(serviceId);
   if (!service || service.type !== findServiceTypeForMedia(mediaType)) return 'RULE_TAGS_REQUIRE_SERVICE';
+  if (!getServiceDefinition(service.type)?.createTagClient) return 'SERVICE_TAGS_UNSUPPORTED';
   try {
-    const tags = await createArrClient(service.type, service.config).getTags();
+    const tags = await createServiceTagClient(service.type, service.config).getTags();
     const knownIds = new Set(tags.map(tag => tag.id));
     return tagIds.every(id => knownIds.has(id)) ? null : 'RULE_TAGS_NOT_FOUND';
   } catch { return 'RULE_TAGS_UNAVAILABLE'; }

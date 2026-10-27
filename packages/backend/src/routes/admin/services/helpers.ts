@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { getServiceById } from '../../../utils/services.js';
-import { getAuthProvider, getArrClient, createArrClient, getServiceDefinition, type ArrClient } from '../../../providers/index.js';
+import { getAuthProvider, getArrClient, createArrClient, createServiceTagClient, getServiceDefinition, type ArrClient } from '../../../providers/index.js';
 import { plexCreatePin, plexCheckPin, plexFetchMachineId } from '../../../providers/plex/index.js';
 import { parseId } from '../../../utils/params.js';
 import { classifyTestError } from '../../../utils/serviceTestError.js';
@@ -105,11 +105,11 @@ export async function servicesHelperRoutes(app: FastifyInstance) {
     if (!serviceId) return reply.status(400).send({ error: 'Invalid ID' });
     const service = await getServiceById(serviceId);
     if (!service) return reply.status(404).send({ error: 'RULE_TAGS_REQUIRE_SERVICE' });
-    if (service.type !== 'sonarr' && service.type !== 'radarr') {
-      return reply.status(400).send({ error: 'RULE_TAGS_REQUIRE_SERVICE' });
+    if (!getServiceDefinition(service.type)?.createTagClient) {
+      return reply.status(400).send({ error: 'SERVICE_TAGS_UNSUPPORTED' });
     }
     try {
-      return await createArrClient(service.type, service.config).getTags();
+      return await createServiceTagClient(service.type, service.config).getTags();
     } catch { return reply.status(502).send({ error: 'RULE_TAGS_UNAVAILABLE' }); }
   });
 

@@ -9,7 +9,7 @@ import type { TmdbTv } from '../src/services/tmdb.js';
 const transport = vi.hoisted(() => ({ getTags: vi.fn() }));
 vi.mock('../src/providers/index.js', async (original) => ({
   ...await original<typeof import('../src/providers/index.js')>(),
-  createArrClient: vi.fn(() => transport),
+  createServiceTagClient: vi.fn(() => transport),
 }));
 
 let serviceId: number;

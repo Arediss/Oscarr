@@ -1,9 +1,16 @@
 import type { FastifyInstance } from 'fastify';
-import type { MediaStateCategory } from '@oscarr/shared';
+import type { MediaStateCategory, ServiceTag } from '@oscarr/shared';
+
+/** Optional capability of any service. IDs refer only to the configured instance.
+ * Implementations validate upstream tag responses and add tags without removing existing ones. */
+export interface ServiceTagClient {
+  getTags(): Promise<ServiceTag[]>;
+  addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void>;
+}
 
 // ─── Arr Client Shared Types ────────────────────────────────────────
 
-export interface ArrTag { id: number; label: string }
+export type ArrTag = ServiceTag;
 export interface ArrQualityProfile { id: number; name: string }
 export interface ArrRootFolder { id: number; path: string; freeSpace: number }
 
@@ -82,8 +89,7 @@ export interface ArrAddMediaOptions {
   seriesType?: string;
 }
 
-export interface ArrClient {
-  getTags(): Promise<ArrTag[]>;
+export interface ArrClient extends ServiceTagClient {
   createTag(label: string): Promise<ArrTag>;
   getOrCreateTag(username: string): Promise<number>;
   getQualityProfiles(): Promise<ArrQualityProfile[]>;
@@ -108,8 +114,6 @@ export interface ArrClient {
   // Request dispatch
   findByExternalId(externalId: number): Promise<{ id: number } | null>;
   addMedia(options: ArrAddMediaOptions): Promise<void>;
-  /** Add tags without replacing existing tags or changing other media settings. */
-  addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void>;
   searchMedia(serviceMediaId: number): Promise<void>;
   /** Monitor and search only these seasons of an existing series. */
   requestSeasons?(serviceMediaId: number, seasons: number[]): Promise<void>;
@@ -186,6 +190,8 @@ export interface ServiceDefinition {
   requiredForInstall?: boolean;
   test(config: Record<string, string>): Promise<{ ok: boolean; version?: string }>;
   createClient?(config: Record<string, string>): ArrClient;
+  /** Independently opt in to tags; does not require an ArrClient or a specific media type. */
+  createTagClient?(config: Record<string, string>): ServiceTagClient;
 }
 
 // ─── Auth Provider ──────────────────────────────────────────────────

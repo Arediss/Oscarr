@@ -1229,7 +1229,11 @@
       "add_action": "Ajouter une action",
       "remove_action": "Supprimer l’action {{number}}",
       "service_tag": "Tag de l’action {{number}}",
-      "select_service_tag": "Choisir un tag Sonarr / Radarr",
+      "select_service_tag": "Choisir un tag de cette instance",
+      "tag_service_missing": "Instance supprimée",
+      "tag_reference": "Tag #{{id}}",
+      "tag_unavailable_short": "indisponible",
+      "tag_missing_short": "introuvable",
       "tags_choose_service": "Sélectionnez une instance cible pour récupérer ses tags.",
       "tags_loading": "Chargement des tags…",
       "tags_unavailable": "Impossible de récupérer les tags de cette instance.",
@@ -1283,9 +1287,10 @@
   "media.explorer.not_requested": "Non demandée",
   "errors": {
     "RULE_TAGS_INVALID": "Les tags doivent être des identifiants valides (100 maximum).",
-    "RULE_TAGS_REQUIRE_SERVICE": "Choisissez Film ou Série et une instance Sonarr / Radarr active pour appliquer des tags.",
+    "RULE_TAGS_REQUIRE_SERVICE": "Choisissez un type de média et une instance compatible active pour appliquer des tags.",
+    "SERVICE_TAGS_UNSUPPORTED": "Cette instance ne prend pas en charge les tags.",
     "RULE_TAGS_NOT_FOUND": "Un tag sélectionné n’existe plus sur cette instance. Actualisez les tags et modifiez la règle.",
-    "RULE_TAGS_UNAVAILABLE": "Impossible de vérifier les tags. Vérifiez la connexion à Sonarr / Radarr et réessayez.",
+    "RULE_TAGS_UNAVAILABLE": "Impossible de vérifier les tags. Vérifiez la connexion au service et réessayez.",
     "RULE_TAGS_RESELECT": "Sélectionnez à nouveau les tags après un changement d’instance."
   }
 }

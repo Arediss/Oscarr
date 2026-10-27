@@ -10,6 +10,12 @@ it; focus is trapped and returned to the trigger. Closing and form inputs are di
 saving, and a failed save keeps the form and its error visible.
 
 Tags belong to an explicit service instance, even when no folder override is selected.
+Each displayed tag is paired with the instance's icon, configured name and unique service ID,
+both in the rule summary and editor. The tooltip includes the provider and instance URL.
+Tag catalogs are fetched once per referenced instance and shared by the list and editor;
+missing, disabled or unreachable instances never fall back to another instance's tag labels.
+The editor discovers routing/media/tag capabilities through `/admin/service-schemas`, not
+Sonarr/Radarr name checks. See [the service tag contract](./providers.md#service-tag-capability).
 Changing the instance clears selected tag IDs. Tags are fetched through the authenticated
 admin API; loading, empty, unavailable and deleted-tag states are visible. French and
 English labels are required. Existing rules start with no tag actions.
@@ -34,8 +40,11 @@ and [Radarr](https://github.com/Radarr/Radarr/blob/develop/src/Radarr.Api.V3/ope
 Apply the additive database migration with `npm run db:migrate` before starting the updated
 backend. Existing rows receive an empty tag list; folder and series-type actions are preserved.
 
-Verified locally: 240 backend tests, 109 frontend tests, production build, and browser
+Verified locally: 244 backend tests, 112 frontend tests, production build, and browser
 exercises using simulated Sonarr/Radarr responses. The editor was checked at desktop and
 390px widths, including saved tags, multiple tags, removal, a tag-only Radarr rule,
 identical folder paths on different instances and an unreachable instance. No live media
-was added to a real Sonarr/Radarr library during verification.
+was added to a real Sonarr/Radarr library during verification. Multi-instance badges were also
+checked at 320px, including two instances with tag ID 7 but different labels (VOSTFR/VF),
+selection resets, offline tags and saving. Contract tests register a fake Readarr tag adapter
+without an ArrClient to verify provider-independent discovery, fetching and additive updates.

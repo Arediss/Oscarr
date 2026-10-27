@@ -1,46 +1,35 @@
-import { useEffect, useId, useState } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, XCircle } from 'lucide-react';
-import api from '@/lib/api';
+import type { ServiceSchema } from '@/hooks/useServiceSchemas';
+import type { ServiceTagsState } from '@/hooks/useServiceTags';
+import { supportsRoutingMedia, type RoutingService } from './routingServices';
+import { ServiceInstanceLabel } from './ServiceTagBadge';
 
 export interface RuleAction { type: 'folder' | 'seriesType' | 'tag'; value: string; }
-interface Service { id: number; name: string; type: string; enabled?: boolean; config?: { url?: string }; }
 interface Folder { path: string; label: string; serviceId: number | null; }
-interface ArrTag { id: number; label: string; }
 
-export function RuleActionsEditor({ actions, onChange, serviceId, onServiceChange, mediaType, services, folders }: Readonly<{
+export function RuleActionsEditor({ actions, onChange, serviceId, onServiceChange, mediaType, services, folders, schemas, tagState, onRefreshTags }: Readonly<{
   actions: RuleAction[]; onChange: (actions: RuleAction[]) => void;
   serviceId: string; onServiceChange: (id: string) => void;
-  mediaType: string; services: Service[]; folders: Folder[];
+  mediaType: string; services: RoutingService[]; folders: Folder[];
+  schemas: Record<string, ServiceSchema>; tagState?: ServiceTagsState; onRefreshTags: () => void;
 }>) {
   const { t } = useTranslation();
   const fieldId = useId();
-  const [tagState, setTagState] = useState<{ serviceId: string; status: 'loading' | 'ready' | 'error'; tags: ArrTag[] }>({ serviceId: '', status: 'ready', tags: [] });
-  const [reload, setReload] = useState(0);
   const hasTagAction = actions.some(action => action.type === 'tag');
-
-  useEffect(() => {
-    if (!serviceId || !hasTagAction) return;
-    let cancelled = false;
-    setTagState({ serviceId, status: 'loading', tags: [] });
-    api.get<ArrTag[]>(`/admin/services/${serviceId}/tags`).then(({ data }) => {
-      if (!cancelled) setTagState({ serviceId, status: 'ready', tags: data });
-    }).catch(() => {
-      if (!cancelled) setTagState({ serviceId, status: 'error', tags: [] });
-    });
-    return () => { cancelled = true; };
-  }, [serviceId, hasTagAction, reload]);
-
-  const compatibleServices = services.filter(service => service.enabled !== false &&
-    (mediaType === 'any' || service.type === (mediaType === 'movie' ? 'radarr' : 'sonarr')));
+  const compatibleServices = services.filter(service => supportsRoutingMedia(service, schemas[service.type], mediaType));
   const service = services.find(item => String(item.id) === serviceId);
+  const schema = service ? schemas[service.type] : undefined;
+  const supportsTags = !!schema?.supportsTags && service?.enabled !== false;
   const availableFolders = folders.filter(folder => !serviceId || String(folder.serviceId) === serviceId)
     .filter(folder => mediaType === 'any' || compatibleServices.some(item => item.id === folder.serviceId));
-  const tagsReady = tagState.serviceId === serviceId && tagState.status === 'ready';
+  const tagsReady = supportsTags && tagState?.status === 'ready';
   const actionLabel = (type: RuleAction['type']) => t(`admin.paths.action_${type}`);
   const allowedTypes = (index: number): RuleAction['type'][] => (['folder', 'seriesType', 'tag'] as const).filter(type => {
     if (type === 'seriesType' && mediaType === 'movie') return false;
-    if (type === 'tag') return mediaType !== 'any';
+    if (type === 'tag') return actions[index]?.type === 'tag' || (mediaType !== 'any'
+      && (serviceId ? supportsTags : compatibleServices.some(item => schemas[item.type]?.supportsTags)));
     return !actions.some((action, i) => i !== index && action.type === type);
   });
   const setAction = (index: number, action: RuleAction) => onChange(actions.map((current, i) => i === index ? action : current));
@@ -54,7 +43,7 @@ export function RuleActionsEditor({ actions, onChange, serviceId, onServiceChang
           {serviceId && !compatibleServices.some(item => String(item.id) === serviceId) && (
             <option value={serviceId} disabled>{service?.name ?? `#${serviceId}`} — {t('admin.paths.rule_broken')}</option>
           )}
-          {compatibleServices.map(item => <option key={item.id} value={item.id}>{item.name}{item.config?.url ? ` (${item.config.url})` : ''}</option>)}
+          {compatibleServices.map(item => <option key={item.id} value={item.id}>{item.name} #{item.id}{item.config?.url ? ` (${item.config.url})` : ''}</option>)}
         </select>
       </div>
       <p className="text-xs text-ndp-text-dim">{t('admin.paths.actions_help')}</p>
@@ -90,15 +79,18 @@ export function RuleActionsEditor({ actions, onChange, serviceId, onServiceChang
               </select>
             )}
             {action.type === 'tag' && (
-              <select aria-label={t('admin.paths.service_tag', { number: index + 1 })} value={action.value}
-                disabled={!serviceId || !tagsReady} onChange={e => setAction(index, { ...action, value: e.target.value })} className="input w-full text-sm disabled:opacity-50">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {serviceId && <ServiceInstanceLabel service={service} serviceId={Number(serviceId)} schema={schema} />}
+              <select aria-label={t('admin.paths.service_tag', { number: index + 1 }) + (serviceId ? ` — ${service?.name ?? ''} #${serviceId}` : '')} value={action.value}
+                disabled={!serviceId || !tagsReady} onChange={e => setAction(index, { ...action, value: e.target.value })} className="input min-w-0 flex-1 basis-40 text-sm disabled:opacity-50">
                 <option value="">{t('admin.paths.select_service_tag')}</option>
-                {action.value && (!tagsReady || !tagState.tags.some(tag => String(tag.id) === action.value)) && (
+                {action.value && (!tagsReady || !tagState?.tags.some(tag => String(tag.id) === action.value)) && (
                   <option value={action.value} disabled>{tagsReady ? t('admin.paths.tag_missing', { id: action.value }) : `#${action.value}`}</option>
                 )}
-                {tagsReady && tagState.tags.map(tag => <option key={tag.id} value={tag.id}
+                {tagsReady && tagState?.tags.map(tag => <option key={tag.id} value={tag.id}
                   disabled={actions.some((other, i) => i !== index && other.type === 'tag' && other.value === String(tag.id))}>{tag.label}</option>)}
               </select>
+              </div>
             )}
           </div>
           <button type="button" onClick={() => onChange(actions.filter((_, i) => i !== index))}
@@ -110,10 +102,11 @@ export function RuleActionsEditor({ actions, onChange, serviceId, onServiceChang
       {hasTagAction && (
         <div aria-live="polite" className="text-xs text-ndp-text-muted">
           {!serviceId ? t('admin.paths.tags_choose_service')
-            : tagState.serviceId !== serviceId || tagState.status === 'loading' ? t('admin.paths.tags_loading')
+            : !supportsTags ? t('errors.SERVICE_TAGS_UNSUPPORTED')
+            : !tagState || tagState.status === 'loading' ? t('admin.paths.tags_loading')
             : tagState.status === 'error' ? (
-              <span className="text-ndp-warning">{t('admin.paths.tags_unavailable')} <button type="button" onClick={() => setReload(value => value + 1)} className="underline">{t('admin.paths.tags_retry')}</button></span>
-            ) : <span>{tagState.tags.length === 0 ? t('admin.paths.tags_empty') : t('admin.paths.tags_help')} <button type="button" onClick={() => setReload(value => value + 1)} className="underline">{t('admin.paths.tags_refresh')}</button></span>}
+              <span className="text-ndp-warning">{t('admin.paths.tags_unavailable')} <button type="button" onClick={onRefreshTags} className="underline">{t('admin.paths.tags_retry')}</button></span>
+            ) : <span>{tagState.tags.length === 0 ? t('admin.paths.tags_empty') : t('admin.paths.tags_help')} <button type="button" onClick={onRefreshTags} className="underline">{t('admin.paths.tags_refresh')}</button></span>}
         </div>
       )}
       {allowedTypes(-1).length > 0 && (

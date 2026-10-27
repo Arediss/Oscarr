@@ -9,6 +9,10 @@ import type { RootFolder } from '@/types';
 import { extractApiError } from '@/utils/toast';
 import { RuleActionsEditor, type RuleAction } from './RuleActionsEditor';
 import { useModal } from '@/hooks/useModal';
+import { useServiceSchemas } from '@/hooks/useServiceSchemas';
+import { useServiceTags } from '@/hooks/useServiceTags';
+import { ServiceInstanceLabel, ServiceTagBadge } from './ServiceTagBadge';
+import { supportsRoutingMedia, type RoutingService } from './routingServices';
 
 interface FolderRule {
   id: number; name: string; priority: number; mediaType: string;
@@ -20,7 +24,6 @@ interface FolderRule {
 interface RuleCondition { field: string; operator: string; value: string; }
 interface UserOption { id: number; displayName: string | null; email: string; }
 interface RoleOption { id: number; name: string; }
-interface ServiceOption { id: number; name: string; type: string; config?: { url?: string }; }
 
 // Key → TMDB English genre name (the stored value the backend matches against). TMDB uses different
 // genre sets for movies vs TV, so the picker must offer the set matching the rule's media type (H6).
@@ -41,7 +44,7 @@ const TV_GENRES: Record<string, string> = {
 
 const BROKEN_SERVICE_STATUSES = new Set(['missing', 'disabled', 'wrong-type']);
 
-async function fetchRootFolders(arrServices: ServiceOption[]) {
+async function fetchRootFolders(arrServices: RoutingService[]) {
   const folders: { path: string; label: string; serviceId: number | null }[] = [];
   const failed: string[] = [];
   const folderResults = await Promise.all(
@@ -63,6 +66,7 @@ async function fetchRootFolders(arrServices: ServiceOption[]) {
 
 export function RoutingRulesTab() {
   const { t } = useTranslation();
+  const { schemas, loading: schemasLoading } = useServiceSchemas();
   const fieldId = useId();
   const [rules, setRules] = useState<FolderRule[]>([]);
   const [labeledFolders, setLabeledFolders] = useState<{ path: string; label: string; serviceId: number | null }[]>([]);
@@ -73,7 +77,7 @@ export function RoutingRulesTab() {
   // Admin-defined axes. They are not enum members, so the field list is built at render time from
   // whatever exists rather than being a constant like the seven built-ins.
   const [criteria, setCriteria] = useState<{ id: number; name: string; values: { id: number; label: string }[] }[]>([]);
-  const [services, setServices] = useState<ServiceOption[]>([]);
+  const [services, setServices] = useState<RoutingService[]>([]);
   const [defaultAnimeFolder, setDefaultAnimeFolder] = useState('');
   const [defaultMovieFolder, setDefaultMovieFolder] = useState('');
   const [defaultTvFolder, setDefaultTvFolder] = useState('');
@@ -95,11 +99,18 @@ export function RoutingRulesTab() {
   const newFolder = actions.find(action => action.type === 'folder')?.value ?? '';
   const newSeriesType = actions.find(action => action.type === 'seriesType')?.value ?? '';
   const tagIds = actions.filter(action => action.type === 'tag' && action.value).map(action => Number(action.value));
+  const selectedService = services.find(service => String(service.id) === newServiceId);
+  const referencedTagServices = new Set(rules.filter(rule => rule.tagIds?.length && rule.serviceId != null).map(rule => rule.serviceId!));
+  if (showForm && newServiceId && actions.some(action => action.type === 'tag')) referencedTagServices.add(Number(newServiceId));
+  const { catalog: serviceTags, refresh: refreshTags } = useServiceTags(services
+    .filter(service => referencedTagServices.has(service.id) && service.enabled !== false && schemas[service.type]?.supportsTags)
+    .map(service => service.id));
   const canSave = !!newName.trim() && newConditions.every(condition => condition.value.trim()) && actions.length > 0
     && actions.every(action => action.type === 'folder' || !!action.value)
-    && (tagIds.length === 0 || !!newServiceId);
+    && (tagIds.length === 0 || (!!selectedService && selectedService.enabled !== false && schemas[selectedService.type]?.supportsTags === true));
 
   useEffect(() => {
+    if (schemasLoading) return;
     async function load() {
       try {
         const [settingsRes, rulesRes, usersRes, rolesRes, keywordsRes, servicesRes, qualityRes] = await Promise.all([
@@ -123,8 +134,9 @@ export function RoutingRulesTab() {
             .filter((t): t is string => !!t)
         )];
         setTags(uniqueTags);
-        const arrServices: ServiceOption[] = servicesRes.data.filter((s: ServiceOption) => s.type === 'radarr' || s.type === 'sonarr');
-        setServices(arrServices);
+        const allServices: RoutingService[] = servicesRes.data;
+        const arrServices = allServices.filter(service => supportsRoutingMedia(service, schemas[service.type], 'any'));
+        setServices(allServices);
         setQualityOptions(qualityRes.data);
         // Fetched on its own rather than joining the batch above: an instance with no criterion is
         // the normal case, and a failure here must not take the rules editor down with it.
@@ -140,7 +152,7 @@ export function RoutingRulesTab() {
       finally { setLoading(false); }
     }
     load();
-  }, []);
+  }, [schemas, schemasLoading]);
 
   const resetForm = () => {
     setShowForm(false); setEditingId(null);
@@ -316,22 +328,21 @@ export function RoutingRulesTab() {
           return (
             <div key={rule.id} className={`flex items-center gap-3 transition-opacity ${!rule.enabled ? 'opacity-40' : ''}`}>
               <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 text-xs font-semibold text-ndp-text-muted">{index + 1}</div>
-              <div className="card flex-1 cursor-grab active:cursor-grabbing"
+              <div className="card min-w-0 flex-1 cursor-grab active:cursor-grabbing"
                 draggable
                 onDragStart={() => handleDragStart(index)}
                 onDragEnter={() => handleDragEnter(index)}
                 onDragEnd={handleDragEnd}
                 onDragOver={(e) => e.preventDefault()}
               >
-              <div className="flex items-center gap-3 p-4">
-                <GripVertical className="w-4 h-4 text-ndp-text-dim flex-shrink-0" />
-                <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-start gap-3 p-4 sm:flex-nowrap sm:items-center">
+                <GripVertical className="hidden h-4 w-4 shrink-0 text-ndp-text-dim sm:block" />
+                <div className="min-w-0 w-full sm:w-auto sm:flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-ndp-text">{rule.name}</span>
                     <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{rule.mediaType === 'movie' ? t('common.movie') : rule.mediaType === 'tv' ? t('common.series') : t('admin.paths.any_media_type')}</span>
                     {rule.seriesType && <span className="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded">{rule.seriesType}</span>}
-                    {(rule.tagIds?.length ?? 0) > 0 && <span className="text-[10px] bg-ndp-accent/10 text-ndp-accent px-1.5 py-0.5 rounded">{t('admin.paths.rule_tag_count', { count: rule.tagIds.length })}</span>}
-                    {service && <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded">{service.name}{service.config?.url ? ` · ${service.config.url}` : ''}</span>}
+                    {service && !rule.tagIds?.length && <ServiceInstanceLabel service={service} serviceId={service.id} schema={schemas[service.type]} />}
                     {rule.enabled && rule.serviceStatus && BROKEN_SERVICE_STATUSES.has(rule.serviceStatus) && (
                       <span className="text-[10px] bg-ndp-danger/10 text-ndp-danger px-1.5 py-0.5 rounded inline-flex items-center gap-1" title={t(`admin.paths.rule_broken_reason.${rule.serviceStatus}`)}>
                         <AlertTriangle className="w-3 h-3" /> {t('admin.paths.rule_broken')}
@@ -339,6 +350,11 @@ export function RoutingRulesTab() {
                     )}
                     {!rule.enabled && <span className="text-[10px] bg-ndp-text-dim/10 text-ndp-text-dim px-1.5 py-0.5 rounded">{t('admin.paths.disabled')}</span>}
                   </div>
+                  {!!rule.tagIds?.length && <div className="mt-2 flex flex-wrap gap-2">
+                    {rule.tagIds.map(tagId => <ServiceTagBadge key={tagId} tagId={tagId} service={service}
+                      serviceId={rule.serviceId} schema={service ? schemas[service.type] : undefined}
+                      state={rule.serviceId != null ? serviceTags[rule.serviceId] : undefined} />)}
+                  </div>}
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     {conds.map((c, i) => (
                       <span key={`tag-${i}`} className="text-xs text-ndp-text-dim">
@@ -348,7 +364,7 @@ export function RoutingRulesTab() {
                     <span className="text-xs text-ndp-text-dim">→ {rule.folderPath || (rule.seriesType === 'anime' ? defaultAnimeFolder : rule.mediaType === 'tv' ? defaultTvFolder : defaultMovieFolder) || <span className="italic">{t('admin.paths.defaults_title')}</span>}</span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="ml-auto flex shrink-0 items-center gap-1">
                   <button onClick={() => toggleRule(rule.id)} className={`p-1.5 rounded-lg transition-colors ${rule.enabled ? 'text-ndp-success hover:bg-ndp-success/10' : 'text-ndp-text-dim hover:bg-white/5'}`} title={rule.enabled ? t('admin.paths.disable') : t('admin.paths.enable')}>
                     <Power className="w-3.5 h-3.5" />
                   </button>
@@ -416,7 +432,8 @@ export function RoutingRulesTab() {
 
           <FormSection step={3} title={t('admin.paths.section_then')}>
             <RuleActionsEditor actions={actions} onChange={setActions} serviceId={newServiceId} onServiceChange={handleServiceChange}
-              mediaType={newMediaType} services={services} folders={labeledFolders} />
+              mediaType={newMediaType} services={services} folders={labeledFolders} schemas={schemas}
+              tagState={serviceTags[Number(newServiceId)]} onRefreshTags={refreshTags} />
           </FormSection>
 
           {saveError && <p role="alert" className="text-sm text-ndp-danger">{saveError}</p>}

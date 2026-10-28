@@ -27,12 +27,14 @@
 .episode-filters button { min-height: 2.5rem; padding: .375rem .75rem; font-size: .75rem; color: #9ca3af; border-radius: .5rem; border: 1px solid transparent; }
 .episode-filters button[aria-pressed=true] { color: #e0e7ff; background: #818cf812; border-color: #818cf840; }
 .episode-filters span { margin-left: .375rem; opacity: .65; font-variant-numeric: tabular-nums; }
-.episode-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); gap: .5rem .75rem; }
-.episode-empty { grid-column: 1 / -1; }
-.episode-line { display: flex; align-items: flex-start; gap: .75rem; min-width: 0; padding: .875rem; border-radius: .625rem; background: rgb(255 255 255 / .025); }
+.episode-carousel { position: relative; display: flex; gap: .75rem; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-behavior: smooth; scrollbar-width: none; border-radius: .625rem; }
+.episode-carousel::-webkit-scrollbar { display: none; }
+.episode-carousel:focus-visible { outline: 2px solid theme('colors.ndp.accent-hover'); outline-offset: 3px; }
+.episode-page { display: grid; grid-template-columns: repeat(var(--episode-count), 11rem); gap: .75rem; flex: 0 0 max(100%, calc(var(--episode-count) * 11rem + (var(--episode-count) - 1) * .75rem)); min-width: 0; }
+.episode-card { display: flex; flex-direction: column; align-items: flex-start; gap: .75rem; min-width: 0; min-height: 11rem; padding: .875rem .75rem; border-radius: .625rem; background: rgb(255 255 255 / .035); scroll-snap-align: start; }
+.episode-title { font-size: .8125rem; line-height: 1.25rem; font-weight: 500; overflow-wrap: anywhere; }
 .episode-number { display: grid; place-items: center; min-width: 2.25rem; min-height: 2.25rem; padding: .25rem; flex-shrink: 0; border-radius: .375rem; background: rgb(255 255 255 / .04); font-size: .6875rem; font-weight: 600; color: theme('colors.ndp.text-muted'); font-variant-numeric: tabular-nums; }
-.episode-info { flex: 1; min-width: 0; }
-.episode-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem .75rem; margin-top: .375rem; font-size: .6875rem; line-height: 1rem; color: theme('colors.ndp.text-muted'); }
+.episode-meta { display: flex; flex-direction: column; align-items: flex-start; gap: .375rem; margin-top: auto; max-width: 100%; font-size: .6875rem; line-height: 1rem; color: theme('colors.ndp.text-muted'); }
 .episode-meta time { white-space: nowrap; }
 .episode-quality { overflow-wrap: anywhere; }
 .episode-state { display: inline-flex; align-items: center; flex-wrap: wrap; gap: .25rem; }
@@ -41,6 +43,16 @@
 .episode-state-missing { color: #fbbf24; }
 .episode-state-upcoming, .episode-state-undated, .episode-state-unknown { color: #9ca3af; }
 .episode-state-downloading, .episode-state-requested { color: #a5b4fc; }
+.episode-navigation { margin-top: .5rem; text-align: center; }
+.episode-navigation-controls { display: flex; align-items: flex-start; justify-content: center; gap: .25rem; }
+.episode-pages { display: flex; flex-wrap: wrap; justify-content: center; max-width: min(32rem, calc(100% - 6rem)); }
+.episode-page-button, .episode-arrow { display: grid; place-items: center; width: 2.75rem; height: 2.75rem; flex-shrink: 0; border-radius: .375rem; color: theme('colors.ndp.text-muted'); }
+.episode-page-button span { width: 1.25rem; height: .1875rem; border-radius: 1rem; background: theme('colors.ndp.border'); transition: background .15s; }
+.episode-page-button:hover span { background: theme('colors.ndp.text-muted'); }
+.episode-page-button[aria-current=true] span { width: 1.75rem; background: theme('colors.ndp.accent'); }
+.episode-arrow:hover:not(:disabled) { color: theme('colors.ndp.text'); background: rgb(255 255 255 / .05); }
+.episode-arrow:disabled { opacity: .25; }
+.episode-position { font-size: .6875rem; color: theme('colors.ndp.text-muted'); font-variant-numeric: tabular-nums; }
 .season-request { margin-top: 1rem; padding: 1rem; border-radius: .625rem; background: rgb(255 255 255 / .025); }
 @media (min-width: 640px) {
   .season-cards { grid-auto-columns: 10rem; }
@@ -48,8 +60,13 @@
 @media (min-width: 1024px) {
   .season-cards { grid-auto-columns: 11.25rem; }
 }
+@media (min-width: 1280px) {
+  .episode-page { flex-basis: 100%; grid-template-columns: repeat(10, minmax(0, 1fr)); }
+}
 @media (prefers-reduced-motion: reduce) {
   .season-poster { transition: none; }
+  .episode-carousel { scroll-behavior: auto; }
+  .episode-page-button span { transition: none; }
 }
 @media (max-width: 640px) {
   .season-explorer-heading { align-items: flex-start; }

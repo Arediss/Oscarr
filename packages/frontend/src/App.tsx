@@ -1,6 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Routes, Route, Navigate, useLocation, useNavigationType } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useFeatures } from '@/context/FeaturesContext';
 import { useBackend } from '@/context/BackendGate';
@@ -8,9 +8,8 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
-import { completeMediaNavigation, isMediaReturnDestination } from '@/utils/mediaTransition';
-import { getMediaScroll, restoreMediaScroll } from '@/utils/mediaScroll';
 import MediaDetailLoading from '@/components/media/MediaDetailLoading';
+import MediaLayers from '@/components/media/MediaLayers';
 
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
@@ -53,38 +52,6 @@ function RequireFeature({ feature, children }: Readonly<{ feature: string; child
   if (loading) return null;
   if (!features[feature]) return <Navigate to="/" replace />;
   return <>{children}</>;
-}
-
-function PageTransition({ children }: Readonly<{ children: React.ReactNode }>) {
-  const location = useLocation();
-  const navigationType = useNavigationType();
-  const container = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const isMediaDetail = /^\/(movie|tv)\//.test(location.pathname);
-  // Keep this decision for the route entry: removing the circle must not restart a page fade.
-  const isCircularReturn = useMemo(() => isMediaReturnDestination(location.pathname)
-    || (navigationType === 'POP' && getMediaScroll(location.key) !== undefined), [location.key, location.pathname, navigationType]);
-  useLayoutEffect(() => {
-    const previous = window.history.scrollRestoration;
-    window.history.scrollRestoration = 'manual';
-    return () => { window.history.scrollRestoration = previous; };
-  }, []);
-  useLayoutEffect(() => {
-    const returnScroll = completeMediaNavigation(location.pathname)
-      ?? (navigationType === 'POP' ? getMediaScroll(location.key) : undefined);
-    if (returnScroll !== undefined && container.current && content.current) {
-      return restoreMediaScroll(returnScroll, container.current, content.current);
-    }
-    const immediate = isMediaDetail
-      || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: 0, behavior: immediate ? 'instant' : 'smooth' });
-  }, [location.key, location.pathname, isMediaDetail, navigationType]);
-  return (
-    // Detail pages are revealed by the circle; toggling their fade back on would restart it.
-    <div ref={container} key={location.pathname} className={isMediaDetail || isCircularReturn ? undefined : 'animate-fade-in motion-reduce:animate-none'}>
-      <div ref={content}>{children}</div>
-    </div>
-  );
 }
 
 function SkipLink() {
@@ -140,8 +107,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Layout>
-              <PageTransition>
-                <Routes>
+              <MediaLayers>
                   <Route path="/" element={<RequireAccess><HomePage /></RequireAccess>} />
                   <Route path="/search" element={<RequireAccess><SearchPage /></RequireAccess>} />
                   <Route path="/movie/:id" element={<RequireAccess><Suspense fallback={<MediaDetailLoading />}><MediaDetailPage type="movie" /></Suspense></RequireAccess>} />
@@ -153,8 +119,7 @@ export default function App() {
                   <Route path="/calendar" element={<RequireFeature feature="calendarEnabled"><RequireAccess><CalendarPage /></RequireAccess></RequireFeature>} />
                   <Route path="/p/:pluginId/*" element={<PluginPage />} />
                   <Route path="/install" element={<Navigate to="/" replace />} />
-                </Routes>
-              </PageTransition>
+              </MediaLayers>
             </Layout>
           </ProtectedRoute>
         }

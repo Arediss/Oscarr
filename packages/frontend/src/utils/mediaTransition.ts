@@ -27,6 +27,10 @@ export function isMediaReturnDestination(path: string): boolean {
 
 /** History traversal commits asynchronously. Release its snapshot once React has rendered the route. */
 export function completeMediaNavigation(path: string): number | undefined {
+  if (pending && !pending.reverse && pending.path === path) {
+    pending.commit?.();
+    return;
+  }
   if (pending && isMediaReturnDestination(path)) {
     pending.path = path;
     pending.commit?.();
@@ -76,11 +80,10 @@ function runMediaTransition(current: PendingTransition, rect: CoverRect, navigat
   try {
     const transition = document.startViewTransition(() => {
       if (pending !== current) return;
-      if (current.reverse) return new Promise<void>(resolve => {
+      return new Promise<void>(resolve => {
         current.commit = resolve;
         navigate();
       });
-      navigate();
     });
     current.transition = transition;
     // A browser snapshot can stall during a resize. Release it instead of freezing the page.

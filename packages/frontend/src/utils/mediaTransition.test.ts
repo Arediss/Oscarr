@@ -26,7 +26,7 @@ function browser({ reduced = false, supported = true } = {}) {
 afterEach(() => { cancelMediaTransitionUnless(''); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 describe('cover navigation', () => {
-  it('starts the reveal without waiting for the destination fetch', async () => {
+  it('captures the committed loading shell without waiting for the destination fetch', async () => {
     const env = browser();
     const loading = new Promise<void>(() => {});
     const navigate = vi.fn(() => loading);
@@ -36,6 +36,10 @@ describe('cover navigation', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(navigate).toHaveBeenCalledOnce();
+    expect(snapshotReleased).toBe(false);
+    completeMediaNavigation('/tv/1');
+    await Promise.resolve();
+    await Promise.resolve();
     expect(snapshotReleased).toBe(true);
     env.finish();
   });
@@ -57,7 +61,9 @@ describe('cover navigation', () => {
     const next = browser();
     startMediaTransition('/tv/2', rect, second);
     await obsoleteUpdate();
-    await next.update();
+    const update = next.update();
+    completeMediaNavigation('/tv/2');
+    await update;
     expect(first).not.toHaveBeenCalled();
     expect(second).toHaveBeenCalledOnce();
     next.finish();
@@ -77,8 +83,9 @@ describe('cover navigation', () => {
     const env = browser();
     const navigate = vi.fn();
     startMediaTransition('/tv/1', rect, navigate);
-    await env.update();
+    const update = env.update();
     await vi.advanceTimersByTimeAsync(250);
+    await update;
     expect(navigate).toHaveBeenCalledOnce();
     expect(env.transition.skipTransition).toHaveBeenCalledOnce();
   });
@@ -96,7 +103,9 @@ describe('cover navigation', () => {
   it('reveals from the cover center all the way to the farthest viewport corner', async () => {
     const env = browser();
     startMediaTransition('/tv/1', rect, () => {});
-    await env.update();
+    const update = env.update();
+    completeMediaNavigation('/tv/1');
+    await update;
     env.ready();
     await Promise.resolve();
     const [frames, options] = env.animate.mock.calls[0];
@@ -110,7 +119,9 @@ describe('cover navigation', () => {
     const env = browser();
     const navigate = vi.fn();
     startMediaTransition('/tv/1', rect, navigate);
-    await env.update();
+    const update = env.update();
+    completeMediaNavigation('/tv/1');
+    await update;
     env.failReady();
     await Promise.resolve();
     await Promise.resolve();

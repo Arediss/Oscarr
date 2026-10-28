@@ -46,6 +46,16 @@ the React route commit, with the same 250 ms snapshot deadline, never for a fetc
 The destination does not replay a page fade. Reduced motion and unsupported
 browsers keep the same Back navigation and scroll restoration without animation.
 
+Return scroll restoration reserves enough page height before asynchronous home rows
+exist, then reapplies the position as their natural height changes. It releases the
+reservation once the content can accommodate the viewport. Wheel, touch, pointer
+or scroll-key input immediately cancels automatic repositioning, as does a ten-second
+deadline. Reserved height remains until the content can support the current position;
+leaving the route cleans everything up. Source scroll positions are also kept
+for the last 30 history entries so browser Back uses the same restoration. Native
+automatic scroll restoration is disabled while this route wrapper is mounted.
+The home hero initializes its scroll shade at mount, including a late mount after Back.
+
 The hero action uses the shared availability state even when the season explorer
 is enabled. Complete series show Available, missing seasons remain requestable,
 and pending library checks show a disabled loading action. Static rendering tests

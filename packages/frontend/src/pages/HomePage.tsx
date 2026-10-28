@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Info, Star } from 'lucide-react';
@@ -120,7 +120,9 @@ function HeroCarousel({ trending, loading }: Readonly<{ trending: TmdbMedia[]; l
     if (scrollFadeRef.current) scrollFadeRef.current.style.opacity = String(opacity);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Back may restore the scroll before the asynchronously loaded hero mounts.
+    handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);

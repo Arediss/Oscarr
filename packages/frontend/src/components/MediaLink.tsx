@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate, type LinkProps } from 'react-router-dom';
 import { flushSync } from 'react-dom';
 import { startMediaTransition } from '@/utils/mediaTransition';
+import { rememberMediaScroll } from '@/utils/mediaScroll';
 import './media/media-transition.css';
 
 /** A normal link, with the cover-to-detail reveal for same-tab activations only. */
@@ -18,6 +19,7 @@ export default function MediaLink({ onClick, ...props }: Readonly<LinkProps>) {
       ?? link.parentElement?.querySelector('[data-media-cover]') ?? link;
     const { left, top, width, height } = cover.getBoundingClientRect();
     const rect = { left, top, width, height };
+    if (!props.replace) rememberMediaScroll(location.key, window.scrollY);
     const state = { ...props.state, __mediaReturn: props.replace ? undefined : { path: location.pathname, rect, scrollY: window.scrollY } };
     startMediaTransition(props.to, rect, () => {
       // Commit the route or its local Suspense fallback before the native snapshot.

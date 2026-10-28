@@ -55,14 +55,16 @@ function RequireFeature({ feature, children }: Readonly<{ feature: string; child
 
 function PageTransition({ children }: Readonly<{ children: React.ReactNode }>) {
   const location = useLocation();
+  const isMediaDetail = /^\/(movie|tv)\//.test(location.pathname);
   useEffect(() => {
     cancelMediaTransitionUnless(location.pathname);
-    const immediate = /^\/(movie|tv)\//.test(location.pathname)
+    const immediate = isMediaDetail
       || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     window.scrollTo({ top: 0, behavior: immediate ? 'instant' : 'smooth' });
-  }, [location.pathname]);
+  }, [location.pathname, isMediaDetail]);
   return (
-    <div key={location.pathname} className="animate-fade-in motion-reduce:animate-none">
+    // Detail pages are revealed by the circle; toggling their fade back on would restart it.
+    <div key={location.pathname} className={isMediaDetail ? undefined : 'animate-fade-in motion-reduce:animate-none'}>
       {children}
     </div>
   );

@@ -6,8 +6,6 @@ html.media-opening::view-transition-new(root) {
 }
 html.media-opening::view-transition-old(root) { z-index: 1; }
 html.media-opening::view-transition-new(root) { z-index: 2; }
-/* The snapshot already animates the page; don't capture a half-transparent entrance. */
-html.media-opening .animate-fade-in { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   html.media-opening::view-transition-group(*),
   html.media-opening::view-transition-old(*),

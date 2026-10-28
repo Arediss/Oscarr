@@ -63,7 +63,7 @@ export function MediaInfoColumn({
 
   return (
       <div className="flex-1 min-w-0">
-        <h1 id="media-title" className="media-detail-title font-extrabold text-white">{title}</h1>
+        <h1 id="media-title" tabIndex={-1} className="media-detail-title font-extrabold text-white outline-none">{title}</h1>
 
         {media.tagline && (
           <p className="text-ndp-text-muted italic mt-2">{media.tagline}</p>

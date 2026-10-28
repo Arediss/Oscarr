@@ -8,6 +8,7 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
+import { cancelMediaTransitionUnless } from '@/utils/mediaTransition';
 
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
@@ -55,10 +56,13 @@ function RequireFeature({ feature, children }: Readonly<{ feature: string; child
 function PageTransition({ children }: Readonly<{ children: React.ReactNode }>) {
   const location = useLocation();
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    cancelMediaTransitionUnless(location.pathname);
+    const immediate = /^\/(movie|tv)\//.test(location.pathname)
+      || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: immediate ? 'instant' : 'smooth' });
   }, [location.pathname]);
   return (
-    <div key={location.pathname} className="animate-fade-in">
+    <div key={location.pathname} className="animate-fade-in motion-reduce:animate-none">
       {children}
     </div>
   );

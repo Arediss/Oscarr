@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Calendar, Film, Tv, CheckCircle, Loader2, LayoutGrid, List } from 'lucide-react';
 import { clsx } from 'clsx';
-import { Link } from 'react-router-dom';
+import MediaLink from '@/components/MediaLink';
 import { posterUrl } from '@/lib/api';
 import { localizedDate, localizedTime } from '@/i18n/formatters';
 import { useCalendar, type CalendarItem } from '@/hooks/useCalendar';
@@ -261,7 +261,7 @@ function CompactCard({ item }: { item: CalendarItem }) {
     </div>
   );
 
-  return link ? <Link to={link}>{inner}</Link> : <div>{inner}</div>;
+  return link ? <MediaLink to={link}>{inner}</MediaLink> : <div>{inner}</div>;
 }
 
 // ─── Poster Card (list view) ─────────────────────────────────────────
@@ -330,5 +330,5 @@ function PosterCard({ item }: { item: CalendarItem }) {
     </div>
   );
 
-  return link ? <Link to={link}>{inner}</Link> : <div>{inner}</div>;
+  return link ? <MediaLink to={link}>{inner}</MediaLink> : <div>{inner}</div>;
 }

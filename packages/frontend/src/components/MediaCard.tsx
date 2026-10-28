@@ -1,4 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import MediaLink from './MediaLink';
 import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Star, CheckCircle, Film, Tv, EyeOff } from 'lucide-react';
@@ -76,7 +77,7 @@ export default function MediaCard({ media, className, availability, index = 0 }:
         className
       )}
     >
-      <Link to={link} className="block">
+      <MediaLink to={link} className="block">
       {/* Poster */}
       <div className="aspect-[2/3] bg-ndp-surface-light relative">
         {media.poster_path ? (
@@ -156,7 +157,7 @@ export default function MediaCard({ media, className, availability, index = 0 }:
         mediaType={type}
         className="absolute bottom-2 right-2 transition-opacity duration-300 group-hover:opacity-0"
       />
-      </Link>
+      </MediaLink>
 
       {/* Quick request — rendered OUTSIDE the Link so the click never bubbles to the
        *  anchor. Visible only on hover (matches the rest of the overlay), positioned

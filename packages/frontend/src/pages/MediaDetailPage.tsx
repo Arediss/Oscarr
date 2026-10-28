@@ -25,6 +25,7 @@ import '@/components/media/media-detail.css';
 import { mediaSummary } from '@/utils/mediaSummary';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
 import SeasonExplorer from '@/components/media/SeasonExplorer';
+import { mediaTransitionReady } from '@/utils/mediaTransition';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -44,6 +45,13 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     loading, qualityOptions, activeQualityOptionIds,
     audioLanguages, subtitleLanguages, download, blacklisted, refreshDbData,
   } = useMediaDetailData(id, type);
+
+  useEffect(() => {
+    if (loading || (media && String(media.id) !== id)) return;
+    mediaTransitionReady(`/${type}/${id}`,
+      document.querySelector<HTMLImageElement>('.media-detail-image img'),
+      document.getElementById('media-title'));
+  }, [loading, media, id, type]);
 
   const {
     requesting, justRequested, requestError,

@@ -20,6 +20,7 @@ import {
   SlidersHorizontal, } from 'lucide-react';
 import { clsx } from 'clsx';
 import api, { posterUrl, backdropUrl } from '@/lib/api';
+import MediaLink from '@/components/MediaLink';
 import { useAuth } from '@/context/AuthContext';
 import { useDownloadForMedia } from '@/hooks/useDownloads';
 import { localizedDate } from '@/i18n/formatters';
@@ -577,7 +578,7 @@ function RequestCardInner({
       title={compact ? `${localizedDate(req.createdAt)} · ${req.qualityOption?.label || t('requests.no_quality')}` : undefined}
     >
       {hasValidTmdbId && !compact && (
-        <Link
+        <MediaLink
           to={mediaLink}
           className="absolute inset-0 z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent/60 rounded-2xl"
           aria-label={[req.media?.title || t('requests.unknown_media'), seasonLabel].filter(Boolean).join(' — ')}
@@ -662,7 +663,7 @@ function RequestCardInner({
         {!compact && <div className="flex-shrink-0 w-[80px] self-center">
           <div className="aspect-[2/3] rounded-xl overflow-hidden ring-1 ring-white/10 shadow-lg group-hover:ring-white/20 transition-all">
             {req.media?.posterPath ? (
-              <img src={posterUrl(req.media.posterPath, 'w185')} alt="" className="w-full h-full object-cover" />
+              <img data-media-cover src={posterUrl(req.media.posterPath, 'w185')} alt="" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-ndp-surface-light flex items-center justify-center">
                 <Film className="w-5 h-5 text-ndp-text-dim" />

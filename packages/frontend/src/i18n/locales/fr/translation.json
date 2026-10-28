@@ -308,6 +308,7 @@
   "media.quality": "Qualité",
   "media.audio_languages": "Audio",
   "media.subtitle_languages": "Sous-titres",
+  "media.languages_unknown": "Non renseigné",
   "media.seasons": "Saisons",
   "media.seasons_to_request": "Saisons à demander",
   "media.all_seasons": "Toutes les saisons",

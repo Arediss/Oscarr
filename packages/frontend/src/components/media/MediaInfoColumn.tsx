@@ -39,6 +39,7 @@ interface Props {
   setSelectedQuality: (updater: (prev: number | null) => number | null) => void;
   audioLanguages: string[];
   subtitleLanguages: string[];
+  languagesLoading: boolean;
 }
 
 /** Title, facts, synopsis, actions and request options in the hero's readable left column. */
@@ -50,7 +51,7 @@ export function MediaInfoColumn({
   onRequest, onSearchMissing,
   qualityOptions, takenQualityIds, selectedQuality, setSelectedQuality,
   selectedCriteria, setSelectedCriteria,
-  audioLanguages, subtitleLanguages,
+  audioLanguages, subtitleLanguages, languagesLoading,
 }: Readonly<Props>) {
   const { t } = useTranslation();
   const { isAdmin } = useAuth();
@@ -155,7 +156,7 @@ export function MediaInfoColumn({
 
         {/* What is actually on disk, read from the file after import. Descriptive, not a choice —
             the pickers above are the choices. */}
-        <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} />
+        <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} loading={languagesLoading} />
 
 
 

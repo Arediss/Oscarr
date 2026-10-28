@@ -30,3 +30,11 @@ navigation on mobile. The settled wrapper stays at opacity 1 with no animation.
 With the API response held indefinitely, the circle starts before the response on
 desktop and mobile. Releasing the response causes neither a second circle nor a fade;
 Back during loading also survives the late API response.
+
+Audio and subtitle scans load independently from the detail data. Both groups keep
+their space while skeletons are replaced by language chips or an unknown-language
+label. Long lists scroll horizontally instead of expanding the hero. On desktop,
+the artwork height follows the viewport (46–60 rem), independent of text height,
+so late metadata never changes its crop. Obsolete initial responses are ignored.
+Browser regression checks hold the scan response and compare the artwork, hero
+and season positions before and after populated, empty and failed responses.

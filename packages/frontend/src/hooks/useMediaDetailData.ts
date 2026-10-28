@@ -43,6 +43,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
   const [inLibrary, setInLibrary] = useState(false);
   const [recommendations, setRecommendations] = useState<TmdbMedia[]>([]);
   const [loading, setLoading] = useState(true);
+  const [languagesLoading, setLanguagesLoading] = useState(true);
   const [qualityOptions, setQualityOptions] = useState<QualityOption[]>(() => qualityOptionsCache ?? []);
   const [activeQualityOptionIds, setActiveQualityOptionIds] = useState<number[]>([]);
   const [audioLanguages, setAudioLanguages] = useState<string[]>([]);
@@ -83,7 +84,9 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setLanguagesLoading(true);
     setMedia(null);
     // Keep dbMedia until fresh data arrives (prevents button flash)
     setSonarrSeasons([]);
@@ -95,28 +98,33 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
     // TMDB and DB fetches are independent — parallel, and flip loading on TMDB arrival so
     // the page renders before the *arr live-check resolves.
     const tmdbPromise = api.get(`/tmdb/${type}/${id}`)
-      .then(({ data }) => { setMedia(data); setLoading(false); })
-      .catch((err) => { console.error('Failed to fetch media details:', err); setLoading(false); });
+      .then(({ data }) => { if (!cancelled) { setMedia(data); setLoading(false); } })
+      .catch((err) => { if (!cancelled) { console.error('Failed to fetch media details:', err); setLoading(false); } });
 
     const dbPromise = api.get(`/media/tmdb/${id}/${type}`)
-      .then(({ data }) => { applyDbData(data); if (!data.id) setDbMedia(null); })
+      .then(({ data }) => { if (!cancelled) { applyDbData(data); if (!data.id) setDbMedia(null); } })
       .catch((err) => {
+        if (cancelled) return;
         console.warn('[useMediaDetailData] /media/tmdb lookup failed', err);
         setDbMedia(null);
-      });
+      })
+      .finally(() => { if (!cancelled) setLanguagesLoading(false); });
 
     api.get(`/admin/blacklist/check?tmdbId=${id}&mediaType=${type}`)
-      .then(({ data }) => setBlacklisted({ blocked: data.blacklisted, reason: data.reason }))
+      .then(({ data }) => { if (!cancelled) setBlacklisted({ blocked: data.blacklisted, reason: data.reason }); })
       .catch((err) => {
+        if (cancelled) return;
         console.warn('[useMediaDetailData] blacklist/check failed', err);
         setBlacklisted({ blocked: false, reason: null });
       });
     api.get(`/tmdb/${type}/${id}/recommendations`).then(({ data }) => {
+      if (cancelled) return;
       setRecommendations(data.results?.map((r: TmdbMedia) => ({ ...r, media_type: type })) || []);
       if (data.nsfwTmdbIds?.length) addNsfwIds(data.nsfwTmdbIds);
-    }).catch((err) => console.warn('[useMediaDetailData] /recommendations failed', err));
+    }).catch((err) => { if (!cancelled) console.warn('[useMediaDetailData] /recommendations failed', err); });
 
     void tmdbPromise; void dbPromise;
+    return () => { cancelled = true; };
   }, [id, type, applyDbData]);
 
   const refreshDbData = useCallback(async () => {
@@ -167,6 +175,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
     inLibrary,
     recommendations,
     loading,
+    languagesLoading,
     qualityOptions,
     activeQualityOptionIds,
     audioLanguages,

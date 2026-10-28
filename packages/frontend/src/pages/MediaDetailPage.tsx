@@ -41,7 +41,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
   const {
     media, dbMedia, sonarrSeasons, inLibrary, recommendations,
-    loading, qualityOptions, activeQualityOptionIds,
+    loading, languagesLoading, qualityOptions, activeQualityOptionIds,
     audioLanguages, subtitleLanguages, download, blacklisted, refreshDbData,
   } = useMediaDetailData(id, type);
 
@@ -148,6 +148,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
               setSelectedQuality={setSelectedQuality}
               audioLanguages={audioLanguages}
               subtitleLanguages={subtitleLanguages}
+              languagesLoading={languagesLoading}
             />
           </div>
         </div>

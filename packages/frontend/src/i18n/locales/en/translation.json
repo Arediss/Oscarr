@@ -309,6 +309,7 @@
   "media.quality": "Quality",
   "media.audio_languages": "Audio",
   "media.subtitle_languages": "Subtitles",
+  "media.languages_unknown": "Not specified",
   "media.seasons": "Seasons",
   "media.seasons_to_request": "Seasons to request",
   "media.all_seasons": "All seasons",

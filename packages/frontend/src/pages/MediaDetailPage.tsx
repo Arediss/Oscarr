@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowLeft,
   EyeOff,
   ChevronLeft,
   ChevronRight,
@@ -25,6 +24,7 @@ import { mediaSummary } from '@/utils/mediaSummary';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
 import SeasonExplorer from '@/components/media/SeasonExplorer';
 import MediaDetailLoading from '@/components/media/MediaDetailLoading';
+import MediaBackButton from '@/components/media/MediaBackButton';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -33,7 +33,6 @@ interface Props {
 export default function MediaDetailPage({ type }: Readonly<Props>) {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { isNsfw, disableBlur } = useNsfwFilter();
   const [revealed, setRevealed] = useState(false);
@@ -41,7 +40,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
   const {
     media, dbMedia, sonarrSeasons, inLibrary, recommendations,
-    loading, languagesLoading, qualityOptions, activeQualityOptionIds,
+    loading, libraryLoading, qualityOptions, activeQualityOptionIds,
     audioLanguages, subtitleLanguages, download, blacklisted, refreshDbData,
   } = useMediaDetailData(id, type);
 
@@ -104,9 +103,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     <div className="min-h-dvh">
       <section className="media-detail-hero" aria-labelledby="media-title">
         <MediaBackdrop backdropPath={media.backdrop_path} posterPath={media.poster_path} blurred={nsfw} />
-        <button onClick={() => navigate(-1)} aria-label={t('common.back')} className="absolute top-20 left-4 sm:left-8 z-20 p-2 glass rounded-xl hover:bg-white/10 transition-colors focus-visible:ring-2 focus-visible:ring-ndp-accent">
-          <ArrowLeft className="w-5 h-5 text-white" />
-        </button>
+        <MediaBackButton />
 
         <div className="media-detail-container relative z-10">
           <div className="media-detail-copy">
@@ -148,7 +145,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
               setSelectedQuality={setSelectedQuality}
               audioLanguages={audioLanguages}
               subtitleLanguages={subtitleLanguages}
-              languagesLoading={languagesLoading}
+              libraryLoading={libraryLoading}
             />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cancelMediaTransitionUnless, startMediaTransition } from './mediaTransition';
+import { cancelMediaTransitionUnless, completeMediaNavigation, isMediaReturnDestination, startMediaReturnTransition, startMediaTransition } from './mediaTransition';
 
 const rect = { left: 100, top: 200, width: 180, height: 270 };
 
@@ -117,5 +117,70 @@ describe('cover navigation', () => {
     expect(navigate).toHaveBeenCalledOnce();
     expect(env.transition.skipTransition).toHaveBeenCalledOnce();
     expect(env.animate).not.toHaveBeenCalled();
+  });
+});
+
+describe('media return navigation', () => {
+  it('waits for the history commit, then closes the old page towards the original cover', async () => {
+    const env = browser();
+    const navigate = vi.fn();
+    startMediaReturnTransition('/tv/1', { path: '/search', rect, scrollY: 640 }, rect, navigate);
+    let committed = false;
+    const update = Promise.resolve(env.update()).then(() => { committed = true; });
+    await Promise.resolve();
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(committed).toBe(false);
+    expect(isMediaReturnDestination('/search')).toBe(true);
+    expect(completeMediaNavigation('/search')).toBe(640);
+    await update;
+    env.ready();
+    await Promise.resolve();
+    const [frames, options] = env.animate.mock.calls[0];
+    expect(frames.clipPath[1]).toBe('circle(0px at 190px 335px)');
+    expect(Number.parseFloat(frames.clipPath[0].slice(7))).toBeGreaterThanOrEqual(Math.hypot(1010, 465));
+    expect(options.pseudoElement).toBe('::view-transition-old(root)');
+    env.finish();
+  });
+
+  it('can return from a directly opened detail without a remembered cover', async () => {
+    const env = browser();
+    startMediaReturnTransition('/tv/1', undefined, rect, () => {});
+    const update = env.update();
+    expect(isMediaReturnDestination('/tv/1')).toBe(false);
+    expect(isMediaReturnDestination('/')).toBe(true);
+    expect(completeMediaNavigation('/')).toBe(0);
+    await update;
+    env.finish();
+  });
+
+  it('releases a return snapshot when there is no history entry to navigate to', async () => {
+    vi.useFakeTimers();
+    const env = browser();
+    startMediaReturnTransition('/tv/1', undefined, rect, () => {});
+    let released = false;
+    void Promise.resolve(env.update()).then(() => { released = true; });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(released).toBe(true);
+    expect(env.transition.skipTransition).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a reverse reveal when another destination is chosen', async () => {
+    const env = browser();
+    startMediaReturnTransition('/tv/1', { path: '/search', rect, scrollY: 0 }, rect, () => {});
+    const update = env.update();
+    completeMediaNavigation('/requests');
+    await update;
+    expect(isMediaReturnDestination('/search')).toBe(false);
+    expect(env.transition.skipTransition).toHaveBeenCalledOnce();
+  });
+
+  it.each([{ reduced: true }, { supported: false }])('returns immediately without supported motion (%j)', options => {
+    const env = browser(options);
+    const navigate = vi.fn();
+    startMediaReturnTransition('/tv/1', { path: '/search', rect, scrollY: 640 }, rect, navigate);
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(env.start).not.toHaveBeenCalled();
+    expect(completeMediaNavigation('/search')).toBe(640);
+    expect(isMediaReturnDestination('/search')).toBe(false);
   });
 });

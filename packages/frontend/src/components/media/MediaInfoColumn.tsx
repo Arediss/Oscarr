@@ -39,7 +39,7 @@ interface Props {
   setSelectedQuality: (updater: (prev: number | null) => number | null) => void;
   audioLanguages: string[];
   subtitleLanguages: string[];
-  languagesLoading: boolean;
+  libraryLoading: boolean;
 }
 
 /** Title, facts, synopsis, actions and request options in the hero's readable left column. */
@@ -51,7 +51,7 @@ export function MediaInfoColumn({
   onRequest, onSearchMissing,
   qualityOptions, takenQualityIds, selectedQuality, setSelectedQuality,
   selectedCriteria, setSelectedCriteria,
-  audioLanguages, subtitleLanguages, languagesLoading,
+  audioLanguages, subtitleLanguages, libraryLoading,
 }: Readonly<Props>) {
   const { t } = useTranslation();
   const { isAdmin } = useAuth();
@@ -110,19 +110,19 @@ export function MediaInfoColumn({
             </a>
           )}
 
-          {onBrowseSeasons ? (
-            <button className="btn-primary" onClick={onBrowseSeasons}>{t('media.explorer.request_series')}</button>
-          ) : <ActionButton
+          <ActionButton
+            loading={libraryLoading}
+            requestLabel={onBrowseSeasons ? t('media.explorer.request_series') : undefined}
             state={buttonState}
             requesting={requesting}
             justRequested={justRequested}
             download={download}
             searchMissingError={searchMissingError}
             blacklistReason={blacklisted?.reason ?? undefined}
-            onRequest={onRequest}
-            onSearchMissing={onSearchMissing}
+            onRequest={onBrowseSeasons ?? onRequest}
+            onSearchMissing={onBrowseSeasons ?? onSearchMissing}
             t={t}
-          />}
+          />
 
           {/* Request error message */}
           {requestError && (
@@ -156,7 +156,7 @@ export function MediaInfoColumn({
 
         {/* What is actually on disk, read from the file after import. Descriptive, not a choice —
             the pickers above are the choices. */}
-        <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} loading={languagesLoading} />
+        <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} loading={libraryLoading} />
 
 
 

@@ -38,3 +38,15 @@ the artwork height follows the viewport (46–60 rem), independent of text heigh
 so late metadata never changes its crop. Obsolete initial responses are ignored.
 Browser regression checks hold the scan response and compare the artwork, hero
 and season positions before and after populated, empty and failed responses.
+
+The detail Back button closes the old page's circle towards the opening cover.
+Its history entry remembers the origin and scroll position; a directly opened
+detail falls back to the Back button's position. History traversal waits only for
+the React route commit, with the same 250 ms snapshot deadline, never for a fetch.
+The destination does not replay a page fade. Reduced motion and unsupported
+browsers keep the same Back navigation and scroll restoration without animation.
+
+The hero action uses the shared availability state even when the season explorer
+is enabled. Complete series show Available, missing seasons remain requestable,
+and pending library checks show a disabled loading action. Static rendering tests
+cover the 200709 regression and the downloading/requested/blocked states.

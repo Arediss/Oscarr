@@ -2,6 +2,8 @@ import { Check, Plus, Loader2, Clock, ShieldAlert } from 'lucide-react';
 import type { ButtonState } from '@/utils/resolveButtonState';
 
 interface ActionButtonProps {
+  loading?: boolean;
+  requestLabel?: string;
   state: ButtonState;
   requesting: boolean;
   justRequested: boolean;
@@ -14,6 +16,8 @@ interface ActionButtonProps {
 }
 
 export default function ActionButton({
+  loading = false,
+  requestLabel,
   state,
   requesting,
   justRequested,
@@ -24,6 +28,12 @@ export default function ActionButton({
   onSearchMissing,
   t,
 }: ActionButtonProps) {
+  if (loading) return (
+    <button disabled aria-busy="true" className="btn-secondary flex items-center gap-2 cursor-default">
+      <Loader2 className="w-4 h-4 animate-spin motion-reduce:animate-none" />
+      {t('common.loading')}
+    </button>
+  );
   switch (state) {
     case 'available':
       return (
@@ -146,7 +156,7 @@ export default function ActionButton({
           className="btn-primary flex items-center gap-2"
         >
           {requesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          {t('media.request')}
+          {requestLabel ?? t('media.request')}
         </button>
       );
   }

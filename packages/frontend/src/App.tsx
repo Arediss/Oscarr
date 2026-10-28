@@ -1,4 +1,4 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useLayoutEffect, useMemo, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -8,7 +8,7 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
-import { cancelMediaTransitionUnless } from '@/utils/mediaTransition';
+import { completeMediaNavigation, isMediaReturnDestination } from '@/utils/mediaTransition';
 import MediaDetailLoading from '@/components/media/MediaDetailLoading';
 
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
@@ -57,15 +57,18 @@ function RequireFeature({ feature, children }: Readonly<{ feature: string; child
 function PageTransition({ children }: Readonly<{ children: React.ReactNode }>) {
   const location = useLocation();
   const isMediaDetail = /^\/(movie|tv)\//.test(location.pathname);
-  useEffect(() => {
-    cancelMediaTransitionUnless(location.pathname);
+  // Keep this decision for the route entry: removing the circle must not restart a page fade.
+  const isCircularReturn = useMemo(() => isMediaReturnDestination(location.pathname), [location.key, location.pathname]);
+  useLayoutEffect(() => {
+    const returnScroll = completeMediaNavigation(location.pathname);
     const immediate = isMediaDetail
+      || returnScroll !== undefined
       || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    window.scrollTo({ top: 0, behavior: immediate ? 'instant' : 'smooth' });
-  }, [location.pathname, isMediaDetail]);
+    window.scrollTo({ top: returnScroll ?? 0, behavior: immediate ? 'instant' : 'smooth' });
+  }, [location.key, location.pathname, isMediaDetail]);
   return (
     // Detail pages are revealed by the circle; toggling their fade back on would restart it.
-    <div key={location.pathname} className={isMediaDetail ? undefined : 'animate-fade-in motion-reduce:animate-none'}>
+    <div key={location.pathname} className={isMediaDetail || isCircularReturn ? undefined : 'animate-fade-in motion-reduce:animate-none'}>
       {children}
     </div>
   );

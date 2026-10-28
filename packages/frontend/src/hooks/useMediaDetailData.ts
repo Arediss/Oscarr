@@ -43,7 +43,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
   const [inLibrary, setInLibrary] = useState(false);
   const [recommendations, setRecommendations] = useState<TmdbMedia[]>([]);
   const [loading, setLoading] = useState(true);
-  const [languagesLoading, setLanguagesLoading] = useState(true);
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const [qualityOptions, setQualityOptions] = useState<QualityOption[]>(() => qualityOptionsCache ?? []);
   const [activeQualityOptionIds, setActiveQualityOptionIds] = useState<number[]>([]);
   const [audioLanguages, setAudioLanguages] = useState<string[]>([]);
@@ -86,7 +86,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setLanguagesLoading(true);
+    setLibraryLoading(true);
     setMedia(null);
     // Keep dbMedia until fresh data arrives (prevents button flash)
     setSonarrSeasons([]);
@@ -108,7 +108,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
         console.warn('[useMediaDetailData] /media/tmdb lookup failed', err);
         setDbMedia(null);
       })
-      .finally(() => { if (!cancelled) setLanguagesLoading(false); });
+      .finally(() => { if (!cancelled) setLibraryLoading(false); });
 
     api.get(`/admin/blacklist/check?tmdbId=${id}&mediaType=${type}`)
       .then(({ data }) => { if (!cancelled) setBlacklisted({ blocked: data.blacklisted, reason: data.reason }); })
@@ -175,7 +175,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
     inLibrary,
     recommendations,
     loading,
-    languagesLoading,
+    libraryLoading,
     qualityOptions,
     activeQualityOptionIds,
     audioLanguages,

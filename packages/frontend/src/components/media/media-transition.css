@@ -6,6 +6,8 @@ html.media-opening::view-transition-new(root) {
 }
 html.media-opening::view-transition-old(root) { z-index: 1; }
 html.media-opening::view-transition-new(root) { z-index: 2; }
+html.media-closing::view-transition-old(root) { z-index: 2; }
+html.media-closing::view-transition-new(root) { z-index: 1; }
 @media (prefers-reduced-motion: reduce) {
   html.media-opening::view-transition-group(*),
   html.media-opening::view-transition-old(*),

@@ -1,8 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import { resolve } from 'node:path';
 
-// Pure logic only — no jsdom. Component rendering is a separate concern and would drag in a DOM
-// implementation for no benefit here; these are the rules that decide what a user may do next.
+// Logic and static component rendering run in Node without jsdom.
+// Browser interactions are verified separately against the real App.
 export default defineConfig({
   resolve: {
     alias: { '@': resolve(import.meta.dirname, 'src') },

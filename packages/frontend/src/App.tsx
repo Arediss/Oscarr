@@ -9,6 +9,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
 import { cancelMediaTransitionUnless } from '@/utils/mediaTransition';
+import MediaDetailLoading from '@/components/media/MediaDetailLoading';
 
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
@@ -127,8 +128,8 @@ export default function App() {
                 <Routes>
                   <Route path="/" element={<RequireAccess><HomePage /></RequireAccess>} />
                   <Route path="/search" element={<RequireAccess><SearchPage /></RequireAccess>} />
-                  <Route path="/movie/:id" element={<RequireAccess><MediaDetailPage type="movie" /></RequireAccess>} />
-                  <Route path="/tv/:id" element={<RequireAccess><MediaDetailPage type="tv" /></RequireAccess>} />
+                  <Route path="/movie/:id" element={<RequireAccess><Suspense fallback={<MediaDetailLoading />}><MediaDetailPage type="movie" /></Suspense></RequireAccess>} />
+                  <Route path="/tv/:id" element={<RequireAccess><Suspense fallback={<MediaDetailLoading />}><MediaDetailPage type="tv" /></Suspense></RequireAccess>} />
                   <Route path="/person/:id" element={<RequireAccess><PersonPage /></RequireAccess>} />
                   <Route path="/requests" element={<RequireFeature feature="requestsEnabled"><RequireAccess><RequestsPage /></RequireAccess></RequireFeature>} />
                   <Route path="/discover/:mediaType/genre/:genreId" element={<RequireAccess><DiscoverGenrePage /></RequireAccess>} />

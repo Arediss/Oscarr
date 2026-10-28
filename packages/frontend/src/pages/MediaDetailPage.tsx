@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Loader2,
   ArrowLeft,
   EyeOff,
   ChevronLeft,
@@ -25,7 +24,7 @@ import '@/components/media/media-detail.css';
 import { mediaSummary } from '@/utils/mediaSummary';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
 import SeasonExplorer from '@/components/media/SeasonExplorer';
-import { mediaTransitionReady } from '@/utils/mediaTransition';
+import MediaDetailLoading from '@/components/media/MediaDetailLoading';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -48,9 +47,10 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
   useEffect(() => {
     if (loading || (media && String(media.id) !== id)) return;
-    mediaTransitionReady(`/${type}/${id}`,
-      document.querySelector<HTMLImageElement>('.media-detail-image img'),
-      document.getElementById('media-title'));
+    // Don't steal focus if the person used the header while waiting for the fetch.
+    if (document.activeElement === document.body || document.activeElement?.id === 'media-detail-loading') {
+      document.getElementById('media-title')?.focus({ preventScroll: true });
+    }
   }, [loading, media, id, type]);
 
   const {
@@ -85,11 +85,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
   });
 
   if (loading) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-ndp-accent animate-spin" />
-      </div>
-    );
+    return <MediaDetailLoading />;
   }
 
   if (!media) {

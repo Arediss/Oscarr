@@ -1,4 +1,5 @@
 import { Link, useNavigate, type LinkProps } from 'react-router-dom';
+import { flushSync } from 'react-dom';
 import { startMediaTransition } from '@/utils/mediaTransition';
 import './media/media-transition.css';
 
@@ -15,7 +16,8 @@ export default function MediaLink({ onClick, ...props }: Readonly<LinkProps>) {
     const cover = link.querySelector('[data-media-cover], img')
       ?? link.parentElement?.querySelector('[data-media-cover]') ?? link;
     startMediaTransition(props.to, cover.getBoundingClientRect(), () => {
-      void navigate(props.to, { replace: props.replace, state: props.state });
+      // Commit the route or its local Suspense fallback before the native snapshot.
+      flushSync(() => { void navigate(props.to, { replace: props.replace, state: props.state }); });
     });
   }} />;
 }

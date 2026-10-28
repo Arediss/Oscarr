@@ -149,14 +149,16 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
         </div>
       </section>
 
-      <div className="media-detail-container relative pb-16">
-        {type === 'tv' && media.seasons?.some(season => season.season_number > 0) && (
+      {type === 'tv' && media.seasons?.some(season => season.season_number > 0) && (
+        <div className="media-detail-seasons">
           <SeasonExplorer key={media.id} media={media} seasons={media.seasons}
             sonarrSeasons={sonarrSeasons} requests={dbMedia?.requests ?? []}
             qualityOptions={qualityOptions} activeQualityOptionIds={activeQualityOptionIds}
             blocked={blacklisted.blocked} blurred={nsfw} onRefresh={refreshDbData} />
-        )}
+        </div>
+      )}
 
+      <div className="media-detail-container relative pb-16">
         {/* Collection */}
         {type === 'movie' && media.belongs_to_collection && (
           <CollectionSection collection={media.belongs_to_collection} />

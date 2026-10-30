@@ -55,3 +55,10 @@ column in place; no production data needs to be removed.
 Upstream references: [Sonarr API](https://sonarr.tv/docs/api/) and
 [Radarr API](https://radarr.video/docs/api/). Sonarr's `SeriesLookupController`/SkyHook lookup
 accepts `tmdb:<id>`; Radarr's `/movie?tmdbId=` supplies tracked movie metadata.
+
+## Upgrade refresh
+
+The native metadata upgrade queues a durable full library sync after SQL migrations succeed.
+It refreshes persisted seasons and invalidates derived metadata/episode snapshots without a
+database reset. See [post-migration jobs](post-migration-jobs.md) for retry, observability and
+rollback details.

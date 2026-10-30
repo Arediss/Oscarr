@@ -8,6 +8,7 @@ import { prisma } from '../src/utils/prisma.js';
 import { loadMasterKeyOrExit } from '../src/utils/secrets.js';
 import { maintenanceReason } from '../src/utils/maintenance.js';
 import * as migrations from '../src/utils/prismaMigrate.js';
+import * as scheduler from '../src/services/scheduler.js';
 
 loadMasterKeyOrExit();
 
@@ -21,8 +22,10 @@ beforeAll(async () => {
 
 const snapshots: string[] = [];
 const ARCHIVE_ENCODING = 'base64';
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks();
+  scheduler.stopAllJobs();
+  await scheduler.settlePostMigrationJobs();
   for (const path of snapshots.splice(0)) {
     for (const suffix of ['', '-wal', '-shm']) {
       try { unlinkSync(`${path}${suffix}`); } catch { /* already gone */ }
@@ -31,6 +34,19 @@ afterEach(() => {
 });
 
 describe('restore failure recovery', () => {
+  it('refuses to swap the database while a sync is writing, and preserves live data', async () => {
+    const email = `sync-running-${randomUUID()}@test.local`;
+    await addUser(email);
+    const archive = readFileSync(snapshot());
+    vi.spyOn(scheduler, 'runningJobKeys').mockReturnValue(['post_migration', 'full_sync']);
+    const disconnect = vi.spyOn(prisma, '$disconnect');
+    const result = await restoreDatabase(archive);
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining('JOBS_RUNNING: full_sync') });
+    expect(disconnect).not.toHaveBeenCalled();
+    expect(maintenanceReason()).toBeNull();
+    expect(await prisma.user.count({ where: { email } })).toBe(1);
+  });
+
   it('releases maintenance and preserves live data when disconnect fails', async () => {
     const email = `disconnect-${randomUUID()}@test.local`;
     await addUser(email);
@@ -145,7 +161,7 @@ describe('restore', () => {
     expect(await prisma.user.count({ where: { email: after } })).toBe(1);
 
     const result = await restoreDatabase(archive);
-    expect(result.ok).toBe(true);
+    expect(result, result.error).toMatchObject({ ok: true });
 
     // Prisma is reconnected by the restore itself — no process restart involved.
     expect(await prisma.user.count({ where: { email: before } })).toBe(1);
@@ -221,7 +237,7 @@ describe('restore of plugin files', () => {
 
     const result = await restoreDatabase(archive, hostile.map((path) => ({ path, data: payload })));
 
-    expect(result.ok).toBe(true);
+    expect(result, result.error).toMatchObject({ ok: true });
     expect(result.pluginFilesRestored).toBe(0);
     expect(result.pluginFilesRejected).toHaveLength(hostile.length);
 
@@ -238,7 +254,7 @@ describe('restore of plugin files', () => {
       { path: `plugins/demo/${name}`, data: Buffer.from('{"ok":true}').toString(ARCHIVE_ENCODING) },
     ]);
 
-    expect(result.ok).toBe(true);
+    expect(result, result.error).toMatchObject({ ok: true });
     expect(result.pluginFilesRestored).toBe(1);
     // The key is only present when something was rejected, so its absence is the success signal.
     expect(result.pluginFilesRejected).toBeUndefined();
@@ -258,7 +274,7 @@ describe('restore safety copy', () => {
     await addUser(`later-${randomUUID()}@test.local`);
 
     const result = await restoreDatabase(archive);
-    expect(result.ok).toBe(true);
+    expect(result, result.error).toMatchObject({ ok: true });
 
     const safety = new Database(result.safetyPath, { readonly: true, fileMustExist: true });
     try {
@@ -302,7 +318,7 @@ describe('restore of an older backup', () => {
     expect(behind.n).toBe(0);
 
     const result = await restoreDatabase(readFileSync(staged));
-    expect(result.ok).toBe(true);
+    expect(result, result.error).toMatchObject({ ok: true });
 
     // The table the old backup never had must exist again, and be queryable through Prisma.
     await expect(prisma.mailConfig.findFirst()).resolves.not.toThrow();

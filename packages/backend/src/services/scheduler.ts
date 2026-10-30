@@ -12,6 +12,8 @@ import type { PluginEngine } from '../plugins/engine.js';
 import { logEvent } from '../utils/logEvent.js';
 import { purgeExpiredResets } from './passwordReset.js';
 import { syncLibraryConfirmations } from './mediaServerLibrary.js';
+import { runPostMigrationJobs } from './postMigrationJobs.js';
+import { maintenanceReason } from '../utils/maintenance.js';
 
 /** Strip control characters (newlines, tabs, etc.) to prevent log injection */
 function sanitize(input: string): string {
@@ -57,10 +59,13 @@ const DEFAULT_JOBS = [
 const activeTasks = new Map<string, ScheduledTask>();
 // Per-key mutex — same job can't double-run (manual + cron tick collision).
 const runningJobs = new Set<string>();
+const LIBRARY_SYNC_KEYS = new Set(['full_sync', 'new_media_sync']);
+let postMigrationTimer: ReturnType<typeof setInterval> | null = null;
+let postMigrationDrain: Promise<void> | null = null;
 let _pluginEngine: PluginEngine | null = null;
 
 export type RunJobOutcome =
-  | { skipped: true; reason: 'already_running' | 'unknown_job' | 'plugin_disabled' }
+  | { skipped: true; reason: 'already_running' | 'unknown_job' | 'plugin_disabled' | 'maintenance' }
   | { skipped: false; result: unknown };
 
 async function seedJobs() {
@@ -75,7 +80,10 @@ async function seedJobs() {
 }
 
 async function runJob(key: string): Promise<RunJobOutcome> {
-  if (runningJobs.has(key)) {
+  // Covers requests already past the HTTP maintenance hook when restore starts.
+  if (maintenanceReason()) return { skipped: true, reason: 'maintenance' };
+  if (runningJobs.has(key) || (LIBRARY_SYNC_KEYS.has(key)
+    && [...LIBRARY_SYNC_KEYS].some(syncKey => runningJobs.has(syncKey)))) {
     logEvent('debug', 'Job', `Job "${sanitize(key)}" already running, skipping concurrent trigger`);
     return { skipped: true, reason: 'already_running' };
   }
@@ -183,6 +191,8 @@ async function startAllJobs() {
  *  mid-swap would query a disconnected client. `restartJobs()` brings them back afterwards.
  *  A job already executing keeps running; `runningJobKeys()` lets the caller see that. */
 export function stopAllJobs(): void {
+  if (postMigrationTimer) clearInterval(postMigrationTimer);
+  postMigrationTimer = null;
   for (const [key, task] of activeTasks) {
     task.stop();
     activeTasks.delete(key);
@@ -192,7 +202,41 @@ export function stopAllJobs(): void {
 
 /** Re-arm every enabled schedule after a maintenance window. */
 export async function restartJobs(): Promise<void> {
+  await seedJobs();
   await startAllJobs();
+  startPostMigrationJobs();
+}
+
+/** Independent of user cron preferences and first-sync gating: SQL queued a one-off upgrade,
+ *  not a new schedule. Called only after migrations, plugin init, HTTP listen and job seeding. */
+function startPostMigrationJobs(): void {
+  if (postMigrationTimer) clearInterval(postMigrationTimer);
+  const drain = async () => {
+    if (!postMigrationTimer || runningJobs.has('post_migration')) return;
+    runningJobs.add('post_migration');
+    try {
+      await runPostMigrationJobs(async key => {
+        // Only explicitly supported, idempotent core jobs may be enqueued by migrations.
+        if (key !== 'full_sync') throw new Error('Unsupported post-migration job');
+        return runJob(key);
+      }, () => !postMigrationTimer);
+    } catch {
+      await logEvent('error', 'MigrationJob', 'Unable to process migration jobs; retrying on the next tick');
+    } finally {
+      runningJobs.delete('post_migration');
+    }
+  };
+  const tick = () => {
+    if (!postMigrationDrain) postMigrationDrain = drain().finally(() => { postMigrationDrain = null; });
+  };
+  postMigrationTimer = setInterval(tick, 60_000);
+  postMigrationTimer.unref();
+  tick();
+}
+
+/** After stopping timers and refusing new jobs, let an in-flight queue poll release SQLite. */
+export async function settlePostMigrationJobs(): Promise<void> {
+  await postMigrationDrain;
 }
 
 /** Keys of jobs currently mid-execution. */
@@ -222,6 +266,7 @@ export async function initScheduler(pluginEngine?: PluginEngine) {
   } else {
     logEvent('debug', 'Job', 'Jobs seeded but not started — waiting for first full sync');
   }
+  startPostMigrationJobs();
 }
 
 export async function updateJobSchedule(key: string, cronExpression: string, enabled: boolean) {

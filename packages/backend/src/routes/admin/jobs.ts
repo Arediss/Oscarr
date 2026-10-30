@@ -72,7 +72,7 @@ export async function jobsRoutes(app: FastifyInstance) {
     triggerJob(key).then(async (outcome) => {
       // A skipped launch never reaches the scheduler's completion write. Advance its state
       // explicitly so the client can stop waiting. Do not overwrite a concurrent real run.
-      if (outcome.skipped && outcome.reason !== 'already_running') {
+      if (outcome.skipped && outcome.reason !== 'already_running' && outcome.reason !== 'maintenance') {
         await prisma.cronJob.update({
           where: { key },
           data: { lastRunAt: new Date(), lastStatus: 'error', lastDuration: 0, lastResult: JSON.stringify(outcome) },

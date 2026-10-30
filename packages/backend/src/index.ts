@@ -19,7 +19,6 @@ import { refreshVerboseRequestLogFlag, registerVerboseRequestLog } from './utils
 import { runLegacySupportExport } from './services/supportLegacyExport.js';
 import { adoptLegacyEmailProviderConfig } from './services/mailer.js';
 import { encryptSecretsAtRest } from './services/secretsMigration.js';
-import { seedReleaseNotes } from './services/seed.js';
 
 // Process-level guards: log the error to AppLog (so an admin can share it from the Logs tab)
 // then exit hard — a process that's already thrown an unhandled exception is in undefined state
@@ -79,7 +78,6 @@ async function start() {
   // Export legacy SupportTicket/TicketMessage rows before the drop migration removes them.
   runLegacySupportExport();
   await ensureMigrated();
-  await seedReleaseNotes();
   // Runs after migrations so MailConfig exists, and before routes so the admin panel never
   // shows the pre-0.8.9 split configuration.
   await adoptLegacyEmailProviderConfig().catch((err) => logEvent('warn', 'Mail', `Legacy mail config adoption skipped: ${String(err)}`));

@@ -114,7 +114,7 @@ async function syncOneInstance(
         else if (result === 'updated' || result === 'merged') updated++;
         // Queue seasons for the update path only — creates already batched via createMany,
         // and the merge path writes seasons inline (its target id isn't `existing.id`).
-        if (client.mediaType === 'tv' && result === 'updated' && existing && item.seasons?.length) {
+        if (client.mediaType === 'tv' && result === 'updated' && existing && item.seasons !== undefined) {
           pendingSeasons.push({ mediaId: existing.id, seasons: item.seasons });
         }
       } catch (err) {

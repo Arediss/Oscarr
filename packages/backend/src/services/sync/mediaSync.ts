@@ -98,8 +98,7 @@ async function syncOneInstance(
     // findUnique/findFirst was the dominant N+1 cost (10k items → 10k round-trips). Build a
     // Map keyed by the external ID the service speaks (tmdbId for movies, tvdbId for TV with
     // legacy -(tmdbId) placeholders as a fallback).
-    const externalIds = filtered.map((i) => i.externalId).filter((id): id is number => Number.isFinite(id));
-    const existingByExternalId = await bulkFetchExisting(client.mediaType, externalIds);
+    const existingByExternalId = await bulkFetchExisting(client.mediaType, filtered);
 
     // Phase 2 N+1 kill: collect season writes for TV updates here so we can batch them into
     // a single deleteMany+createMany after the loop instead of N upserts per TV item. The
@@ -163,9 +162,10 @@ async function syncOneInstance(
  *  for TV. Absent keys = no existing row → caller creates. */
 async function bulkFetchExisting(
   mediaType: 'movie' | 'tv',
-  externalIds: number[],
+  items: ArrMediaItem[],
 ): Promise<Map<number, Media>> {
   const map = new Map<number, Media>();
+  const externalIds = items.map(item => item.externalId).filter(Number.isFinite);
   if (externalIds.length === 0) return map;
 
   if (mediaType === 'movie') {
@@ -175,18 +175,27 @@ async function bulkFetchExisting(
     for (const row of rows) map.set(row.tmdbId, row);
     return map;
   }
-  // TV: a row matches either its tvdbId OR a legacy negative-tmdbId placeholder. Single query
-  // covers both via OR clause — Prisma folds it into one WHERE.
+  // A TMDB-discovered row can lack TVDB, or Sonarr can remap TVDB on an existing series.
+  // Fetch exact native TMDB identities in the same query, without a per-item lookup.
   const negatives = externalIds.map((id) => -id);
+  const tmdbIds = items.map(item => item.tmdbId).filter((id): id is number => Number.isSafeInteger(id) && id! > 0);
+  const tmdbCounts = new Map<number, number>();
+  for (const id of tmdbIds) tmdbCounts.set(id, (tmdbCounts.get(id) ?? 0) + 1);
   const rows = await prisma.media.findMany({
     where: {
       mediaType: 'tv',
-      OR: [{ tvdbId: { in: externalIds } }, { tmdbId: { in: negatives } }],
+      OR: [{ tvdbId: { in: externalIds } }, { tmdbId: { in: [...negatives, ...tmdbIds] } }],
     },
   });
   for (const row of rows) {
     const key = row.tvdbId ?? -row.tmdbId;
     map.set(key, row);
+  }
+  const byTmdbId = new Map(rows.map(row => [row.tmdbId, row]));
+  for (const item of items) {
+    const canonical = item.tmdbId && tmdbCounts.get(item.tmdbId) === 1 ? byTmdbId.get(item.tmdbId) : undefined;
+    // Prefer the native TVDB/placeholder path so its existing merge logic is preserved.
+    if (!map.has(item.externalId) && canonical) map.set(item.externalId, canonical);
   }
   return map;
 }
@@ -269,6 +278,19 @@ function canClaimMedia(existing: Media, serviceId: number, incomingState: string
   return (STATE_RANK[incomingState] ?? 0) > (STATE_RANK[existing.statusCategory] ?? 0);
 }
 
+/** Changing a known TVDB mapping requires the same TMDB identity AND the same instance-local
+ *  series. Native TMDB alone may fill a missing mapping, but must not replace an unrelated one. */
+function assertSeriesSyncIdentity(existing: Media, item: ArrMediaItem, serviceId: number): void {
+  const tmdbId = Number.isSafeInteger(item.tmdbId) && item.tmdbId! > 0 ? item.tmdbId : null;
+  if (tmdbId && existing.tmdbId > 0 && existing.tmdbId !== tmdbId) {
+    throw new Error(`Conflicting TMDB identity for TVDB ${item.externalId}`);
+  }
+  if (existing.tvdbId && existing.tvdbId !== item.externalId
+    && !(tmdbId === existing.tmdbId && existing.serviceId === serviceId && existing.sonarrId === item.serviceMediaId)) {
+    throw new Error(`Conflicting TVDB identity for TMDB ${existing.tmdbId}`);
+  }
+}
+
 async function processSingleMedia(
   item: ArrMediaItem,
   client: ArrClient,
@@ -281,6 +303,8 @@ async function processSingleMedia(
     await createMedia(item, client, serviceId);
     return 'added';
   }
+
+  if (client.mediaType === 'tv') assertSeriesSyncIdentity(existing, item, serviceId);
 
   // One Media row per (tmdbId, mediaType), so two instances holding the same title both match it.
   // Without an owner the last one walked wins every pass and the category flips every 15 min.
@@ -322,9 +346,9 @@ async function processSingleMedia(
         if (!isTmdbMediaTypeConflict(err)) throw err;
         const canonical = await prisma.media.findFirst({
           where: { tmdbId: realTmdbId, mediaType: 'tv', NOT: { id: existing.id } },
-          select: { id: true },
         });
         if (!canonical) throw err;
+        assertSeriesSyncIdentity(canonical, item, serviceId);
         const seasons = (item.seasons ?? []).filter((s) => s.seasonNumber > 0).map((s) => ({ seasonNumber: s.seasonNumber, episodeCount: s.totalEpisodeCount, statusCategory: s.statusCategory }));
         await mergeTvPlaceholderInto(existing, canonical.id, updateData, { seasons, becameAvailable });
         return 'merged';

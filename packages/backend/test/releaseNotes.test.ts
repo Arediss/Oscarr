@@ -15,6 +15,8 @@ it('installs the complete bilingual 0.10.0 notes through SQL migrations alone', 
   expect(notes[0].bodyFr).toContain('auto-approbation');
   expect(notes[0].bodyEn).toContain('automatic approval');
   expect(JSON.parse(notes[0].entries)).toEqual([]);
+  const latest = await prisma.patchnote.findMany({ orderBy: { date: 'desc' }, take: 15 });
+  expect(latest[0].version).toBe('0.10.0');
 });
 
 it('replaces draft notes without changing their identity, older releases or queued upgrade work', async () => {
@@ -27,10 +29,13 @@ it('replaces draft notes without changing their identity, older releases or queu
     update: { titleFr: 'Brouillon', titleEn: 'Draft', bodyFr: 'Ancien texte', bodyEn: 'Old text' },
   });
   const sql = readFileSync(new URL('../prisma/migrations/20261030230000_patchnote_0100/migration.sql', import.meta.url), 'utf8');
+  const dateSql = readFileSync(new URL('../prisma/migrations/20261030233000_patchnote_0100_date/migration.sql', import.meta.url), 'utf8');
   const db = new Database(process.env.DATABASE_URL!.slice('file:'.length));
   try {
     db.exec(sql);
+    db.exec(dateSql);
     db.exec(sql);
+    db.exec(dateSql);
   } finally {
     db.close();
   }
@@ -39,6 +44,7 @@ it('replaces draft notes without changing their identity, older releases or queu
   expect(notes[0].id).toBe(draft.id);
   expect(notes[0].bodyFr).toContain('Sonarr');
   expect(notes[0].bodyEn).toContain('Sonarr');
+  expect((await prisma.patchnote.findMany({ orderBy: { date: 'desc' }, take: 15 }))[0].version).toBe('0.10.0');
   expect(await prisma.patchnote.findMany({ where: { version: { not: '0.10.0' } }, orderBy: { id: 'asc' } })).toEqual(previous);
   expect(await prisma.postMigrationJob.findMany()).toEqual(jobs);
 });

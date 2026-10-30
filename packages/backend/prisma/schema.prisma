@@ -180,6 +180,7 @@ model MediaRequest {
   status        String    @default("pending") // "pending" | "approved" | "declined" | "processing" | "available" | "failed"
   mediaType     String    // "movie" | "tv"
   seasons       String?   // JSON array of season numbers for TV requests, null = all seasons
+  seasonNumbering String? // Provider numbering at selection time; null = unknown legacy provenance
   rootFolder    String?   // Root folder path override
   qualityOptionId Int?    // Selected quality option
   approvedById  Int?

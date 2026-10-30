@@ -1,3 +1,4 @@
+import { getDownloads } from '../services/downloads.js';
 import type { FastifyInstance } from 'fastify';
 import { getArrClient } from '../providers/index.js';
 import { prisma } from '../utils/prisma.js';
@@ -68,59 +69,7 @@ export async function radarrSonarrRoutes(app: FastifyInstance) {
   // Combined download queue mapped to tmdbId
   app.get('/downloads', async () => {
     try {
-      const [radarr, sonarr] = await Promise.all([
-        getArrClient('radarr'),
-        getArrClient('sonarr'),
-      ]);
-      const [radarrQueue, sonarrQueue] = await Promise.all([
-        radarr.getQueue().catch(() => ({ records: [] as unknown[] })),
-        sonarr.getQueue().catch(() => ({ records: [] as unknown[] })),
-      ]);
-
-      const downloads: {
-        tmdbId: number; mediaType: string; title: string;
-        progress: number; timeLeft: string; estimatedCompletion: string;
-        size: number; sizeLeft: number; status: string;
-        episode?: { seasonNumber: number; episodeNumber: number; title: string };
-      }[] = [];
-
-      for (const raw of radarrQueue.records) {
-        const item = raw as { title: string; status: string; size: number; sizeleft: number; timeleft: string; estimatedCompletionTime: string; movie?: { tmdbId?: number } };
-        if (!item.movie?.tmdbId) continue;
-        downloads.push({
-          tmdbId: item.movie.tmdbId,
-          mediaType: 'movie',
-          title: item.title,
-          progress: item.size > 0 ? Math.round(((item.size - item.sizeleft) / item.size) * 100) : 0,
-          timeLeft: item.timeleft,
-          estimatedCompletion: item.estimatedCompletionTime,
-          size: item.size,
-          sizeLeft: item.sizeleft,
-          status: item.status,
-        });
-      }
-
-      for (const raw of sonarrQueue.records) {
-        const item = raw as { title: string; status: string; size: number; sizeleft: number; timeleft: string; estimatedCompletionTime: string; series?: { tvdbId?: number }; episode?: { seasonNumber: number; episodeNumber: number; title: string } };
-        if (!item.series?.tvdbId) continue;
-        // Look up tmdbId from our DB via tvdbId
-        const media = await prisma.media.findFirst({ where: { tvdbId: item.series.tvdbId, mediaType: 'tv' }, select: { tmdbId: true } });
-        if (!media) continue;
-        downloads.push({
-          tmdbId: media.tmdbId,
-          mediaType: 'tv',
-          title: item.title,
-          progress: item.size > 0 ? Math.round(((item.size - item.sizeleft) / item.size) * 100) : 0,
-          timeLeft: item.timeleft,
-          estimatedCompletion: item.estimatedCompletionTime,
-          size: item.size,
-          sizeLeft: item.sizeleft,
-          status: item.status,
-          episode: item.episode ? { seasonNumber: item.episode.seasonNumber, episodeNumber: item.episode.episodeNumber, title: item.episode.title } : undefined,
-        });
-      }
-
-      return downloads;
+      return await getDownloads();
     } catch (err) {
       logEvent('debug', 'Downloads', `Failed to fetch queue: ${err}`);
       return [];

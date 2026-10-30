@@ -60,6 +60,7 @@ export async function requestLifecycleRoutes(app: FastifyInstance) {
       effectiveQuality, mediaRequest.rootFolder,
       // Approving must route on what was actually asked for, criteria included.
       mediaRequest.criteria?.map((c) => c.valueId) ?? [],
+      mediaRequest.seasonNumbering,
     );
 
     if (!sent) {

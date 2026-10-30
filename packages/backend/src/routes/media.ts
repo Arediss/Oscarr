@@ -10,6 +10,7 @@ import { COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { Availability } from '@oscarr/shared';
 import { buildAvailability, loadBlacklistedKeys, loadLibraryGate, loadFreeQualityMediaIds, loadSatisfiedQualityOptions, gateCategory, recentLibraryFilter } from '../services/availability.js';
 import { mediaKey } from '../utils/mediaKey.js';
+import { seriesCatalogRoutes } from './seriesCatalog.js';
 
 /** Normalize lastEpisodeInfo — handles both old (raw Sonarr) and new (normalized) formats */
 function parseEpisodeInfo(raw: string): { season: number; episode: number; title: string } | null {
@@ -23,6 +24,7 @@ function parseEpisodeInfo(raw: string): { season: number; episode: number; title
 }
 
 export async function mediaRoutes(app: FastifyInstance) {
+  await app.register(seriesCatalogRoutes);
   app.get('/', {
     schema: {
       querystring: {

@@ -237,6 +237,8 @@ export interface PluginContext {
       tmdbId: number;
       mediaType: 'movie' | 'tv';
       seasons?: number[];
+      /** Numbering returned by the native catalog, required to dispatch a scoped TV request. */
+      seasonNumbering?: string;
       rootFolder?: string;
       qualityOptionId?: number;
       skipPluginGuard?: boolean;

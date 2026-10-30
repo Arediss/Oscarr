@@ -4,6 +4,7 @@ import type { RadarrMovie, RadarrQueueItem, RadarrHistoryRecord } from './types.
 import type { MediaStateCategory } from '@oscarr/shared';
 import { logEvent } from '../../utils/logEvent.js';
 import { ArrClientBase } from '../arrClientBase.js';
+import { parseMetadata, metadataFields } from '../metadata.js';
 
 export class RadarrClient extends ArrClientBase implements ArrClient {
   readonly mediaType = 'movie' as const;
@@ -17,6 +18,12 @@ export class RadarrClient extends ArrClientBase implements ArrClient {
   async getMovies(): Promise<RadarrMovie[]> {
     const { data } = await this.api.get('/movie');
     return data;
+  }
+
+  async lookupMetadata(identity: { tmdbId: number }) {
+    const { data } = await this.api.get('/movie', { params: { tmdbId: identity.tmdbId } });
+    const movie = parseMetadata(data, identity, 'movie');
+    return movie ? metadataFields(movie, identity.tmdbId, 'movie') : null;
   }
 
   async addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void> {

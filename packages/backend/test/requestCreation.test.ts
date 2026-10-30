@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../src/utils/prisma.js';
 import { patchAppSettings } from '../src/utils/appSettings.js';
-import { createUserRequest, requestCollectionMovie } from '../src/services/requestService.js';
+import { createUserRequest, requestCollectionMovie, retryFailedRequests, sendToService } from '../src/services/requestService.js';
 import { pluginEngine } from '../src/plugins/engine.js';
 import { safeUserNotify } from '../src/utils/safeNotify.js';
 
 const transport = vi.hoisted(() => ({
+  getSeasonCatalog: vi.fn(async () => ({ numbering: 'tvdb:official', tracked: true,
+    seasons: [1, 2, 3].map(seasonNumber => ({ seasonNumber, title: null, posterPath: null,
+      episodeCount: null, episodeFileCount: null, monitored: true })) })),
   getRootFolders: vi.fn(async () => [{ path: '/movies' }]),
   defaultRootFolder: '/movies',
   findByExternalId: vi.fn(async () => ({ id: 42 })),
@@ -40,6 +43,9 @@ beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(pluginEngine.runGuards).mockResolvedValue({ blocked: false });
   transport.searchMedia.mockResolvedValue(undefined);
+  transport.getSeasonCatalog.mockResolvedValue({ numbering: 'tvdb:official', tracked: true,
+    seasons: [1, 2, 3].map(seasonNumber => ({ seasonNumber, title: null, posterPath: null,
+      episodeCount: null, episodeFileCount: null, monitored: true })) });
   await prisma.mediaRequest.deleteMany();
   await prisma.media.deleteMany();
   await prisma.user.deleteMany();
@@ -179,7 +185,75 @@ describe('season requests', () => {
   beforeEach(async () => {
     await prisma.media.create({ data: { tmdbId: 202, tvdbId: 303, mediaType: 'tv', title: 'Test series' } });
   });
-  const seasonRequest = (seasons?: number[]) => request({ tmdbId: 202, mediaType: 'tv', seasons });
+  const seasonRequest = (seasons?: number[]) => request({ tmdbId: 202, mediaType: 'tv', seasons,
+    seasonNumbering: seasons?.length ? 'tvdb:official' : undefined });
+
+  it('persists a pending native selection and its numbering without dispatching', async () => {
+    expect(await request({ tmdbId: 202, mediaType: 'tv', seasons: [2], seasonNumbering: 'tvdb:alternate' }))
+      .toMatchObject({ ok: true, request: { status: 'pending' } });
+    expect(await prisma.mediaRequest.findFirst()).toMatchObject({ seasons: '[2]', seasonNumbering: 'tvdb:alternate' });
+    expect(transport.getSeasonCatalog).not.toHaveBeenCalled();
+    expect(transport.requestSeasons).not.toHaveBeenCalled();
+  });
+
+  it('fails an automatically approved selection when target numbering is incompatible', async () => {
+    await patchAppSettings({ autoApproveRequests: true });
+    expect(await request({ tmdbId: 202, mediaType: 'tv', seasons: [2], seasonNumbering: 'tvdb:alternate' }))
+      .toMatchObject({ ok: true, sendFailed: true, status: 202 });
+    expect(transport.getSeasonCatalog).toHaveBeenCalledWith(303);
+    expect(transport.requestSeasons).not.toHaveBeenCalled();
+    expect(transport.searchMedia).not.toHaveBeenCalled();
+  });
+
+  it('revalidates persisted numbering on every retry rather than treating it as official', async () => {
+    await request({ tmdbId: 202, mediaType: 'tv', seasons: [2], seasonNumbering: 'tvdb:alternate' });
+    await prisma.mediaRequest.updateMany({ data: { status: 'failed' } });
+    expect(await retryFailedRequests()).toEqual({ retried: 1, succeeded: 0 });
+    expect(transport.requestSeasons).not.toHaveBeenCalled();
+    transport.getSeasonCatalog.mockResolvedValue({ numbering: 'tvdb:alternate', tracked: true,
+      seasons: [{ seasonNumber: 2, title: null, posterPath: null, episodeCount: null, episodeFileCount: null, monitored: true }] });
+    expect(await retryFailedRequests()).toEqual({ retried: 1, succeeded: 1 });
+    expect(transport.getSeasonCatalog).toHaveBeenCalledTimes(2);
+    expect(transport.requestSeasons).toHaveBeenCalledWith(42, [2]);
+    expect((await prisma.mediaRequest.findFirst())?.seasonNumbering).toBe('tvdb:alternate');
+  });
+
+  it('refuses a legacy season selection without numbering even when Sonarr has an official season with the same number', async () => {
+    const media = await prisma.media.findUniqueOrThrow({ where: { tmdbId_mediaType: { tmdbId: 202, mediaType: 'tv' } } });
+    expect(await sendToService(media, 'tv', 'Requester', userId, [2], undefined, undefined, [], null)).toBe(false);
+    expect(transport.requestSeasons).not.toHaveBeenCalled();
+    expect(transport.searchMedia).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed legacy season request failed during retry rather than interpreting its old TMDB number as TVDB', async () => {
+    const media = await prisma.media.findUniqueOrThrow({ where: { tmdbId_mediaType: { tmdbId: 202, mediaType: 'tv' } } });
+    const legacy = await prisma.mediaRequest.create({ data: {
+      mediaId: media.id, userId, mediaType: 'tv', status: 'failed', seasons: '[2]', seasonNumbering: null,
+    } });
+    expect(await retryFailedRequests()).toEqual({ retried: 1, succeeded: 0 });
+    expect(await prisma.mediaRequest.findUnique({ where: { id: legacy.id } }))
+      .toMatchObject({ status: 'failed', seasons: '[2]', seasonNumbering: null });
+    expect(transport.requestSeasons).not.toHaveBeenCalled();
+    expect(transport.searchMedia).not.toHaveBeenCalled();
+  });
+
+  it('allows an explicit native selection despite a pending legacy request with the same unproven season number', async () => {
+    const media = await prisma.media.findUniqueOrThrow({ where: { tmdbId_mediaType: { tmdbId: 202, mediaType: 'tv' } } });
+    await prisma.mediaRequest.create({ data: {
+      mediaId: media.id, userId, mediaType: 'tv', status: 'pending', seasons: '[2]', seasonNumbering: null,
+    } });
+    expect(await request({ tmdbId: 202, mediaType: 'tv', seasons: [2], seasonNumbering: 'tvdb:official' }))
+      .toMatchObject({ ok: true, status: 201, request: { status: 'pending' } });
+    expect(await prisma.mediaRequest.count()).toBe(2);
+    expect(await prisma.mediaRequest.findMany({ select: { seasonNumbering: true }, orderBy: { id: 'asc' } }))
+      .toEqual([{ seasonNumbering: null }, { seasonNumbering: 'tvdb:official' }]);
+  });
+
+  it.each(['', 'official', 'tvdb:official extra', 'tvdb:<script>', `tvdb:${'x'.repeat(41)}`])('rejects malformed numbering %j without creating a request', async seasonNumbering => {
+    expect(await request({ tmdbId: 202, mediaType: 'tv', seasons: [2], seasonNumbering }))
+      .toMatchObject({ ok: false, status: 400 });
+    expect(await prisma.mediaRequest.count()).toBe(0);
+  });
 
   it('allows distinct seasons but rejects overlapping requests', async () => {
     expect(await seasonRequest([1])).toMatchObject({ ok: true });

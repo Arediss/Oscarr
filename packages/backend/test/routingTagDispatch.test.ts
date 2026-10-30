@@ -12,6 +12,8 @@ const transport = vi.hoisted(() => ({
   addMedia: vi.fn(async () => undefined),
   addTagsToMedia: vi.fn(async () => undefined),
   requestSeasons: vi.fn(async () => undefined),
+  getSeasonCatalog: vi.fn(async () => ({ numbering: 'tvdb:official', tracked: true,
+    seasons: [{ seasonNumber: 2, title: null, posterPath: null, episodeCount: 10, episodeFileCount: 0, monitored: false }] })),
   searchMedia: vi.fn(async () => undefined),
   defaultRootFolder: '/media',
 }));
@@ -66,7 +68,7 @@ describe('request dispatch with routing tags', () => {
   it.each(['tv', 'movie'] as const)('adds rule tags to an existing %s before searching', async mediaType => {
     const media = await setup(mediaType);
     transport.findByExternalId.mockResolvedValue({ id: 42 });
-    expect(await sendToService(media, mediaType, 'Requester', null, mediaType === 'tv' ? [2] : undefined)).toBe(true);
+    expect(await sendToService(media, mediaType, 'Requester', null, mediaType === 'tv' ? [2] : undefined, undefined, undefined, [], mediaType === 'tv' ? 'tvdb:official' : undefined)).toBe(true);
     expect(transport.addTagsToMedia).toHaveBeenCalledWith(42, [7, 9]);
     expect(transport.addMedia).not.toHaveBeenCalled();
     expect(mediaType === 'tv' ? transport.requestSeasons : transport.searchMedia).toHaveBeenCalled();

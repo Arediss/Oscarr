@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { MediaStateCategory, ServiceTag } from '@oscarr/shared';
+import type { MediaStateCategory, ServiceTag, ProviderSeasonCatalog, ProviderMediaMetadata } from '@oscarr/shared';
 
 /** Optional capability of any service. IDs refer only to the configured instance.
  * Implementations validate upstream tag responses and add tags without removing existing ones. */
@@ -124,6 +124,11 @@ export interface ArrClient extends ServiceTagClient {
 
   // Episodes (TV only — optional, not implemented by movie providers)
   getEpisodesNormalized?(serviceMediaId: number, seasonNumber?: number): Promise<ArrEpisode[]>;
+  /** Native season metadata. Numbers must never be joined to another provider by position. */
+  getSeasonCatalog?(externalId: number): Promise<ProviderSeasonCatalog | null>;
+  /** Resolve an exact identity, then return service metadata (including native TV numbering).
+   * Never match by title. A lookup must not add the title to the service. */
+  lookupMetadata?(identity: { tmdbId: number; tvdbId?: number | null }): Promise<ProviderMediaMetadata | null>;
 
   // Webhooks
   parseWebhookPayload?(body: unknown): ArrWebhookEvent | null;

@@ -53,6 +53,7 @@ export async function requestRoutes(app: FastifyInstance) {
       mediaId?: number | string;
       tvdbId?: number;
       seasons?: number[] | 'all';
+      seasonNumbering?: string;
       is4k?: boolean;
       serverId?: number;
       profileId?: number;
@@ -112,6 +113,7 @@ export async function requestRoutes(app: FastifyInstance) {
       tmdbId,
       mediaType,
       seasons,
+      seasonNumbering: body.seasonNumbering,
       rootFolder: body.rootFolder,
       qualityOptionId: body.profileId,
     });

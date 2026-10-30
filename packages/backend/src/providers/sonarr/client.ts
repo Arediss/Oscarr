@@ -4,6 +4,8 @@ import type { SonarrSeries, SonarrSeason, SonarrQueueItem, SonarrEpisode, Sonarr
 import type { MediaStateCategory } from '@oscarr/shared';
 import { logEvent } from '../../utils/logEvent.js';
 import { ArrClientBase } from '../arrClientBase.js';
+import { normalizeCatalog } from './catalog.js';
+import { parseMetadata, metadataFields } from '../metadata.js';
 
 export class SonarrClient extends ArrClientBase implements ArrClient {
   readonly mediaType = 'tv' as const;
@@ -17,6 +19,35 @@ export class SonarrClient extends ArrClientBase implements ArrClient {
   async getSeries(): Promise<SonarrSeries[]> {
     const { data } = await this.api.get('/series');
     return data;
+  }
+
+  async getSeasonCatalog(tvdbId: number) {
+    const { data } = await this.api.get('/series', { params: { tvdbId, includeSeasonImages: true } });
+    const tracked = normalizeCatalog(data, tvdbId, true);
+    if (tracked) return tracked;
+    const lookup = await this.api.get('/series/lookup', { params: { term: `tvdb:${tvdbId}` } });
+    return normalizeCatalog(lookup.data, tvdbId, false);
+  }
+
+  async lookupMetadata(identity: { tmdbId: number; tvdbId?: number | null }) {
+    let tvdbId = identity.tvdbId;
+    let lookup;
+    if (!tvdbId) {
+      const { data } = await this.api.get('/series/lookup', { params: { term: `tmdb:${identity.tmdbId}` } });
+      lookup = parseMetadata(data, identity, 'tv');
+      if (!lookup) return null;
+      tvdbId = lookup.tvdbId!;
+    }
+    const { data } = await this.api.get('/series', { params: { tvdbId, includeSeasonImages: true } });
+    const tracked = parseMetadata(data, { ...identity, tvdbId }, 'tv');
+    if (!tracked && !lookup) {
+      const result = await this.api.get('/series/lookup', { params: { term: `tvdb:${tvdbId}` } });
+      lookup = parseMetadata(result.data, { ...identity, tvdbId }, 'tv');
+    }
+    const item = tracked ?? lookup;
+    if (!item) return null;
+    return { ...metadataFields(item, identity.tmdbId, 'tv'), serviceMediaId: tracked?.id || null,
+      seasonCatalog: normalizeCatalog([item], tvdbId, !!tracked)! };
   }
 
   async addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void> {
@@ -46,6 +77,9 @@ export class SonarrClient extends ArrClientBase implements ArrClient {
   }): Promise<SonarrSeries> {
     const lookupData = await this.lookupByTvdbId(options.tvdbId);
     if (!lookupData) throw new Error(`Series not found on TVDB: ${options.tvdbId}`);
+    if (options.seasons?.some(number => !lookupData.seasons.some(s => s.seasonNumber === number))) {
+      throw new Error('Requested season not found in Sonarr');
+    }
 
     const monitorAll = !options.seasons || options.seasons.length === 0;
     const seasons = lookupData.seasons.map((s: SonarrSeason) => ({

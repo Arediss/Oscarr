@@ -512,6 +512,7 @@ export function createContextV1(manifest: PluginManifest, deps: V1FactoryDeps): 
           tmdbId: input.tmdbId,
           mediaType: input.mediaType,
           seasons: input.seasons,
+          seasonNumbering: input.seasonNumbering,
           rootFolder: input.rootFolder,
           qualityOptionId: input.qualityOptionId,
           skipPluginGuard: input.skipPluginGuard,

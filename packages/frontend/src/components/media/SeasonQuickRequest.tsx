@@ -8,16 +8,17 @@ import { PosterRequestButton } from '../PosterRequestButton';
 
 export type SeasonRequestResult = 'sent' | 'queued';
 
-export function SeasonQuickRequest({ media, seasonNumber, allowed, result, onRequested, onRefresh }: Readonly<{
+export function SeasonQuickRequest({ media, seasonNumber, seasonNumbering, allowed, result, onRequested, onRefresh }: Readonly<{
   media: TmdbMedia;
   seasonNumber: number;
+  seasonNumbering?: string;
   allowed: boolean;
   result?: SeasonRequestResult;
   onRequested: (result: SeasonRequestResult) => void;
   onRefresh: () => Promise<void>;
 }>) {
   const { t } = useTranslation();
-  const actions = useMediaRequestActions(media, String(media.id), 'tv', onRefresh);
+  const actions = useMediaRequestActions(media, String(media.id), 'tv', onRefresh, seasonNumbering);
   const label = t('media.season_label', { number: seasonNumber });
   useEffect(() => {
     if (actions.requestError) showToast(`${label} — ${actions.requestError}`, 'error');

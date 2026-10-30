@@ -14,7 +14,7 @@
 .season-card-status svg { flex-shrink: 0; }
 .season-status-complete { color: #6ee7b7; background: rgb(6 78 59 / .94); }
 .season-status-partial { color: #fde68a; background: rgb(120 53 15 / .94); }
-.season-status-requested, .season-status-downloading { color: #c7d2fe; background: rgb(49 46 129 / .94); }
+.season-status-requested, .season-status-downloading, .season-status-monitored { color: #c7d2fe; background: rgb(49 46 129 / .94); }
 .season-dialog { position: fixed; inset: 0; z-index: 80; }
 .season-dialog-backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / .72); backdrop-filter: blur(8px); }
 .season-dialog-container { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1rem; }

@@ -10,6 +10,7 @@ export function useMediaRequestActions(
   id: string | undefined,
   type: 'movie' | 'tv',
   refreshDbData: () => Promise<void>,
+  seasonNumbering?: string,
 ) {
   const { t } = useTranslation();
   const [requesting, setRequesting] = useState(false);
@@ -33,6 +34,7 @@ export function useMediaRequestActions(
       const body: Record<string, unknown> = { tmdbId: media.id, mediaType: type };
       if (type === 'tv' && seasons.length > 0) {
         body.seasons = seasons;
+        if (seasonNumbering) body.seasonNumbering = seasonNumbering;
       }
       if (selectedQuality) {
         body.qualityOptionId = selectedQuality;

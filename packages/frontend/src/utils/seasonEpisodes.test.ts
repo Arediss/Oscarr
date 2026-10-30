@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeSeasonEpisodes } from './seasonEpisodes';
+import { selectSeasonEpisodes } from './seasonEpisodes';
 import { episodeState, type EpisodeInfo } from './episodeStatus';
 
 const metadata = [
@@ -11,24 +11,23 @@ const stored: EpisodeInfo = { episodeNumber: 1, title: 'Pilot', airDateUtc: '202
 
 describe('season metadata and library availability', () => {
   it('shows ordered TMDB episodes before the series is added to Sonarr', () => {
-    const episodes = mergeSeasonEpisodes(metadata, null);
+    const episodes = selectSeasonEpisodes(metadata, null);
     expect(episodes.map(ep => ep.title)).toEqual(['Le départ', 'Le retour']);
     expect(episodes.every(ep => ep.hasFile === null)).toBe(true);
     expect(episodeState(episodes[0], now)).toBe('unknown');
   });
-  it('overlays only matching Sonarr files, keeping localized metadata and exact air time', () => {
-    const episodes = mergeSeasonEpisodes(metadata, [stored]);
-    expect(episodes[0]).toMatchObject({ title: 'Le départ', hasFile: true, quality: '1080p', airDateUtc: stored.airDateUtc });
-    expect(episodes[1].hasFile).toBeNull();
-    expect(episodeState(episodes[1], now)).toBe('unknown');
+  it('uses native episode identity without replacing its title with the same TMDB number', () => {
+    const episodes = selectSeasonEpisodes(metadata, [stored]);
+    expect(episodes).toEqual([stored]);
   });
   it('does not invent missing episodes when Sonarr is empty or unavailable', () => {
-    for (const library of [[], null]) expect(episodeState(mergeSeasonEpisodes(metadata, library)[0], now)).toBe('unknown');
-    expect(episodeState(mergeSeasonEpisodes(metadata, [{ ...stored, hasFile: false }])[0], now)).toBe('missing');
+    expect(selectSeasonEpisodes(metadata, [])).toEqual([]);
+    expect(episodeState(selectSeasonEpisodes(metadata, null)[0], now)).toBe('unknown');
+    expect(episodeState(selectSeasonEpisodes(metadata, [{ ...stored, hasFile: false }])[0], now)).toBe('missing');
   });
   it('can still show Sonarr episodes when metadata fails, without dropping extra episodes', () => {
-    expect(mergeSeasonEpisodes(null, [stored])).toEqual([stored]);
-    expect(mergeSeasonEpisodes([], [stored])).toEqual([stored]);
+    expect(selectSeasonEpisodes(null, [stored])).toEqual([stored]);
+    expect(selectSeasonEpisodes([], [stored])).toEqual([stored]);
   });
   it('keeps upcoming and undated episodes meaningful without Sonarr', () => {
     expect(episodeState({ hasFile: null, airDateUtc: '2026-12-01' }, now)).toBe('upcoming');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -21,6 +21,7 @@ import { MediaInfoColumn } from '@/components/media/MediaInfoColumn';
 import { MediaBackdrop } from '@/components/media/MediaHeroArt';
 import '@/components/media/media-detail.css';
 import { mediaSummary } from '@/utils/mediaSummary';
+import { catalogSeasons } from '@/utils/seriesCatalog';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
 import SeasonExplorer from '@/components/media/SeasonExplorer';
 import MediaDetailLoading from '@/components/media/MediaDetailLoading';
@@ -40,10 +41,13 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
   const [showNsfwModal, setShowNsfwModal] = useState(false);
 
   const {
-    media, dbMedia, sonarrSeasons, inLibrary, recommendations,
+    media, dbMedia, inLibrary, recommendations,
     loading, libraryLoading, qualityOptions, activeQualityOptionIds,
     audioLanguages, subtitleLanguages, download, blacklisted, refreshDbData,
+    catalog, seasonsLoading, seasonsError, refreshMetadata,
   } = useMediaDetailData(id, type);
+  const seasons = seasonsLoading || seasonsError ? [] : catalogSeasons(media?.seasons, catalog);
+  const refreshDetail = useCallback(async () => { refreshMetadata(); await refreshDbData(); }, [refreshDbData, refreshMetadata]);
 
   useEffect(() => {
     if (loading || (media && String(media.id) !== id)) return;
@@ -60,7 +64,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     searchMissingState, searchMissingError,
     handleRequest, handleSearchMissing,
     resetOnNavigation,
-  } = useMediaRequestActions(media, id, type, refreshDbData);
+  } = useMediaRequestActions(media, id, type, refreshDetail);
 
 
   // Reset local UI state on navigation
@@ -79,8 +83,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     activeQualityOptionIds,
     selectedQuality,
     searchMissingState,
-    hasRequestableSeasons: type === 'tv' && !!media?.seasons
-      && hasRequestableSeasons(media.seasons, sonarrSeasons),
+    hasRequestableSeasons: type === 'tv' && !!catalog && (catalog.stale || hasRequestableSeasons(seasons)),
     currentUserId: user?.id,
   });
 
@@ -115,12 +118,12 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
               </button>
             )}
             <MediaInfoColumn
-              onBrowseSeasons={type === 'tv' && media.seasons?.some(season => season.season_number > 0) ? () => {
+              onBrowseSeasons={type === 'tv' && seasons.length > 0 ? () => {
                 const section = document.getElementById('season-explorer');
                 section?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
                 section?.focus({ preventScroll: true });
               } : undefined}
-              media={media}
+              media={type === 'tv' ? { ...media, number_of_seasons: seasons.length || undefined } : media}
               dbMedia={dbMedia}
               type={type}
               title={title}
@@ -152,12 +155,14 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
         </div>
       </section>
 
-      {type === 'tv' && media.seasons?.some(season => season.season_number > 0) && (
+      {type === 'tv' && (
         <div className="media-detail-container">
-          <SeasonExplorer key={media.id} media={media} seasons={media.seasons}
-            sonarrSeasons={sonarrSeasons} requests={dbMedia?.requests ?? []}
+          {seasonsLoading ? <p className="py-8 text-ndp-text-muted" role="status">{t('common.loading')}</p>
+            : seasonsError ? <div className="py-8 flex items-center gap-3"><p role="status">{t('media.explorer.unavailable')}</p><button className="btn-secondary" onClick={refreshMetadata}>{t('media.explorer.refresh')}</button></div>
+            : seasons.length > 0 && <SeasonExplorer key={`${media.id}:${catalog?.source.token ?? 'tmdb'}`} media={media} seasons={seasons}
+            catalog={catalog} requests={dbMedia?.requests ?? []}
             qualityOptions={qualityOptions} activeQualityOptionIds={activeQualityOptionIds}
-            blocked={blacklisted.blocked} blurred={nsfw} onRefresh={refreshDbData} />
+            blocked={blacklisted.blocked} blurred={nsfw} onRefresh={refreshDetail} />}
         </div>
       )}
 

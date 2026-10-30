@@ -6,13 +6,7 @@ import { useDownloadForMedia, useOnDownloadComplete } from '@/hooks/useDownloads
 import { invalidateMediaStatus, updateMediaStatusCache } from '@/hooks/useMediaStatus';
 import { type MediaStateCategory, type RequestStatus, toMediaStateCategory } from '@oscarr/shared';
 import type { TmdbMedia, Media } from '@/types';
-
-interface SonarrSeason {
-  seasonNumber: number;
-  episodeFileCount: number;
-  episodeCount: number;
-  totalEpisodeCount: number;
-}
+import { useMediaMetadata } from '@/hooks/useMediaMetadata';
 
 interface QualityOption { id: number; label: string; position: number }
 
@@ -37,12 +31,10 @@ function loadQualityOptions(): Promise<QualityOption[]> {
 export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv') {
   const { addNsfwIds } = useNsfwFilter();
   const { user } = useAuth();
-  const [media, setMedia] = useState<TmdbMedia | null>(null);
+  const { media, loading, catalog, metadata, seasonsLoading, seasonsError, refresh: refreshMetadata } = useMediaMetadata(id, type);
   const [dbMedia, setDbMedia] = useState<Media | null>(null);
-  const [sonarrSeasons, setSonarrSeasons] = useState<SonarrSeason[]>([]);
   const [inLibrary, setInLibrary] = useState(false);
   const [recommendations, setRecommendations] = useState<TmdbMedia[]>([]);
-  const [loading, setLoading] = useState(true);
   const [libraryLoading, setLibraryLoading] = useState(true);
   const [qualityOptions, setQualityOptions] = useState<QualityOption[]>(() => qualityOptionsCache ?? []);
   const [activeQualityOptionIds, setActiveQualityOptionIds] = useState<number[]>([]);
@@ -52,7 +44,6 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
 
   const applyDbData = useCallback((data: Record<string, unknown>) => {
     if (data.id) setDbMedia(data as unknown as Media);
-    if (data.sonarrSeasons) setSonarrSeasons(data.sonarrSeasons as SonarrSeason[]);
     if (data.inLibrary) setInLibrary(true);
     if (data.statusCategory === 'AVAILABLE' && !data.id) setInLibrary(true);
     if (data.activeQualityOptionIds) setActiveQualityOptionIds(data.activeQualityOptionIds as number[]);
@@ -85,21 +76,12 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     setLibraryLoading(true);
-    setMedia(null);
     // Keep dbMedia until fresh data arrives (prevents button flash)
-    setSonarrSeasons([]);
     setInLibrary(false);
     setActiveQualityOptionIds([]);
     setAudioLanguages([]);
     setSubtitleLanguages([]);
-
-    // TMDB and DB fetches are independent — parallel, and flip loading on TMDB arrival so
-    // the page renders before the *arr live-check resolves.
-    const tmdbPromise = api.get(`/tmdb/${type}/${id}`)
-      .then(({ data }) => { if (!cancelled) { setMedia(data); setLoading(false); } })
-      .catch((err) => { if (!cancelled) { console.error('Failed to fetch media details:', err); setLoading(false); } });
 
     const dbPromise = api.get(`/media/tmdb/${id}/${type}`)
       .then(({ data }) => { if (!cancelled) { applyDbData(data); if (!data.id) setDbMedia(null); } })
@@ -123,7 +105,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
       if (data.nsfwTmdbIds?.length) addNsfwIds(data.nsfwTmdbIds);
     }).catch((err) => { if (!cancelled) console.warn('[useMediaDetailData] /recommendations failed', err); });
 
-    void tmdbPromise; void dbPromise;
+    void dbPromise;
     return () => { cancelled = true; };
   }, [id, type, applyDbData]);
 
@@ -137,7 +119,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
     }
   }, [id, type, applyDbData]);
 
-  const download = useDownloadForMedia(media?.id, type);
+  const download = useDownloadForMedia(media?.id, type, metadata?.source.serviceId);
 
   // Auto-refresh when download completes (disappears from queue)
   // Sonarr/Radarr may still be importing when the item leaves the queue,
@@ -156,6 +138,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
       api.get(`/media/tmdb/${capturedId}/${type}`).then(({ data }) => {
         if (id !== capturedId) return;
         applyDbData(data);
+        refreshMetadata();
         if (data.statusCategory !== 'AVAILABLE' && !data.inLibrary && retries < 3) {
           retries++;
           retryTimerRef.current = setTimeout(check, 5000);
@@ -163,7 +146,7 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
       }).catch((err) => console.warn('[useMediaDetailData] post-download check failed', err));
     };
     check();
-  });
+  }, type, metadata?.source.serviceId);
 
   // Ignore stale dbMedia from a previous page during navigation
   const currentDbMedia = dbMedia && String(dbMedia.tmdbId) === id ? dbMedia : null;
@@ -171,10 +154,14 @@ export function useMediaDetailData(id: string | undefined, type: 'movie' | 'tv')
   return {
     media,
     dbMedia: currentDbMedia,
-    sonarrSeasons,
     inLibrary,
     recommendations,
     loading,
+    catalog,
+    metadata,
+    seasonsLoading,
+    seasonsError,
+    refreshMetadata,
     libraryLoading,
     qualityOptions,
     activeQualityOptionIds,

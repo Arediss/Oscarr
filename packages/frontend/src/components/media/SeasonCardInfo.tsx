@@ -1,6 +1,6 @@
-import { Check, CircleDashed, Clock, Download, Minus } from 'lucide-react';
+import { Check, CircleDashed, CircleHelp, Clock, Download, Minus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import type { TmdbSeason } from '@/types';
+import type { SeriesSeason } from '@oscarr/shared';
 
 const statusIcons = {
   complete: Check,
@@ -9,19 +9,20 @@ const statusIcons = {
   partial: CircleDashed,
   not_available: Minus,
   not_requested: CircleDashed,
+  monitored: Clock,
+  unknown: CircleHelp,
 };
 
 export type SeasonCardStatus = keyof typeof statusIcons;
 
-export function SeasonCardInfo({ season }: Readonly<{ season: TmdbSeason }>) {
+export function SeasonCardInfo({ season }: Readonly<{ season: SeriesSeason }>) {
   const { t } = useTranslation();
-  const title = t('media.season_label', { number: season.season_number });
+  const title = t('media.season_label', { number: season.seasonNumber });
 
   return <div className="season-card-info">
     <h3 className="season-card-title">{title}</h3>
     <p className="season-card-meta">
-      {season.air_date && <><span>{season.air_date.slice(0, 4)}</span><span aria-hidden="true">·</span></>}
-      <span>{t('calendar.episode_count', { count: season.episode_count })}</span>
+      <span>{season.episodeCount !== null ? t('calendar.episode_count', { count: season.episodeCount }) : t('media.explorer.count_unknown')}</span>
     </p>
   </div>;
 }

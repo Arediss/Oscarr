@@ -2,60 +2,23 @@ import { describe, it, expect } from 'vitest';
 import { fillOf, hasRequestableSeasons } from './seasonFill';
 import { resolveButtonState, type ButtonStateInputs } from './resolveButtonState';
 
-const season = (n: number, episodes: number) => ({ season_number: n, episode_count: episodes });
-const sonarr = (n: number, files: number, total: number) => ({ seasonNumber: n, episodeFileCount: files, totalEpisodeCount: total });
+const season = (n: number, files: number | null, total: number | null) => ({ seasonNumber: n, episodeCount: total, episodeFileCount: files, title: null, posterPath: null, monitored: false });
 
 describe('fillOf', () => {
-  it('is full when every episode is on disk', () => {
-    expect(fillOf(season(1, 10), sonarr(1, 10, 10))).toBe('full');
-  });
-
-  it('is partial when some are missing', () => {
-    expect(fillOf(season(1, 10), sonarr(1, 4, 10))).toBe('partial');
-  });
-
-  it('is empty when none are there', () => {
-    expect(fillOf(season(1, 10), sonarr(1, 0, 10))).toBe('empty');
-  });
-
-  it('is unknown when Sonarr does not track the series', () => {
-    expect(fillOf(season(1, 10), undefined)).toBe('unknown');
-  });
-
-  it('falls back to the TMDB count when Sonarr reports no total', () => {
-    expect(fillOf(season(1, 8), sonarr(1, 8, 0))).toBe('full');
-  });
+  it('is full when every native episode is on disk', () => expect(fillOf(season(1, 10, 10))).toBe('full'));
+  it('is partial when some are missing', () => expect(fillOf(season(1, 4, 10))).toBe('partial'));
+  it('is empty when none are there', () => expect(fillOf(season(1, 0, 10))).toBe('empty'));
+  it('is unknown when file status is unavailable', () => expect(fillOf(season(1, null, 10))).toBe('unknown'));
+  it('never borrows another provider total when the native total is unknown', () => expect(fillOf(season(1, 8, null))).toBe('partial'));
 });
 
-/** The exact case a beta tester hit: one season present, the rest unmonitored, and the page
- *  claimed the whole series was Available with no way to ask for the others. */
 describe('hasRequestableSeasons', () => {
-  it('is true when a later season is missing entirely', () => {
-    const seasons = [season(1, 10), season(2, 10), season(3, 10)];
-    const tracked = [sonarr(1, 10, 10), sonarr(2, 0, 10), sonarr(3, 0, 10)];
-    expect(hasRequestableSeasons(seasons, tracked)).toBe(true);
-  });
-
-  it('is false once every season is complete', () => {
-    const seasons = [season(1, 10), season(2, 10)];
-    expect(hasRequestableSeasons(seasons, [sonarr(1, 10, 10), sonarr(2, 10, 10)])).toBe(false);
-  });
-
-  it('is true when a season is only half there', () => {
-    expect(hasRequestableSeasons([season(1, 10)], [sonarr(1, 5, 10)])).toBe(true);
-  });
-
-  it('ignores the specials bucket', () => {
-    // Season 0 is never requestable on its own, so an empty one must not keep the CTA alive.
-    const seasons = [season(0, 5), season(1, 10)];
-    expect(hasRequestableSeasons(seasons, [sonarr(0, 0, 5), sonarr(1, 10, 10)])).toBe(false);
-  });
-
-  it('is true for a series Sonarr does not know yet', () => {
-    expect(hasRequestableSeasons([season(1, 10)], [])).toBe(true);
-  });
+  it('is true when a later native season is empty', () => expect(hasRequestableSeasons([season(1, 10, 10), season(2, 0, 10)])).toBe(true));
+  it('is false once every native season is complete', () => expect(hasRequestableSeasons([season(1, 10, 10), season(2, 10, 10)])).toBe(false));
+  it('is true when a season is only half there', () => expect(hasRequestableSeasons([season(1, 5, 10)])).toBe(true));
+  it('ignores the specials bucket', () => expect(hasRequestableSeasons([season(0, 0, 5), season(1, 10, 10)])).toBe(false));
+  it('is true when native file status is unknown', () => expect(hasRequestableSeasons([season(1, null, 10)])).toBe(true));
 });
-
 const inputs = (over: Partial<ButtonStateInputs> = {}): ButtonStateInputs => ({
   isAvailable: false,
   isPartiallyAvailable: false,

@@ -5,12 +5,13 @@ import { QualityPicker } from './QualityPicker';
 import CriteriaPicker from './CriteriaPicker';
 import type { TmdbMedia } from '@/types';
 
-export function SeasonRequestForm({ media, seasonNumber, qualityOptions, takenQualityIds, defaultAllowed, onCancel, onRefresh }: Readonly<{
+export function SeasonRequestForm({ media, seasonNumber, seasonNumbering, qualityOptions, takenQualityIds, defaultAllowed, onCancel, onRefresh }: Readonly<{
   media: TmdbMedia; seasonNumber: number; qualityOptions: { id: number; label: string }[];
+  seasonNumbering?: string;
   takenQualityIds: Set<number>; defaultAllowed: boolean; onCancel: () => void; onRefresh: () => Promise<void>;
 }>) {
   const { t } = useTranslation();
-  const actions = useMediaRequestActions(media, String(media.id), 'tv', onRefresh);
+  const actions = useMediaRequestActions(media, String(media.id), 'tv', onRefresh, seasonNumbering);
   const [submitted, setSubmitted] = useState<'sent' | 'queued' | null>(null);
   const canSubmit = actions.selectedQuality !== null
     ? !takenQualityIds.has(actions.selectedQuality) : defaultAllowed;

@@ -84,3 +84,8 @@
 @container primary-nav (width >= 480px) { .oscarr-nav-label { display: inline; } }
 .oscarr-header-search { min-width: 0; }
 .oscarr-header-end { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; position: relative; }
+
+/* Mouse panning keeps ordinary clicks and native touch scrolling available. */
+[data-drag-scroll="ready"], [data-drag-scroll="ready"] a { cursor: grab; }
+[data-drag-scroll="dragging"], [data-drag-scroll="dragging"] * { cursor: grabbing !important; user-select: none !important; }
+[data-drag-scroll="dragging"] .group { transform: none; }

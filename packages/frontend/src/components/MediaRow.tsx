@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import MediaCard, { MediaCardSkeleton } from './MediaCard';
 import { useMediaStatus, getStatusForMedia } from '@/hooks/useMediaStatus';
 import type { TmdbMedia } from '@/types';
+import { useDragScroll } from '@/hooks/useDragScroll';
 
 interface MediaRowProps {
   title: string;
@@ -22,6 +23,7 @@ const SIZE_CLASSES = {
 function MediaRow({ title, media, loading, href, size = 'default' }: Readonly<MediaRowProps>) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
+  useDragScroll(scrollRef, loading ? 0 : media.length);
   const statuses = useMediaStatus(media);
 
   const scroll = (direction: 'left' | 'right') => {

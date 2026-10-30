@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SeasonQuickRequest, type SeasonRequestResult } from './SeasonQuickRequest';
 import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
@@ -7,9 +7,9 @@ import { useAuth } from '@/context/AuthContext';
 import { useDownloads } from '@/hooks/useDownloads';
 import { fillOf, type SonarrSeasonLike } from '@/utils/seasonFill';
 import type { MediaRequest, TmdbMedia, TmdbSeason } from '@/types';
-import { SeasonPanel } from './SeasonPanel';
+import { SeasonDialog } from './SeasonDialog';
 import { SeasonPoster } from './SeasonPoster';
-import { SeasonCardInfo, type SeasonCardStatus } from './SeasonCardInfo';
+import { SeasonCardInfo, SeasonStatusBadge, type SeasonCardStatus } from './SeasonCardInfo';
 import './season-explorer.css';
 
 export interface SeasonExplorerProps {
@@ -47,7 +47,6 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
   const downloads = useDownloads().filter(item => item.tmdbId === props.media.id && item.mediaType === 'tv');
   const [selection, setSelection] = useState<{ number: number; requesting: boolean } | null>(null);
   const [submitted, setSubmitted] = useState<Record<number, SeasonRequestResult>>({});
-  const opener = useRef<HTMLButtonElement | null>(null);
   const requestAccess = !loading && features.requestsEnabled && !props.blocked;
   const seasons = props.seasons.filter(season => season.season_number > 0).map(season => {
     const sonarr = props.sonarrSeasons.find(item => item.seasonNumber === season.season_number);
@@ -66,11 +65,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
     return { season, status, state: { complete, ownRequest, takenQualityIds, defaultAllowed, canRequest } };
   });
   const selected = seasons.find(item => item.season.season_number === selection?.number);
-  const open = (number: number, requesting: boolean, button: HTMLButtonElement) => {
-    opener.current = button;
-    setSelection({ number, requesting });
-  };
-  const close = () => { setSelection(null); opener.current?.focus(); };
+  const close = () => setSelection(null);
 
   return <section id="season-explorer" className="season-explorer" aria-labelledby="season-explorer-title" tabIndex={-1}>
     <div className="season-explorer-heading">
@@ -83,21 +78,24 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
       {seasons.map(({ season, state, status }) => {
         const label = t('media.season_label', { number: season.season_number });
         const active = selection?.number === season.season_number;
+        const statusId = `season-${props.media.id}-${season.season_number}-status`;
         return <article className="season-card" key={season.season_number}>
           <div className="season-poster group" data-selected={active}>
             <button className="season-card-button" aria-label={`${label} — ${t('media.explorer.view_episodes')}`}
-              aria-expanded={active} aria-controls="season-details" onClick={event => open(season.season_number, false, event.currentTarget)}>
+              aria-haspopup="dialog" aria-controls={active ? 'season-details' : undefined} aria-describedby={statusId}
+              onClick={() => setSelection({ number: season.season_number, requesting: false })}>
               <SeasonPoster posterPath={season.poster_path} seriesPosterPath={props.media.poster_path} blurred={props.blurred} />
+              <SeasonStatusBadge id={statusId} status={status} />
             </button>
             {requestAccess && !state.complete && <SeasonQuickRequest media={props.media} seasonNumber={season.season_number}
               allowed={state.defaultAllowed} result={submitted[season.season_number]} onRefresh={props.onRefresh}
               onRequested={result => setSubmitted(previous => ({ ...previous, [season.season_number]: result }))} />}
           </div>
-          <SeasonCardInfo season={season} status={status} />
+          <SeasonCardInfo season={season} />
         </article>;
       })}
     </div>
-    {selected && selection && <SeasonPanel key={`${props.media.id}:${selection.number}`} {...props}
+    {selected && selection && <SeasonDialog key={`${props.media.id}:${selection.number}`} {...props}
       season={selected.season} state={selected.state} requesting={selection.requesting}
       requestAccess={requestAccess} requestsEnabled={features.requestsEnabled}
       downloads={downloads.filter(item => item.episode?.seasonNumber === selection.number)}

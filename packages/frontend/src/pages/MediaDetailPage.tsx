@@ -25,6 +25,7 @@ import { hasRequestableSeasons } from '@/utils/seasonFill';
 import SeasonExplorer from '@/components/media/SeasonExplorer';
 import MediaDetailLoading from '@/components/media/MediaDetailLoading';
 import MediaBackButton from '@/components/media/MediaBackButton';
+import { useDragScroll } from '@/hooks/useDragScroll';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -152,7 +153,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
       </section>
 
       {type === 'tv' && media.seasons?.some(season => season.season_number > 0) && (
-        <div className="media-detail-seasons">
+        <div className="media-detail-container">
           <SeasonExplorer key={media.id} media={media} seasons={media.seasons}
             sonarrSeasons={sonarrSeasons} requests={dbMedia?.requests ?? []}
             qualityOptions={qualityOptions} activeQualityOptionIds={activeQualityOptionIds}
@@ -196,6 +197,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; title: string; director?: TmdbCrew }>) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
+  useDragScroll(scrollRef, cast.length);
 
   const scroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;

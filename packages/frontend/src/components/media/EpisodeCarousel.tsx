@@ -4,6 +4,7 @@ import { Calendar, Check, ChevronLeft, ChevronRight, Clock, Download, Minus, Hel
 import { episodeTitle, type EpisodeInfo, type EpisodeState } from '@/utils/episodeStatus';
 import { episodePageAtOffset, episodePageRanges } from '@/utils/episodeCarousel';
 import type { DownloadItem } from '@/hooks/useDownloads';
+import { useDragScroll } from '@/hooks/useDragScroll';
 
 const icons = { available: Check, missing: Minus, upcoming: Calendar, downloading: Download, undated: Clock, unknown: HelpCircle };
 type CarouselEpisode = EpisodeInfo & { state: EpisodeState; download?: DownloadItem };
@@ -12,6 +13,7 @@ export function EpisodeCarousel({ episodes }: Readonly<{ episodes: CarouselEpiso
   const { t, i18n } = useTranslation();
   const id = useId();
   const viewport = useRef<HTMLDivElement>(null);
+  useDragScroll(viewport, episodes.length);
   const currentPage = useRef(0);
   const [page, setPage] = useState(0);
   const ranges = episodePageRanges(episodes.length);

@@ -97,3 +97,28 @@ The hero action uses the shared availability state even when the season explorer
 is enabled. Complete series show Available, missing seasons remain requestable,
 and pending library checks show a disabled loading action. Static rendering tests
 cover the 200709 regression and the downloading/requested/blocked states.
+
+Season posters now use a compact wrapping grid inside the same content container
+as the cast and synopsis. Status pills live inside each cover and are linked to
+the opening button's accessible description; the quick-request button remains a
+separate action. Opening a season mounts `SeasonDialog`, using the already installed
+[Headless UI Dialog](https://headlessui.com/react/dialog) for focus containment,
+background inertness, scroll locking, Escape/outside dismissal and focus return.
+Episode filters, ten-episode page navigation and the scoped request form remain
+inside the dialog. Closing unmounts episode fetching and its polling timer.
+
+Media, genre, cast and episode rows also accept mouse dragging. After a six-pixel
+horizontal threshold, the row captures the pointer and scrolls without smooth
+animation or snapping; release restores those styles and consumes the synthetic
+click so no cover opens accidentally. Normal clicks, keyboard activation, modified
+clicks, quick-request buttons and native touch/trackpad scrolling remain available.
+Window listeners exist only for the active gesture and are removed on release,
+cancellation, window blur or Activity cleanup. No timers or render-per-move state
+are added by this gesture.
+
+Browser validation covers a 28-season grid at desktop and mobile widths (no
+horizontal overflow, aligned content edges), dialog pagination and filtering,
+request form open/cancel, Tab containment, Escape/outside dismissal and focus return.
+Real pointer drags move cover and genre rows in both directions without navigation;
+a subsequent normal click still starts the media reveal. Gesture regression tests
+also cover jitter, buttons, native input, keyboard clicks and cleanup during a drag.

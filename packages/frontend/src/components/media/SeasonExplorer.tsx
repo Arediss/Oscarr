@@ -61,7 +61,7 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
     const defaultAllowed = !complete && !ownRequest && (!season.monitored || !!props.catalog?.stale);
     const canRequest = requestAccess && (defaultAllowed || props.qualityOptions.some(option => !takenQualityIds.has(option.id)));
     const downloading = !!props.catalog?.tracked && downloads.some(item => item.episode?.seasonNumber === season.seasonNumber);
-    const status: SeasonCardStatus = seasonStatus(season, props.catalog?.tracked ?? null, ownRequest || activeRequests.length > 0, downloading);
+    const status: SeasonCardStatus = seasonStatus(season, props.catalog?.tracked ?? null, ownRequest || activeRequests.length > 0, downloading, props.catalog?.stale);
     return { season, status, state: { complete, ownRequest, takenQualityIds, defaultAllowed, canRequest } };
   });
   const selected = seasons.find(item => item.season.seasonNumber === selection?.number);

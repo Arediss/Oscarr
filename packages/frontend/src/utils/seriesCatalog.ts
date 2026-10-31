@@ -12,7 +12,11 @@ export function isSeasonComplete(season: SeriesSeason): boolean {
   return fillOf(season) === 'full';
 }
 
-export function seasonStatus(season: SeriesSeason, tracked: boolean | null, requested: boolean, downloading: boolean) {
+export function seasonStatus(season: SeriesSeason, tracked: boolean | null, requested: boolean, downloading: boolean, stale = false) {
+  if (stale) {
+    if (downloading) return 'downloading';
+    return requested ? 'requested' : 'unknown';
+  }
   if (tracked === null) return requested ? 'requested' : 'unknown';
   if (isSeasonComplete(season)) return 'complete';
   if (downloading) return 'downloading';

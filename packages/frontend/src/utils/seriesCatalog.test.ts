@@ -8,6 +8,15 @@ const catalog: SeriesCatalog = { numbering: 'tvdb:official', tracked: true, seas
 const tmdb = Array.from({ length: 25 }, (_, i): TmdbSeason => ({ id: i, season_number: i + 1, episode_count: 43, name: 'TMDB', overview: '', poster_path: '/tmdb.jpg', air_date: '2016-01-01' }));
 
 describe('coherent season source', () => {
+  it('does not advertise stale cached availability, while preserving live request and download states', () => {
+    const complete = { ...season, episodeFileCount: 146 };
+    expect(seasonStatus(complete, true, false, false, true)).toBe('unknown');
+    expect(seasonStatus(season, true, false, false, true)).toBe('unknown');
+    expect(seasonStatus(complete, true, true, false, true)).toBe('requested');
+    expect(seasonStatus(complete, true, false, true, true)).toBe('downloading');
+    expect(seasonStatus(complete, true, false, false, false)).toBe('complete');
+  });
+
   it('uses only native seasons and counts, never appending or borrowing TMDB seasons', () => {
     expect(catalogSeasons(tmdb, catalog)).toEqual([season]);
   });

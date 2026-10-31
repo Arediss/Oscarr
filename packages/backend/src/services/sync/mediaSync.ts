@@ -60,35 +60,39 @@ async function syncOneInstance(
     let filtered = allMedia;
     if (since) {
       const newlyAdded = allMedia.filter(m => m.addedDate && new Date(m.addedDate) > since);
-      // Items with file that aren't marked available in DB
-      const availableItems = allMedia.filter(m => m.statusCategory === 'AVAILABLE');
-      const availableExternalIds = new Set(availableItems.map(m => m.externalId));
+      const nativeByExternalId = new Map(allMedia.map(item => [item.externalId, item]));
       // Always refresh in-progress items (queue / partial) so PROCESSING + the *arr id land within one cycle, even without a webhook.
       const inProgressItems = allMedia.filter(m => m.statusCategory === 'PROCESSING');
 
-      const notAvailableInDb = await prisma.media.findMany({
+      const storedMedia = await prisma.media.findMany({
         where: {
           mediaType: client.mediaType,
-          statusCategory: { in: ['UNAVAILABLE', 'UPCOMING', 'SEARCHING', 'PROCESSING'] },
           // Rows owned by another instance are its job — pulling them in here caused flapping.
           OR: [{ serviceId }, { serviceId: null }],
         },
-        select: { tmdbId: true, tvdbId: true },
+        select: { tmdbId: true, tvdbId: true, statusCategory: true, qualityProfileId: true },
       });
 
       const needsUpdateIds = new Set<number>();
-      for (const row of notAvailableInDb) {
+      for (const row of storedMedia) {
         const id = client.mediaType === 'movie' ? row.tmdbId : (row.tvdbId ?? row.tmdbId);
-        if (availableExternalIds.has(id)) needsUpdateIds.add(id);
+        const native = nativeByExternalId.get(id);
+        if (!native) continue;
+        const becameAvailable = native.statusCategory === 'AVAILABLE'
+          && ['UNAVAILABLE', 'UPCOMING', 'SEARCHING', 'PROCESSING'].includes(row.statusCategory);
+        // Editing a profile in the service does not change its added date or availability.
+        // Compare the catalog already fetched above so old available titles refresh too.
+        const profileChanged = native.qualityProfileId !== null && native.qualityProfileId !== row.qualityProfileId;
+        if (becameAvailable || profileChanged) needsUpdateIds.add(id);
       }
 
-      const toUpdate = availableItems.filter(m => needsUpdateIds.has(m.externalId));
+      const toUpdate = allMedia.filter(m => needsUpdateIds.has(m.externalId));
       const combined = new Map<number, ArrMediaItem>();
       for (const m of [...newlyAdded, ...toUpdate, ...inProgressItems]) combined.set(m.externalId, m);
       filtered = [...combined.values()];
 
       if (needsUpdateIds.size > 0) {
-        logEvent('debug', 'Sync', `${serviceType} incremental: ${newlyAdded.length} newly added, ${toUpdate.length} need status update`);
+        logEvent('debug', 'Sync', `${serviceType} incremental: ${newlyAdded.length} newly added, ${toUpdate.length} need status or profile update`);
       }
     }
 

@@ -1,4 +1,4 @@
-import { requestQualityAliases } from './requestQualityAliases.js';
+import { createRequestVariantMatcher } from './requestVariants.js';
 import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
 import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService, createServiceTagClient } from '../providers/index.js';
@@ -384,34 +384,28 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   const criteriaError = await validateRequestCriteria(criterionValueIds);
   if (criteriaError) return criteriaError;
 
-  const qualityAliases = await requestQualityAliases(input.qualityOptionId,
-    option => resolveServiceContext(mediaType, tmdbId, user.id, option, criterionValueIds), input.rootFolder);
+  const matchesVariant = await createRequestVariantMatcher(input,
+    option => resolveServiceContext(mediaType, tmdbId, user.id, option, criterionValueIds));
 
   // Dedup + create in one transaction so two concurrent calls by the same user can't both pass
   // the dedup check and both insert (SQLite serializes writes, but defensive against future
   // backends and intent-clarity for the reader).
   const initialStatus: RequestStatusKind = shouldAutoApprove ? 'approved' : 'pending';
   const mediaRequest = await prisma.$transaction(async (tx) => {
-    // The unit of uniqueness is (media, user, quality option, criterion values) — not (media,
-    // user). Two variants are two different asks: the option decides the profile, the criteria
-    // decide which *arr instance a folder rule sends it to, which is the whole point of discussion
-    // #228. Without them the interface offered a second variant on an available title and this
-    // answered 409, because `resolveButtonState` reads the variant path before the user's own
-    // request. Absent is its own value: the default is not the same ask as a named one.
-    //
-    // Compared in memory rather than in SQL: the candidates are one user's active requests on one
-    // title, so a handful of rows, and set equality is clearer here than a counting subquery.
+    // Compare one user's active requests for this title. Quality labels may be aliases, but
+    // different folders, routing actions, criteria or disjoint season scopes remain distinct.
+    // Routing is resolved above, keeping external lookups outside the write transaction.
     const candidates = await tx.mediaRequest.findMany({
       where: {
         mediaId: media.id,
         userId: user.id,
         status: { in: [...ACTIVE_REQUEST_STATUSES] },
-        OR: qualityAliases.map(qualityOptionId => ({ qualityOptionId })),
       },
-      select: { id: true, seasons: true, seasonNumbering: true, criteria: { select: { valueId: true } } },
+      select: { id: true, qualityOptionId: true, rootFolder: true, seasons: true, seasonNumbering: true, criteria: { select: { valueId: true } } },
     });
     const wanted = new Set(criterionValueIds);
     const dup = candidates.find((c) => {
+      if (!matchesVariant(c)) return false;
       // Different seasons of the same variant are separate requests. A whole-series request
       // overlaps every season; malformed legacy scopes remain conservative.
       if (mediaType === 'tv' && validSeasons?.length && c.seasons) {

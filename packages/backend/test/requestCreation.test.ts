@@ -4,6 +4,7 @@ import { patchAppSettings } from '../src/utils/appSettings.js';
 import { createUserRequest, requestCollectionMovie, retryFailedRequests, sendToService } from '../src/services/requestService.js';
 import { pluginEngine } from '../src/plugins/engine.js';
 import { safeUserNotify } from '../src/utils/safeNotify.js';
+import { getMovieDetails } from '../src/services/tmdb.js';
 
 const transport = vi.hoisted(() => ({
   getSeasonCatalog: vi.fn(async () => ({ numbering: 'tvdb:official', tracked: true,
@@ -38,10 +39,13 @@ const ADMIN_ROLE = 'admin';
 const INITIAL_MEDIA_CATEGORY = 'UNAVAILABLE';
 const request = (extra: Partial<Parameters<typeof createUserRequest>[0]> = {}) =>
   createUserRequest({ userId, tmdbId: 101, mediaType: 'movie', ...extra });
+const defaultMovieLookup = vi.mocked(getMovieDetails).getMockImplementation()!;
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.mocked(getMovieDetails).mockImplementation(defaultMovieLookup);
   vi.mocked(pluginEngine.runGuards).mockResolvedValue({ blocked: false });
+  transport.getRootFolders.mockResolvedValue([{ path: '/movies' }]);
   transport.searchMedia.mockResolvedValue(undefined);
   transport.getSeasonCatalog.mockResolvedValue({ numbering: 'tvdb:official', tracked: true,
     seasons: [1, 2, 3].map(seasonNumber => ({ seasonNumber, title: null, posterPath: null,
@@ -294,5 +298,107 @@ describe('equivalent quality requests', () => {
     const qualityOptionId = await configure(4);
     expect(await request()).toMatchObject({ ok: true });
     expect(await request({ qualityOptionId })).toMatchObject({ ok: true });
+  });
+
+  async function configureEquivalentOptions() {
+    const service = await prisma.service.create({ data: { name: 'Radarr test', type: 'radarr', config: '{}' } });
+    const first = await prisma.qualityOption.create({ data: { label: 'HD first' } });
+    const second = await prisma.qualityOption.create({ data: { label: 'HD second' } });
+    await prisma.qualityMapping.createMany({ data: [first, second].map(option => ({
+      qualityProfileName: 'Same profile', qualityOptionId: option.id, serviceId: service.id, qualityProfileId: 1,
+    })) });
+    return { first, second };
+  }
+
+  it('keeps different stored root folders distinct even when two quality options map to the same profile', async () => {
+    const { first, second } = await configureEquivalentOptions();
+    transport.getRootFolders.mockResolvedValue([{ path: '/movies/first' }, { path: '/movies/second' }]);
+    expect(await request({ qualityOptionId: first.id, rootFolder: '/movies/first' })).toMatchObject({ ok: true });
+    expect(await request({ qualityOptionId: second.id, rootFolder: '/movies/second' })).toMatchObject({ ok: true });
+    expect(await prisma.mediaRequest.findMany({ orderBy: { id: 'asc' }, select: { qualityOptionId: true, rootFolder: true } }))
+      .toEqual([
+        { qualityOptionId: first.id, rootFolder: '/movies/first' },
+        { qualityOptionId: second.id, rootFolder: '/movies/second' },
+      ]);
+  });
+
+  it('still deduplicates equivalent quality options when their explicit root folders agree', async () => {
+    const { first, second } = await configureEquivalentOptions();
+    transport.getRootFolders.mockResolvedValue([{ path: '/movies/shared' }]);
+    expect(await request({ qualityOptionId: first.id, rootFolder: '/movies/shared' })).toMatchObject({ ok: true });
+    expect(await request({ qualityOptionId: second.id, rootFolder: '/movies/shared' })).toMatchObject({ code: 'DUPLICATE' });
+    expect(await prisma.mediaRequest.count()).toBe(1);
+  });
+
+  async function configureRoutedOptions(actions: { tags: number[]; seriesType: string }[]) {
+    const service = await prisma.service.create({ data: { name: 'Sonarr test', type: 'sonarr', config: '{}' } });
+    await prisma.media.create({ data: { tmdbId: 202, tvdbId: 303, mediaType: 'tv', title: 'Test series' } });
+    const options = [];
+    for (const [index, action] of actions.entries()) {
+      const option = await prisma.qualityOption.create({ data: { label: `TV option ${index + 1}` } });
+      await prisma.qualityMapping.create({ data: {
+        qualityProfileName: 'Same profile', qualityOptionId: option.id, serviceId: service.id, qualityProfileId: 1,
+      } });
+      await prisma.folderRule.create({ data: {
+        name: option.label, mediaType: 'tv', folderPath: '/series/shared', serviceId: service.id,
+        conditions: JSON.stringify([{ field: 'quality', operator: 'is', value: option.label }]),
+        tagIds: JSON.stringify(action.tags), seriesType: action.seriesType,
+      } });
+      options.push(option.id);
+    }
+    return options;
+  }
+
+  it('allows requests with different routed tag actions despite identical service, profile and folder', async () => {
+    const [first, second] = await configureRoutedOptions([
+      { tags: [7], seriesType: 'standard' }, { tags: [9], seriesType: 'standard' },
+    ]);
+    expect(await request({ tmdbId: 202, mediaType: 'tv', qualityOptionId: first })).toMatchObject({ ok: true });
+    expect(await request({ tmdbId: 202, mediaType: 'tv', qualityOptionId: second })).toMatchObject({ ok: true });
+    expect(await prisma.mediaRequest.count()).toBe(2);
+  });
+
+  it('allows requests with different routed series types despite identical service, profile and folder', async () => {
+    const [first, second] = await configureRoutedOptions([
+      { tags: [], seriesType: 'standard' }, { tags: [], seriesType: 'anime' },
+    ]);
+    expect(await request({ tmdbId: 202, mediaType: 'tv', qualityOptionId: first })).toMatchObject({ ok: true });
+    expect(await request({ tmdbId: 202, mediaType: 'tv', qualityOptionId: second })).toMatchObject({ ok: true });
+    expect(await prisma.mediaRequest.count()).toBe(2);
+  });
+
+  it('treats tag order as equivalent when every routed action is otherwise identical', async () => {
+    const [first, second] = await configureRoutedOptions([
+      { tags: [7, 9], seriesType: 'anime' }, { tags: [9, 7], seriesType: 'anime' },
+    ]);
+    expect(await request({ tmdbId: 202, mediaType: 'tv', qualityOptionId: first })).toMatchObject({ ok: true });
+    expect(await request({ tmdbId: 202, mediaType: 'tv', qualityOptionId: second })).toMatchObject({ code: 'DUPLICATE' });
+    expect(await prisma.mediaRequest.count()).toBe(1);
+  });
+
+  it('preserves manual pending creation for an existing media while TMDB routing resolution is unavailable', async () => {
+    const qualityOptionId = await configure();
+    vi.mocked(getMovieDetails).mockRejectedValue(new Error('TMDB unavailable'));
+    await expect(request({ qualityOptionId })).resolves.toMatchObject({ ok: true, status: 201, request: { status: 'pending' } });
+    expect(await prisma.mediaRequest.findMany({ select: { qualityOptionId: true, status: true } }))
+      .toEqual([{ qualityOptionId, status: 'pending' }]);
+    expect(transport.searchMedia).not.toHaveBeenCalled();
+  });
+
+  it('still rejects a same-option duplicate when TMDB routing resolution is unavailable', async () => {
+    const qualityOptionId = await configure();
+    expect(await request({ qualityOptionId })).toMatchObject({ ok: true });
+    vi.mocked(getMovieDetails).mockRejectedValue(new Error('TMDB unavailable'));
+    await expect(request({ qualityOptionId })).resolves.toMatchObject({ ok: false, code: 'DUPLICATE' });
+    expect(await prisma.mediaRequest.count()).toBe(1);
+    expect(transport.searchMedia).not.toHaveBeenCalled();
+  });
+
+  it('keeps different explicit options distinct when TMDB cannot establish their equivalence', async () => {
+    const qualityOptionId = await configure();
+    expect(await request()).toMatchObject({ ok: true });
+    vi.mocked(getMovieDetails).mockRejectedValue(new Error('TMDB unavailable'));
+    expect(await request({ qualityOptionId })).toMatchObject({ ok: true, request: { status: 'pending' } });
+    expect(await prisma.mediaRequest.count()).toBe(2);
   });
 });

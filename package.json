@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.6"
   },
   "dependencies": {
     "bcrypt": "^6.0.0"
@@ -31,7 +31,7 @@
   "overrides": {
     "deepmerge-ts": "8.0.1",
     "serialize-javascript": ">=7.0.5",
-    "follow-redirects": ">=1.16.0",
+    "follow-redirects": ">=1.16.2",
     "picomatch": ">=4.0.4",
     "uuid": ">=14.0.0"
   }

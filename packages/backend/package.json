@@ -33,14 +33,14 @@
     "axios": "^1.17.0",
     "better-sqlite3": "^12.9.0",
     "dotenv": "^17.4.1",
-    "fastify": "^5.8.5",
+    "fastify": "^5.12.6",
     "node-cron": "^4.2.1",
-    "nodemailer": "^9.0.5",
+    "nodemailer": "^10.1.4",
     "prisma": "^6.19.3",
     "resend": "^6.10.0",
     "semver": "^7.6.0",
     "tar": "^7.5.16",
-    "undici": "^8.5.0",
+    "undici": "^8.12.2",
     "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
@@ -54,6 +54,6 @@
     "esbuild": "^0.28.1",
     "tsx": "^4.19.3",
     "typescript": "^6.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   }
 }

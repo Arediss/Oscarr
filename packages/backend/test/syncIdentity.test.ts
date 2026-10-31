@@ -36,6 +36,28 @@ beforeEach(async () => {
 });
 
 describe('native series identity during library sync', () => {
+  it.each([false, true])('checks the full catalog for ambiguous incremental matches (known TVDB: %s)', async knownIdentity => {
+    const original = await prisma.media.create({ data: {
+      tmdbId: 124834, mediaType: 'tv', title: 'Original series',
+      tvdbId: knownIdentity ? 395494 : null,
+      sonarrId: knownIdentity ? 1638 : null, serviceId: knownIdentity ? serviceId : null,
+    } });
+    const request = await requestFor(original.id);
+    edge.library.mockResolvedValue([
+      { ...nativeSeries('First native identity', 124834, 395494, 1638), statusCategory: 'PROCESSING' },
+      nativeSeries('Second native identity', 124834, 999999, 9999),
+    ]);
+    // Only the in-progress series enters the incremental batch; its sibling still makes
+    // a TMDB-only association ambiguous. An exact TVDB association remains safe.
+    expect(await syncArrService('sonarr', new Date('2026-10-30T00:00:00Z')))
+      .toMatchObject({ added: 0, updated: knownIdentity ? 1 : 0, errors: knownIdentity ? 0 : 1 });
+    const saved = await prisma.media.findUnique({ where: { id: original.id } });
+    if (knownIdentity) expect(saved).toMatchObject({ tvdbId: 395494, sonarrId: 1638, serviceId, statusCategory: 'PROCESSING' });
+    else expect(saved).toEqual(original);
+    expect(await prisma.mediaRequest.findUnique({ where: { id: request.id } })).toEqual(request);
+    expect(await prisma.season.count()).toBe(knownIdentity ? 1 : 0);
+  });
+
   it('refuses an ambiguous native TMDB fallback without overwriting the existing media or request', async () => {
     const original = await prisma.media.create({ data: { tmdbId: 124834, mediaType: 'tv', title: 'Unlinked series' } });
     const request = await requestFor(original.id);

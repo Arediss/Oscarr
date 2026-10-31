@@ -98,7 +98,7 @@ async function syncOneInstance(
     // findUnique/findFirst was the dominant N+1 cost (10k items → 10k round-trips). Build a
     // Map keyed by the external ID the service speaks (tmdbId for movies, tvdbId for TV with
     // legacy -(tmdbId) placeholders as a fallback).
-    const existingByExternalId = await bulkFetchExisting(client.mediaType, filtered);
+    const existingByExternalId = await bulkFetchExisting(client.mediaType, filtered, allMedia);
 
     // Phase 2 N+1 kill: collect season writes for TV updates here so we can batch them into
     // a single deleteMany+createMany after the loop instead of N upserts per TV item. The
@@ -163,6 +163,7 @@ async function syncOneInstance(
 async function bulkFetchExisting(
   mediaType: 'movie' | 'tv',
   items: ArrMediaItem[],
+  catalog: ArrMediaItem[],
 ): Promise<Map<number, Media>> {
   const map = new Map<number, Media>();
   const externalIds = items.map(item => item.externalId).filter(Number.isFinite);
@@ -180,7 +181,13 @@ async function bulkFetchExisting(
   const negatives = externalIds.map((id) => -id);
   const tmdbIds = items.map(item => item.tmdbId).filter((id): id is number => Number.isSafeInteger(id) && id! > 0);
   const tmdbCounts = new Map<number, number>();
-  for (const id of tmdbIds) tmdbCounts.set(id, (tmdbCounts.get(id) ?? 0) + 1);
+  // An incremental batch may contain just one of several native series sharing a TMDB ID.
+  // Only the complete instance catalog can establish whether that fallback is unambiguous.
+  for (const { tmdbId } of catalog) {
+    if (Number.isSafeInteger(tmdbId) && tmdbId! > 0) {
+      tmdbCounts.set(tmdbId!, (tmdbCounts.get(tmdbId!) ?? 0) + 1);
+    }
+  }
   const rows = await prisma.media.findMany({
     where: {
       mediaType: 'tv',

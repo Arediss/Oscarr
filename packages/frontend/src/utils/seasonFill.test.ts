@@ -13,6 +13,16 @@ describe('fillOf', () => {
 });
 
 describe('hasRequestableSeasons', () => {
+  it('does not offer already-monitored Apothecary Diaries season three while future episodes are unaired', () => {
+    expect(hasRequestableSeasons([
+      { ...season(1, 24, 24), monitored: true },
+      { ...season(2, 24, 24), monitored: true },
+      { ...season(3, 5, 24), monitored: true },
+    ])).toBe(false);
+  });
+  it('still offers an incomplete season that the service is not monitoring', () => {
+    expect(hasRequestableSeasons([{ ...season(3, 5, 24), monitored: false }])).toBe(true);
+  });
   it('is true when a later native season is empty', () => expect(hasRequestableSeasons([season(1, 10, 10), season(2, 0, 10)])).toBe(true));
   it('is false once every native season is complete', () => expect(hasRequestableSeasons([season(1, 10, 10), season(2, 10, 10)])).toBe(false));
   it('is true when a season is only half there', () => expect(hasRequestableSeasons([season(1, 5, 10)])).toBe(true));

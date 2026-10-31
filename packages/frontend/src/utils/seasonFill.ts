@@ -10,5 +10,6 @@ export function fillOf(season: SeriesSeason): Fill {
 }
 
 export function hasRequestableSeasons(seasons: SeriesSeason[]): boolean {
-  return seasons.filter(s => s.seasonNumber > 0).some(s => fillOf(s) !== 'full');
+  // Monitored seasons are already being fetched, including their future episodes.
+  return seasons.some(s => s.seasonNumber > 0 && !s.monitored && fillOf(s) !== 'full');
 }

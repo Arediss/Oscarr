@@ -52,11 +52,13 @@ export default function SeasonExplorer(props: Readonly<SeasonExplorerProps>) {
   const requestAccess = !loading && features.requestsEnabled && !props.blocked && !!props.catalog;
   const seasons = props.seasons.map(season => {
     const complete = !props.catalog?.stale && isSeasonComplete(season);
+    const followed = !props.catalog?.stale && season.monitored;
     const activeRequests = props.requests.filter(request => (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(request.status) && coversSeason(request, season.seasonNumber, props.catalog?.numbering));
     const ownRequest = !!submitted[season.seasonNumber] || activeRequests.some(request => request.userId === user?.id);
     const takenQualityIds = new Set([
       ...activeRequests.map(request => request.qualityOptionId).filter((id): id is number => id !== null),
-      ...(complete ? props.activeQualityOptionIds : []),
+      // The configured profile also covers upcoming episodes of a followed season.
+      ...((complete || followed) ? props.activeQualityOptionIds : []),
     ]);
     const defaultAllowed = !complete && !ownRequest && (!season.monitored || !!props.catalog?.stale);
     const canRequest = requestAccess && (defaultAllowed || props.qualityOptions.some(option => !takenQualityIds.has(option.id)));

@@ -3,7 +3,7 @@
 # allowed to run one is named explicitly below, so a compromised transitive dep cannot execute
 # anything during the build.
 # Pin the multi-platform index; refresh deliberately to pick up base-image updates.
-ARG WOLFI=cgr.dev/chainguard/wolfi-base@sha256:918a593b8268c222afd4e2c4f06860ac984e60719b4697e4c71d796bc8fcd042
+ARG WOLFI=cgr.dev/chainguard/wolfi-base@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73
 
 # ── Stage 1: Build ──
 FROM ${WOLFI} AS builder

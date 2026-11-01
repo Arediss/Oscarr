@@ -25,6 +25,8 @@ export async function registerSecurity(app: FastifyInstance) {
         // security benefit on a self-hosted, reverse-proxied app.
         imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
         connectSrc: ["'self'", 'https://api.themoviedb.org', 'https://image.tmdb.org'],
+        mediaSrc: ["'self'", 'blob:'],
+        workerSrc: ["'self'", 'blob:'],
         fontSrc: ["'self'", 'data:'],
         frameAncestors: ["'none'"],
         formAction: ["'self'"],

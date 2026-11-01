@@ -1,49 +1,32 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  Star,
-  Calendar,
-  Clock,
-  Check,
-  Loader2,
-  ArrowLeft,
-  Tv,
-  Film,
-  Play,
-  X,
   EyeOff,
-  ShieldAlert,
   ChevronLeft,
   ChevronRight,
   User,
   Clapperboard,
 } from 'lucide-react';
-import { clsx } from 'clsx';
-import { posterUrl, backdropUrl } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
 import MediaRow from '@/components/MediaRow';
 import CollectionSection from '@/components/CollectionSection';
-import { PluginSlot } from '@/plugins/PluginSlot';
 import { useMediaDetailData } from '@/hooks/useMediaDetailData';
 import { useMediaRequestActions } from '@/hooks/useMediaRequestActions';
-import { useEpisodeModal } from '@/hooks/useEpisodeModal';
 import type { TmdbCast, TmdbCrew } from '@/types';
-import { ACTIVE_REQUEST_STATUSES } from '@oscarr/shared';
-import { resolveButtonState } from '@/utils/resolveButtonState';
-import ActionButton from '@/components/ActionButton';
-import { SeasonsPicker } from '@/components/media/SeasonsPicker';
-import { EpisodeDetailsModal } from '@/components/media/EpisodeDetailsModal';
-import { LanguageTags } from '@/components/media/LanguageTags';
 import { useMediaAvailability } from '@/hooks/useMediaAvailability';
-import { MediaMetaBar } from '@/components/media/MediaMetaBar';
-import { QualityPicker } from '@/components/media/QualityPicker';
 import { NsfwRevealModal } from '@/components/media/NsfwRevealModal';
 import { MediaInfoColumn } from '@/components/media/MediaInfoColumn';
-import { MediaBackdrop, MediaPoster } from '@/components/media/MediaHeroArt';
+import { MediaBackdrop } from '@/components/media/MediaHeroArt';
+import '@/components/media/media-detail.css';
 import { mediaSummary } from '@/utils/mediaSummary';
+import { catalogSeasons } from '@/utils/seriesCatalog';
 import { hasRequestableSeasons } from '@/utils/seasonFill';
+import SeasonExplorer from '@/components/media/SeasonExplorer';
+import MediaDetailLoading from '@/components/media/MediaDetailLoading';
+import MediaBackButton from '@/components/media/MediaBackButton';
+import { useDragScroll } from '@/hooks/useDragScroll';
 
 interface Props {
   type: 'movie' | 'tv';
@@ -52,46 +35,37 @@ interface Props {
 export default function MediaDetailPage({ type }: Readonly<Props>) {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const { user } = useAuth();
   const { isNsfw, disableBlur } = useNsfwFilter();
   const [revealed, setRevealed] = useState(false);
   const [showNsfwModal, setShowNsfwModal] = useState(false);
-  const [scrollOpacity, setScrollOpacity] = useState(0);
-
-  const handleScroll = useCallback(() => {
-    const scrollY = window.scrollY;
-    const fadeStart = 70;
-    const fadeEnd = 375;
-    const opacity = Math.min(1, Math.max(0, (scrollY - fadeStart) / (fadeEnd - fadeStart)));
-    setScrollOpacity(opacity);
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [handleScroll]);
 
   const {
-    media, dbMedia, sonarrSeasons, inLibrary, recommendations,
-    loading, qualityOptions, activeQualityOptionIds,
+    media, dbMedia, inLibrary, recommendations,
+    loading, libraryLoading, qualityOptions, activeQualityOptionIds,
     audioLanguages, subtitleLanguages, download, blacklisted, refreshDbData,
+    catalog, seasonsLoading, seasonsError, refreshMetadata,
   } = useMediaDetailData(id, type);
+  const seasons = seasonsLoading || seasonsError ? [] : catalogSeasons(media?.seasons, catalog);
+  const refreshDetail = useCallback(async () => { refreshMetadata(); await refreshDbData(); }, [refreshDbData, refreshMetadata]);
+
+  useEffect(() => {
+    if (loading || (media && String(media.id) !== id)) return;
+    // Don't steal focus if the person used the header while waiting for the fetch.
+    if (document.activeElement === document.body || document.activeElement?.id === 'media-detail-loading') {
+      document.getElementById('media-title')?.focus({ preventScroll: true });
+    }
+  }, [loading, media, id, type]);
 
   const {
     requesting, justRequested, requestError,
-    selectedSeasons, setSelectedSeasons,
     selectedQuality, setSelectedQuality,
     selectedCriteria, setSelectedCriteria,
     searchMissingState, searchMissingError,
     handleRequest, handleSearchMissing,
     resetOnNavigation,
-  } = useMediaRequestActions(media, id, type, refreshDbData);
+  } = useMediaRequestActions(media, id, type, refreshDetail);
 
-  const {
-    episodeModalOpen, openEpisodeModal, closeEpisodeModal,
-    episodeCache, expandedSeason, loadingSeason, toggleSeason,
-  } = useEpisodeModal(media?.id);
 
   // Reset local UI state on navigation
   useEffect(() => {
@@ -100,7 +74,7 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     resetOnNavigation();
   }, [id, type]);
 
-  const { isAvailable, takenQualityIds, userHasRequest, buttonState } = useMediaAvailability({
+  const { isAvailable, takenQualityIds, buttonState } = useMediaAvailability({
     dbMedia,
     type,
     inLibrary,
@@ -109,17 +83,12 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
     activeQualityOptionIds,
     selectedQuality,
     searchMissingState,
-    hasRequestableSeasons: type === 'tv' && !!media?.seasons
-      && hasRequestableSeasons(media.seasons, sonarrSeasons),
+    hasRequestableSeasons: type === 'tv' && !!catalog && (catalog.stale || hasRequestableSeasons(seasons)),
     currentUserId: user?.id,
   });
 
   if (loading) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-ndp-accent animate-spin" />
-      </div>
-    );
+    return <MediaDetailLoading />;
   }
 
   if (!media) {
@@ -136,60 +105,68 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
   return (
     <div className="min-h-dvh">
-      <MediaBackdrop backdropPath={media.backdrop_path} blurred={nsfw} fadeOpacity={scrollOpacity} />
+      <section className="media-detail-hero" aria-labelledby="media-title">
+        <MediaBackdrop backdropPath={media.backdrop_path} posterPath={media.poster_path} blurred={nsfw} />
+        <MediaBackButton />
 
-      {/* Back button - fixed */}
-      <button onClick={() => navigate(-1)} className="fixed top-20 left-4 sm:left-8 z-20 p-2 glass rounded-xl hover:bg-white/10 transition-colors">
-        <ArrowLeft className="w-5 h-5 text-white" />
-      </button>
-
-      {/* Scrollable content */}
-      <div className="relative z-10 pt-[35vh] min-h-dvh">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-8">
-        <div className="flex flex-col md:flex-row gap-8">
-          <MediaPoster
-            posterPath={media.poster_path}
-            title={title}
-            blurred={nsfw}
-            onReveal={() => setShowNsfwModal(true)}
-          />
-
-          {/* Info */}
-          <MediaInfoColumn
-            media={media}
-            dbMedia={dbMedia}
-            type={type}
-            title={title}
-            year={year}
-            genres={genres}
-            director={director}
-            trailer={trailer}
-            isAvailable={isAvailable}
-            userHasRequest={userHasRequest}
-            buttonState={buttonState}
-            requesting={requesting}
-            justRequested={justRequested}
-            requestError={requestError}
-            download={download ? { progress: download.progress, timeLeft: download.timeLeft } : null}
-            blacklisted={blacklisted}
-            searchMissingError={searchMissingError}
-            onRequest={handleRequest}
-            onSearchMissing={handleSearchMissing}
-            qualityOptions={qualityOptions}
-            takenQualityIds={takenQualityIds}
-            selectedQuality={selectedQuality}
-            selectedCriteria={selectedCriteria}
-            setSelectedCriteria={setSelectedCriteria}
-            setSelectedQuality={setSelectedQuality}
-            audioLanguages={audioLanguages}
-            subtitleLanguages={subtitleLanguages}
-            sonarrSeasons={sonarrSeasons}
-            selectedSeasons={selectedSeasons}
-            setSelectedSeasons={setSelectedSeasons}
-            onOpenEpisodes={openEpisodeModal}
-          />
+        <div className="media-detail-container relative z-10">
+          <div className="media-detail-copy">
+            {nsfw && (
+              <button onClick={() => setShowNsfwModal(true)} className="btn-secondary inline-flex items-center gap-2 mb-6">
+                <EyeOff className="w-4 h-4" />
+                {t('nsfw.modal.show_once')}
+              </button>
+            )}
+            <MediaInfoColumn
+              onBrowseSeasons={type === 'tv' && seasons.length > 0 ? () => {
+                const section = document.getElementById('season-explorer');
+                section?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+                section?.focus({ preventScroll: true });
+              } : undefined}
+              media={type === 'tv' ? { ...media, number_of_seasons: seasons.length || undefined } : media}
+              dbMedia={dbMedia}
+              type={type}
+              title={title}
+              year={year}
+              genres={genres}
+              director={director}
+              trailer={trailer}
+              isAvailable={isAvailable}
+              buttonState={buttonState}
+              requesting={requesting}
+              justRequested={justRequested}
+              requestError={requestError}
+              download={download ? { progress: download.progress, timeLeft: download.timeLeft } : null}
+              blacklisted={blacklisted}
+              searchMissingError={searchMissingError}
+              onRequest={handleRequest}
+              onSearchMissing={handleSearchMissing}
+              qualityOptions={qualityOptions}
+              takenQualityIds={takenQualityIds}
+              selectedQuality={selectedQuality}
+              selectedCriteria={selectedCriteria}
+              setSelectedCriteria={setSelectedCriteria}
+              setSelectedQuality={setSelectedQuality}
+              audioLanguages={audioLanguages}
+              subtitleLanguages={subtitleLanguages}
+              libraryLoading={libraryLoading}
+            />
+          </div>
         </div>
+      </section>
 
+      {type === 'tv' && (
+        <div className="media-detail-container">
+          {seasonsLoading ? <p className="py-8 text-ndp-text-muted" role="status">{t('common.loading')}</p>
+            : seasonsError ? <div className="py-8 flex items-center gap-3"><p role="status">{t('media.explorer.unavailable')}</p><button className="btn-secondary" onClick={refreshMetadata}>{t('media.explorer.refresh')}</button></div>
+            : seasons.length > 0 && <SeasonExplorer key={`${media.id}:${catalog?.source.token ?? 'tmdb'}`} media={media} seasons={seasons}
+            catalog={catalog} requests={dbMedia?.requests ?? []}
+            qualityOptions={qualityOptions} activeQualityOptionIds={activeQualityOptionIds}
+            blocked={blacklisted.blocked} blurred={nsfw} onRefresh={refreshDetail} />}
+        </div>
+      )}
+
+      <div className="media-detail-container relative pb-16">
         {/* Collection */}
         {type === 'movie' && media.belongs_to_collection && (
           <CollectionSection collection={media.belongs_to_collection} />
@@ -202,26 +179,11 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 
         {/* Recommendations */}
         {recommendations.length > 0 && (
-          <div className="mt-12 pb-16">
+          <div className="mt-12 -mx-4 sm:-mx-8">
             <MediaRow title={t('media.recommendations')} media={recommendations} size="large" />
           </div>
         )}
-        </div>
       </div>
-
-      {/* Episode details modal */}
-      {episodeModalOpen && media && (
-        <EpisodeDetailsModal
-          media={media}
-          sonarrSeasons={sonarrSeasons}
-          expandedSeason={expandedSeason}
-          loadingSeason={loadingSeason}
-          episodeCache={episodeCache}
-          nsfw={nsfw}
-          onToggleSeason={toggleSeason}
-          onClose={closeEpisodeModal}
-        />
-      )}
 
       {showNsfwModal && (
         <NsfwRevealModal
@@ -238,7 +200,9 @@ export default function MediaDetailPage({ type }: Readonly<Props>) {
 // ─── Cast Section ───────────────────────────────────────────────────
 
 function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; title: string; director?: TmdbCrew }>) {
+  const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
+  useDragScroll(scrollRef, cast.length);
 
   const scroll = (direction: 'left' | 'right') => {
     if (!scrollRef.current) return;
@@ -248,8 +212,8 @@ function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; tit
 
   return (
     <div className="mt-12 relative group/cast">
-      <div className="flex items-center gap-3 mb-4 sm:px-8">
-        <h3 className="text-xl font-bold text-ndp-text">{title}</h3>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <h2 className="text-xl font-bold text-ndp-text">{title}</h2>
         {director && (
           <Link to={`/person/${director.id}`} className="flex items-center gap-1.5 text-sm text-ndp-text-muted hover:text-ndp-accent transition-colors">
             <span className="text-ndp-text-dim">·</span>
@@ -261,20 +225,22 @@ function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; tit
 
       <button
         onClick={() => scroll('left')}
-        className="absolute left-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-r from-ndp-bg to-transparent flex items-center justify-center opacity-0 group-hover/cast:opacity-100 transition-opacity"
+        aria-label={t('common.previous')}
+        className="absolute left-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-r from-ndp-bg to-transparent flex items-center justify-center opacity-0 group-hover/cast:opacity-100 focus-visible:opacity-100 transition-opacity"
       >
         <ChevronLeft className="w-5 h-5 text-white" />
       </button>
       <button
         onClick={() => scroll('right')}
-        className="absolute right-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-l from-ndp-bg to-transparent flex items-center justify-center opacity-0 group-hover/cast:opacity-100 transition-opacity"
+        aria-label={t('common.next')}
+        className="absolute right-0 top-12 bottom-0 z-20 w-10 bg-gradient-to-l from-ndp-bg to-transparent flex items-center justify-center opacity-0 group-hover/cast:opacity-100 focus-visible:opacity-100 transition-opacity"
       >
         <ChevronRight className="w-5 h-5 text-white" />
       </button>
 
       <div
         ref={scrollRef}
-        className="flex gap-3 overflow-x-auto px-4 sm:px-8 pb-2"
+        className="flex gap-3 overflow-x-auto pb-2"
         style={{ scrollbarWidth: 'none' }}
       >
         {cast.map((person, i) => (
@@ -284,12 +250,12 @@ function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; tit
             className="flex-shrink-0 w-[120px] group/card"
             style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}
           >
-            <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-ndp-surface-light">
+            <div className="relative aspect-square rounded-full overflow-hidden bg-ndp-surface-light ring-1 ring-white/10">
               {person.profile_path ? (
                 <img
                   src={`https://image.tmdb.org/t/p/w185${person.profile_path}`}
                   alt={person.name}
-                  className="w-full h-full object-cover transition-transform duration-300 group-hover/card:scale-105"
+                  className="w-full h-full object-cover object-[center_20%] transition-transform duration-300 group-hover/card:scale-105"
                   loading="lazy"
                 />
               ) : (
@@ -297,13 +263,13 @@ function CastSection({ cast, title, director }: Readonly<{ cast: TmdbCast[]; tit
                   <User className="w-10 h-10 text-ndp-text-dim/30" />
                 </div>
               )}
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent pt-8 pb-2.5 px-2.5">
-                <p className="text-xs font-semibold text-white leading-tight truncate">{person.name}</p>
+            </div>
+              <div className="pt-3 px-1 text-center">
+                <p className="text-xs font-semibold text-ndp-text leading-snug">{person.name}</p>
                 {person.character && (
-                  <p className="text-[10px] text-ndp-text-muted leading-tight truncate mt-0.5">{person.character}</p>
+                  <p className="text-[11px] text-ndp-text-muted leading-snug mt-1">{person.character}</p>
                 )}
               </div>
-            </div>
           </Link>
         ))}
       </div>

@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ComponentType } from 'react';
@@ -9,6 +9,7 @@ import { usePluginUI } from './usePlugins';
 export function PluginPage() {
   const { pluginId } = useParams<{ pluginId: string }>();
   const { t } = useTranslation();
+  const location = useLocation();
 
   const { contributions: navContribs, loading: navLoading } = usePluginUI('nav');
   const isUserFacing = navContribs.some((c) => c.pluginId === pluginId);
@@ -71,7 +72,7 @@ export function PluginPage() {
   return (
     <div {...{ [PLUGIN_SCOPE_ATTR]: pluginId }}>
       <PluginErrorBoundary pluginId={pluginId}>
-        <Component />
+        <Component host={{ navigationSections: true, locationHash: location.hash }} />
       </PluginErrorBoundary>
     </div>
   );

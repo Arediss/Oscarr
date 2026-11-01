@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Info, Star } from 'lucide-react';
 import { backdropUrl } from '@/lib/api';
@@ -11,6 +10,7 @@ import { dbMediaToTmdbShape } from '@/utils/mediaMapper';
 import { buildDiscoverUrl } from '@/utils/tmdbDiscoverQuery';
 import { useTmdbList } from '@/hooks/useTmdbList';
 import { useHomepageLayout, type HomepageSection } from '@/hooks/useHomepageLayout';
+import MediaLink from '@/components/MediaLink';
 
 /* ------------------------------------------------------------------ */
 /*  Mapping builtinKey → endpoint + extra props                       */
@@ -111,6 +111,7 @@ function HeroCarousel({ trending, loading }: Readonly<{ trending: TmdbMedia[]; l
   const [progressKey, setProgressKey] = useState(0);
   const prevHeroRef = useRef(0);
   const scrollFadeRef = useRef<HTMLDivElement>(null);
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const handleScroll = useCallback(() => {
     const scrollY = window.scrollY;
@@ -120,7 +121,9 @@ function HeroCarousel({ trending, loading }: Readonly<{ trending: TmdbMedia[]; l
     if (scrollFadeRef.current) scrollFadeRef.current.style.opacity = String(opacity);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Back may restore the scroll before the asynchronously loaded hero mounts.
+    handleScroll();
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, [handleScroll]);
@@ -136,18 +139,24 @@ function HeroCarousel({ trending, loading }: Readonly<{ trending: TmdbMedia[]; l
 
   useEffect(() => {
     if (trending.length === 0) return;
+    setHeroVisible(true);
     const interval = setInterval(() => {
       if (document.hidden) return;
       setHeroVisible(false);
-      setTimeout(advanceHero, 500);
+      clearTimeout(advanceTimer.current);
+      advanceTimer.current = setTimeout(advanceHero, 500);
     }, 8000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      clearTimeout(advanceTimer.current);
+    };
   }, [trending, advanceHero]);
 
   const changeHero = (i: number) => {
     if (i === heroIndex) return;
     setHeroVisible(false);
-    setTimeout(() => {
+    clearTimeout(advanceTimer.current);
+    advanceTimer.current = setTimeout(() => {
       prevHeroRef.current = heroIndex;
       setHeroIndex(i);
       setProgressKey((k) => k + 1);
@@ -230,13 +239,13 @@ function HeroCarousel({ trending, loading }: Readonly<{ trending: TmdbMedia[]; l
                 {hero.overview}
               </p>
               <div className="flex gap-3">
-                <Link
+                <MediaLink
                   to={`/${heroType}/${hero.id}`}
                   className="btn-primary flex items-center gap-2"
                 >
                   <Info className="w-4 h-4" />
                   {t('home.more_info')}
-                </Link>
+                </MediaLink>
               </div>
             </div>
 

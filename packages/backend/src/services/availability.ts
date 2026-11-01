@@ -143,12 +143,34 @@ export async function loadFreeQualityMediaIds(mediaIds: number[]): Promise<Set<n
     set.add(row.qualityOptionId);
   }
 
+  const media = await prisma.media.findMany({
+    where: { id: { in: mediaIds }, statusCategory: { in: ['AVAILABLE', 'IMPORTED'] } },
+    select: { id: true, serviceId: true, qualityProfileId: true },
+  });
+  const satisfied = await loadSatisfiedQualityOptions(media);
+  for (const [mediaId, optionIds] of satisfied) {
+    const takenHere = takenByMedia.get(mediaId) ?? new Set<number>();
+    optionIds.forEach(id => takenHere.add(id));
+    takenByMedia.set(mediaId, takenHere);
+  }
+
   const free = new Set<number>();
   for (const id of mediaIds) {
     const takenHere = takenByMedia.get(id);
     if (!takenHere || options.some((o) => !takenHere.has(o.id))) free.add(id);
   }
   return free;
+}
+
+/** Profile IDs are local to their service. Shared by batch cards and detail pages. */
+export async function loadSatisfiedQualityOptions(media: { id: number; serviceId: number | null; qualityProfileId: number | null }[]): Promise<Map<number, number[]>> {
+  const known = media.filter(row => row.serviceId !== null && row.qualityProfileId !== null);
+  if (known.length === 0) return new Map();
+  const mappings = await prisma.qualityMapping.findMany({
+    where: { OR: known.map(row => ({ serviceId: row.serviceId!, qualityProfileId: row.qualityProfileId! })) },
+    select: { serviceId: true, qualityProfileId: true, qualityOptionId: true },
+  });
+  return new Map(known.map(row => [row.id, [...new Set(mappings.filter(mapping => mapping.serviceId === row.serviceId && mapping.qualityProfileId === row.qualityProfileId).map(mapping => mapping.qualityOptionId))]]));
 }
 
 /** Reads the configured threshold. Defaults to "no gate", i.e. the historical behaviour. */

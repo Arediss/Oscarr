@@ -74,3 +74,18 @@
     @apply bg-gradient-to-r from-ndp-surface-light via-ndp-surface-hover to-ndp-surface-light bg-[length:400%_100%] animate-shimmer rounded-lg;
   }
 }
+
+/* Keep plugin sections usable without shifting the centered search field. */
+.oscarr-header-grid { display: grid; grid-template-columns: minmax(0, 1fr) clamp(16rem, 34vw, 30rem) minmax(0, 1fr); align-items: center; gap: 16px; min-height: 64px; }
+.oscarr-header-start { display: flex; align-items: center; gap: 2px; min-width: 0; overflow-x: auto; scrollbar-width: none; container: primary-nav / inline-size; }
+.oscarr-header-start > * { flex-shrink: 0; }
+.oscarr-header-start::-webkit-scrollbar { display: none; }
+.oscarr-nav-label { display: none; white-space: nowrap; }
+@container primary-nav (width >= 480px) { .oscarr-nav-label { display: inline; } }
+.oscarr-header-search { min-width: 0; }
+.oscarr-header-end { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; min-width: 0; position: relative; }
+
+/* Mouse panning keeps ordinary clicks and native touch scrolling available. */
+[data-drag-scroll="ready"], [data-drag-scroll="ready"] a { cursor: grab; }
+[data-drag-scroll="dragging"], [data-drag-scroll="dragging"] * { cursor: grabbing !important; user-select: none !important; }
+[data-drag-scroll="dragging"] .group { transform: none; }

@@ -20,6 +20,16 @@ export interface RuleMatch {
   folderPath: string;
   seriesType?: string | null;
   serviceId?: number | null;
+  tagIds: number[];
+}
+
+/** Stored JSON can also come from imports. Invalid tag actions must not reach another instance. */
+export function parseRuleTagIds(raw: string): number[] | null {
+  try {
+    const ids: unknown = JSON.parse(raw);
+    return Array.isArray(ids) && ids.every(id => Number.isSafeInteger(id) && id > 0)
+      ? [...new Set<number>(ids)] : null;
+  } catch { return null; }
 }
 
 interface MediaContext {
@@ -215,6 +225,12 @@ export async function matchFolderRule(
     }
     if (!allMatch) continue;
 
+    const tagIds = parseRuleTagIds(rule.tagIds);
+    if (!tagIds || (tagIds.length > 0 && rule.serviceId == null)) {
+      logEvent('warn', 'FolderRules', `Rule id=${rule.id} has invalid or unbound tag actions; skipping.`);
+      continue;
+    }
+
     // H1: a matched rule whose target service is disabled/deleted/wrong-type must NOT silently route
     // media to a fallback instance with this rule's folderPath. Treat it as non-functional and skip
     // (routing falls through to the next rule or the default); the admin panel surfaces the warning.
@@ -232,6 +248,7 @@ export async function matchFolderRule(
       folderPath,
       seriesType: rule.seriesType,
       serviceId: rule.serviceId,
+      tagIds,
     };
   }
 

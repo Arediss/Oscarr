@@ -66,8 +66,19 @@ export async function jobsRoutes(app: FastifyInstance) {
     if (isJobRunning(key)) {
       return reply.status(409).send({ error: 'already_running', message: `Job "${key}" is already running` });
     }
+    const job = await prisma.cronJob.findUnique({ where: { key }, select: { key: true } });
+    if (!job) return reply.status(404).send({ error: 'unknown_job' });
     // Fire-and-forget — front polls /jobs for lastStatus/lastResult.
-    triggerJob(key).catch((err) => {
+    triggerJob(key).then(async (outcome) => {
+      // A skipped launch never reaches the scheduler's completion write. Advance its state
+      // explicitly so the client can stop waiting. Do not overwrite a concurrent real run.
+      if (outcome.skipped && outcome.reason !== 'already_running' && outcome.reason !== 'maintenance') {
+        await prisma.cronJob.update({
+          where: { key },
+          data: { lastRunAt: new Date(), lastStatus: 'error', lastDuration: 0, lastResult: JSON.stringify(outcome) },
+        });
+      }
+    }).catch((err) => {
       logEvent('error', 'Job', `Background job "${key}" failed: ${String(err)}`);
     });
     return reply.status(202).send({ ok: true, started: true });

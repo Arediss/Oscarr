@@ -293,9 +293,10 @@ export class PluginEngine {
     await Promise.allSettled(enableTasks);
   }
 
-  getJobHandlers(): Record<string, () => Promise<unknown>> {
+  getJobHandlers(pluginId?: string): Record<string, () => Promise<unknown>> {
     const handlers: Record<string, () => Promise<unknown>> = {};
     for (const [id, plugin] of this.plugins) {
+      if (pluginId !== undefined && id !== pluginId) continue;
       if (!plugin.enabled || plugin.error || !plugin.registration.registerJobs) continue;
       try {
         const ctx = this.contextFor(plugin);

@@ -1,0 +1,113 @@
+-- Release notes for changes after 0e2ddf6e28e2ec65ae49a786e24363144838aa32 (0.9.1), through c17fb86.
+-- Replace the development seed in place; preserve older releases and do not enqueue another sync.
+INSERT INTO "Patchnote" ("version", "type", "date", "titleEn", "titleFr", "entries", "bodyEn", "bodyFr")
+VALUES (
+  '0.10.0',
+  'minor',
+  1793318400000,
+  'Smoother navigation, routing tags and service metadata',
+  'Navigation fluide, tags de routage et métadonnées des services',
+  '[]',
+  '## Smoother media pages
+
+Clicking a poster opens its detail page with a circular transition that starts immediately while data loads. Going back reverses the animation and restores the homepage at the same position, including its horizontal rows. The homepage stays underneath the detail page, with its effects paused while hidden.
+
+Panoramic backdrops blend more softly into the page. Reserved space for audio and subtitle languages prevents the backdrop from resizing when that information arrives. The main button reflects actual availability: a complete series no longer shows **Request series**.
+
+Media and category rows also support click-and-drag scrolling. Arrow buttons, keyboard controls and touch scrolling remain available.
+
+## Compact seasons and episode dialogs
+
+Seasons appear in a grid of smaller posters, aligned with the rest of the page, without horizontal scrolling. Each cover includes its availability badge. A **+** shortcut remains available for requestable seasons. Cast and collection sections have a consistent presentation.
+
+Clicking a season opens its episodes in a dedicated dialog, with status filters, navigation in groups of ten and a form to request the displayed season. States distinguish available episodes, upcoming episodes and episodes whose availability is unknown.
+
+## Metadata consistent with Sonarr and Radarr
+
+Oscarr uses metadata from the Sonarr or Radarr instance associated with a title. Series follow the service’s season and episode catalogue: Pokémon shows Sonarr’s 20 seasons instead of comparing their numbers with TMDB’s 25 seasons. The source service is identified, and information from different instances is kept separate.
+
+TMDB still provides discovery, trends, popular movies and supplementary information. Discovered series can be looked up in Sonarr by TMDB ID, even when TMDB does not provide a TVDB ID. This unblocks affected requests without requiring an additional TVDB API key. Service calls go through Oscarr’s backend; API keys stay on the server.
+
+If a service is unavailable, the last cached catalogue can remain visible with an indication that it is out of date. A linked series never silently switches to another numbering scheme. For a series not yet added to Sonarr, lookup can provide seasons; the service’s episode details become available after it has been added.
+
+## Routing rules with multiple actions
+
+A rule can combine a destination folder, series type and existing service tags. For example, an Anime rule can route a series to its folder and apply the **VOSTFR** tag in Sonarr.
+
+Each tag is displayed with its instance name to distinguish multiple Sonarr or Radarr servers. Tags are fetched from the selected service and added when dispatching the request, preserving existing tags. Rules are created and edited in a dialog. The tag contract can be implemented by future services.
+
+## Clearer, more precise requests
+
+Requests for several seasons share one card per title and requester. The card expands to show seasons in order, with their own states and actions. Groups remain intact when loading subsequent pages. Titles stay visible and clickable during downloads.
+
+Requests for an existing series search only the selected seasons. Equivalent requests targeting the same quality and service are detected to prevent duplicates. Collections follow the global automatic approval setting; existing pending requests are not approved retroactively.
+
+## Upgrade without resetting the database
+
+Migrations prepare the new fields and queue a full library sync when an enabled Sonarr or Radarr instance is already configured. The sync runs in the background after all migrations succeed and the server starts. Users, settings and requests are preserved; seasons are replaced only after a successful read from the service.
+
+This sync belongs to this upgrade: once successful, it is not replayed on every restart or later release. Failures are retried automatically. It refreshes Oscarr’s library without starting new downloads in Sonarr or Radarr.
+
+> Some older season requests need to be selected again when their original numbering cannot be verified. Oscarr does not automatically reinterpret a TMDB season number as a Sonarr season number.
+
+## Reliability and maintenance
+
+Library sync correctly reconciles existing series whose TVDB ID was missing or changed, while respecting their owning instance. Authenticated users can access the new metadata routes.
+
+Cinema plugin playback links and navigation are preserved. Scheduled tasks respect their owning plugin and do not run work from disabled or unavailable plugins. Docker scripts keep Unix line endings, and **HOST** can bind the server to a specific address. Application dependencies and build, signing and archiving actions have been updated, including security fixes integrated while preparing this release.',
+  '## Des fiches médias plus fluides
+
+Un clic sur une affiche ouvre la fiche avec une animation circulaire qui démarre immédiatement, pendant le chargement des données. Le retour joue l’animation en sens inverse et retrouve l’accueil à la même position, y compris dans les rangées défilantes. L’accueil reste conservé sous la fiche ; ses effets sont suspendus tant qu’il est masqué.
+
+Les fonds panoramiques se fondent plus doucement dans la page. Un espace réservé aux langues audio et aux sous-titres évite que leur arrivée redimensionne le fond. Le bouton principal tient compte de la disponibilité réelle : une série complète n’affiche plus **Demander la série**.
+
+Les rangées de médias et de catégories se déplacent aussi en maintenant le clic puis en glissant la souris. Les flèches, le clavier et le défilement tactile restent disponibles.
+
+## Saisons compactes et épisodes en fenêtre
+
+Les saisons s’affichent dans une grille de petites affiches, alignée avec le reste de la fiche, sans défilement horizontal. Chaque cover porte sa pastille de disponibilité. Le raccourci **+** reste accessible pour les saisons demandables. Le casting et les collections adoptent une présentation harmonisée.
+
+Un clic sur une saison ouvre ses épisodes dans une fenêtre dédiée, avec filtres par état, navigation par groupes de dix et formulaire pour demander la saison affichée. Les états distinguent notamment les épisodes disponibles, à venir et ceux dont la disponibilité est inconnue.
+
+## Des métadonnées cohérentes avec Sonarr et Radarr
+
+Oscarr utilise les métadonnées de l’instance Sonarr ou Radarr associée au média. Pour les séries, les saisons et épisodes suivent le découpage du service : Pokémon affiche ainsi les 20 saisons de Sonarr au lieu de comparer leurs numéros aux 25 saisons TMDB. Le service source est indiqué, et les informations de plusieurs instances ne sont plus mélangées.
+
+TMDB reste utilisé pour la découverte, les tendances, les films populaires et les informations complémentaires. Une série découverte peut être recherchée dans Sonarr à partir de son identifiant TMDB, même si TMDB ne fournit pas son identifiant TVDB. Cela débloque les demandes concernées sans ajouter de clé TVDB à configurer. Les appels aux services passent par le backend d’Oscarr ; leurs clés API restent sur le serveur.
+
+En cas d’indisponibilité d’un service, le dernier catalogue mis en cache peut être conservé avec un état signalant qu’il n’est plus à jour. Une série liée ne bascule pas silencieusement sur une autre numérotation. Pour une série non encore ajoutée à Sonarr, la recherche peut fournir les saisons ; le détail des épisodes du service devient accessible après son ajout.
+
+## Des règles de routage avec plusieurs actions
+
+Une règle peut combiner dossier cible, type de série et tags existants du service. Par exemple, une règle Anime peut diriger une série vers son dossier et lui appliquer le tag **VOSTFR** dans Sonarr.
+
+Chaque tag est accompagné du nom de son instance pour distinguer plusieurs Sonarr ou Radarr. Les tags sont récupérés depuis le service choisi et ajoutés lors de la demande, en conservant ceux déjà présents. La création et la modification des règles se font dans une fenêtre. Le contrat de tags est extensible à de futurs services.
+
+## Des demandes plus lisibles et mieux ciblées
+
+Les demandes de plusieurs saisons sont regroupées sur une carte par média et par demandeur. La carte se déplie pour montrer les saisons dans l’ordre, avec leurs états et leurs actions propres. Le regroupement est conservé au chargement des pages suivantes. Les titres restent visibles et cliquables pendant les téléchargements.
+
+Une demande sur une série déjà présente ne recherche que les saisons sélectionnées. Les demandes équivalentes vers la même qualité et le même service sont reconnues pour éviter les doublons. Les collections respectent le réglage global d’auto-approbation ; les demandes déjà en attente ne sont pas approuvées rétroactivement.
+
+## Mise à jour sans réinitialiser la base
+
+Les migrations préparent les nouveaux champs et programment une resynchronisation complète lorsqu’un Sonarr ou Radarr actif est déjà configuré. Elle démarre en arrière-plan après la réussite des migrations et le démarrage du serveur. Les utilisateurs, réglages et demandes sont conservés ; les saisons sont remplacées seulement après une lecture réussie du service.
+
+Cette resynchronisation est liée à cette mise à jour : une fois réussie, elle n’est pas relancée à chaque redémarrage ou version suivante. En cas d’échec, elle est réessayée automatiquement. Elle actualise la bibliothèque d’Oscarr sans lancer de nouveaux téléchargements dans Sonarr ou Radarr.
+
+> Certaines anciennes demandes portant sur des saisons doivent être sélectionnées à nouveau lorsque leur numérotation d’origine ne peut pas être vérifiée. Oscarr ne transforme pas automatiquement un numéro de saison TMDB en numéro Sonarr.
+
+## Fiabilité et maintenance
+
+La synchronisation retrouve correctement les séries déjà connues lorsque leur identifiant TVDB était absent ou a changé, tout en respectant leur instance propriétaire. L’accès aux nouvelles métadonnées est disponible pour les utilisateurs connectés.
+
+Les liens de lecture et la navigation des plugins cinéma sont préservés. Les tâches planifiées respectent leur plugin propriétaire et ne lancent pas le travail d’un plugin désactivé ou indisponible. Les scripts Docker conservent leurs fins de ligne Unix, et le serveur peut écouter sur une adresse définie avec **HOST**. Les dépendances et les actions de construction, signature et archivage ont été mises à jour, avec les correctifs de sécurité intégrés pendant la préparation de cette version.'
+)
+ON CONFLICT ("version") DO UPDATE SET
+  "type" = excluded."type",
+  "date" = excluded."date",
+  "titleEn" = excluded."titleEn",
+  "titleFr" = excluded."titleFr",
+  "entries" = excluded."entries",
+  "bodyEn" = excluded."bodyEn",
+  "bodyFr" = excluded."bodyFr";

@@ -5,7 +5,7 @@ import Database from 'better-sqlite3';
 import { prisma } from '../utils/prisma.js';
 import { beginMaintenance, endMaintenance } from '../utils/maintenance.js';
 import { runMigrateDeploy } from '../utils/prismaMigrate.js';
-import { stopAllJobs, restartJobs, runningJobKeys } from './scheduler.js';
+import { stopAllJobs, restartJobs, runningJobKeys, settlePostMigrationJobs } from './scheduler.js';
 import { getDbPath } from './backupService.js';
 import { getDataRoot } from '../utils/dataPath.js';
 import { closeAllPluginStorage } from '../plugins/storage/index.js';
@@ -204,10 +204,11 @@ function recoverRestore(paths: RestorePaths, swap: RestoreSwap, writeErr: unknow
 
 async function quiesceForRestore(): Promise<void> {
   stopAllJobs();
-  const stillRunning = runningJobKeys();
+  const stillRunning = runningJobKeys().filter(key => key !== 'post_migration');
   if (stillRunning.length > 0) {
-    console.warn(`[Backup] Restoring while these jobs are mid-run: ${stillRunning.join(', ')}`);
+    throw new Error(`JOBS_RUNNING: ${stillRunning.join(', ')}. Retry the restore after they finish.`);
   }
+  await settlePostMigrationJobs();
   // Open plugin SQLite handles must release their WAL/SHM locks before directory replacement.
   closeAllPluginStorage();
   await prisma.$disconnect();

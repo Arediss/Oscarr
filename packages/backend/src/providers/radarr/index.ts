@@ -31,6 +31,9 @@ export const radarrProvider: Provider = {
     createClient(config) {
       return new RadarrClient(config.url || '', config.apiKey || '');
     },
+    createTagClient(config) {
+      return new RadarrClient(config.url || '', config.apiKey || '');
+    },
   },
 };
 

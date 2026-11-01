@@ -1,0 +1,1 @@
+ALTER TABLE "FolderRule" ADD COLUMN "tagIds" TEXT NOT NULL DEFAULT '[]';

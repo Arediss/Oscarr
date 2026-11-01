@@ -96,6 +96,38 @@ interface ArrClient {
 
 ## Registry API
 
+### Service tag capability
+
+Any `ServiceDefinition` can opt into tags independently of its category or `ArrClient`:
+
+```typescript
+interface ServiceTagClient {
+  getTags(): Promise<ServiceTag[]>; // { id: number; label: string } from @oscarr/shared
+  addTagsToMedia(serviceMediaId: number, tagIds: number[]): Promise<void>;
+}
+
+// In the provider definition:
+createTagClient(config: Record<string, string>): ServiceTagClient;
+// In generic consumers:
+const tags = createServiceTagClient(service.type, service.config);
+```
+
+IDs are positive integers scoped to one configured service instance. Providers validate and
+normalize upstream responses. `addTagsToMedia` must preserve existing tags and unrelated
+settings. Sonarr and Radarr reuse their existing clients for this capability. A future Readarr
+provider can expose its own adapter without changes to the tag endpoint, badges or editor.
+This does not itself add book requests: new media types still need their own request support.
+
+`GET /admin/service-schemas` derives `supportsTags` from `createTagClient` and
+`supportsRouting` from `createClient`, and exposes `handlesMediaTypes`. The frontend consumes
+this metadata instead of matching provider names. `GET /admin/services/:id/tags` uses the
+exact enabled instance's tag adapter. Unsupported providers return `SERVICE_TAGS_UNSUPPORTED`;
+upstream failures return `RULE_TAGS_UNAVAILABLE`. Rule validation and dispatch use the same
+tag factory. New media creation carries the validated tag IDs in `ArrAddMediaOptions.tags`;
+updates to existing media use `ServiceTagClient.addTagsToMedia`.
+
+### Client factories
+
 The provider registry in `providers/index.ts` provides factory functions:
 
 ```typescript

@@ -2,18 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 import type { TmdbMedia } from '@/types';
 import type { MediaStateCategory, RequestStatus } from '@oscarr/shared';
-
-interface MediaStatus {
-  statusCategory: MediaStateCategory;
-  requestStatus?: RequestStatus;
-}
+import { MediaStatusCache, type MediaStatus } from '@/utils/mediaStatusCache';
 
 type StatusMap = Record<string, MediaStatus>;
 
 // Global cache with TTL (30s) to allow re-fetching after changes
-const globalCache: StatusMap = {};
-const cacheTimes: Record<string, number> = {};
-const CACHE_TTL = 30_000;
+const globalCache = new MediaStatusCache();
 const BATCH_SIZE = 50;
 
 let pendingIds: { tmdbId: number; mediaType: string }[] = [];
@@ -21,23 +15,19 @@ let flushTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: (() => void)[] = [];
 
 function isCacheValid(key: string): boolean {
-  return key in cacheTimes && Date.now() - cacheTimes[key] < CACHE_TTL;
+  return globalCache.isValid(key);
 }
 
 async function sendBatch(items: { tmdbId: number; mediaType: string }[]) {
+  const versions = new Map(items.map(item => {
+    const key = `${item.mediaType}:${item.tmdbId}`;
+    return [key, globalCache.version(key)];
+  }));
   const { data } = await api.post('/media/batch-status', { ids: items });
-  const now = Date.now();
-  Object.assign(globalCache, data);
-  for (const key of Object.keys(data)) {
-    cacheTimes[key] = now;
-  }
-  // Mark items not returned by the server as "unknown"
+  // A successful lookup omits untracked titles; failed lookups remain unknown.
   for (const item of items) {
     const key = `${item.mediaType}:${item.tmdbId}`;
-    if (!(key in data)) {
-      globalCache[key] = { statusCategory: 'UNAVAILABLE' };
-      cacheTimes[key] = now;
-    }
+    globalCache.setIfUnchanged(key, versions.get(key)!, data[key] ?? { statusCategory: 'UNAVAILABLE' });
   }
 }
 
@@ -74,8 +64,10 @@ function scheduleFlush() {
 /** Invalidate cache for a specific media, forcing re-fetch on next render */
 export function invalidateMediaStatus(tmdbId: number, mediaType: string) {
   const key = `${mediaType}:${tmdbId}`;
-  delete cacheTimes[key];
-  delete globalCache[key];
+  globalCache.invalidate(key);
+  pendingIds.push({ tmdbId, mediaType });
+  scheduleFlush();
+  listeners.forEach(cb => cb());
 }
 
 /** Update cache for a specific media with a known status (avoids stale data on back navigation).
@@ -83,19 +75,17 @@ export function invalidateMediaStatus(tmdbId: number, mediaType: string) {
  *  request — e.g. it was declined), `undefined` keeps the cached one (caller doesn't know). The
  *  keep-on-undefined default avoids blanking the badge, but callers that hold the fresh request
  *  state must pass it explicitly or a decline keeps showing as "Requested" until the TTL expires. */
-export function updateMediaStatusCache(tmdbId: number, mediaType: string, statusCategory: MediaStateCategory, requestStatus?: RequestStatus | null) {
+export function updateMediaStatusCache(tmdbId: number, mediaType: string, statusCategory: MediaStateCategory, requestStatus?: RequestStatus | null, hasFreeQualityOption?: boolean) {
   const key = `${mediaType}:${tmdbId}`;
-  const next = requestStatus === undefined ? globalCache[key]?.requestStatus : requestStatus ?? undefined;
-  globalCache[key] = { statusCategory, requestStatus: next };
-  cacheTimes[key] = Date.now();
+  const next = requestStatus === undefined ? globalCache.get(key)?.requestStatus : requestStatus ?? undefined;
+  globalCache.patch(key, { statusCategory, requestStatus: next, ...(hasFreeQualityOption === undefined ? {} : { hasFreeQualityOption }) });
   listeners.forEach((cb) => cb());
 }
 
 /** Invalidate all cached statuses */
 export function invalidateAllMediaStatuses() {
-  for (const key of Object.keys(cacheTimes)) {
-    delete cacheTimes[key];
-  }
+  globalCache.clear();
+  listeners.forEach(cb => cb());
 }
 
 export function useMediaStatus(media: TmdbMedia[]): StatusMap {
@@ -112,7 +102,7 @@ export function useMediaStatus(media: TmdbMedia[]): StatusMap {
         mediaType: m.media_type || (m.title ? 'movie' : 'tv'),
       }));
 
-    if (items.length === 0) return;
+    if (items.length === 0) { setStatuses({}); return; }
 
     // Add to pending batch
     pendingIds.push(...items);
@@ -122,13 +112,10 @@ export function useMediaStatus(media: TmdbMedia[]): StatusMap {
     const fromCache: StatusMap = {};
     for (const item of items) {
       const key = `${item.mediaType}:${item.tmdbId}`;
-      if (key in globalCache) {
-        fromCache[key] = globalCache[key];
-      }
+      const cached = globalCache.get(key);
+      if (cached) fromCache[key] = cached;
     }
-    if (Object.keys(fromCache).length > 0) {
-      setStatuses(fromCache);
-    }
+    setStatuses(fromCache);
 
     // Listen for updates
     const listener = () => {
@@ -136,15 +123,20 @@ export function useMediaStatus(media: TmdbMedia[]): StatusMap {
       const updated: StatusMap = {};
       for (const item of items) {
         const key = `${item.mediaType}:${item.tmdbId}`;
-        if (key in globalCache) {
-          updated[key] = globalCache[key];
-        }
+        const cached = globalCache.get(key);
+        if (cached) updated[key] = cached;
       }
       setStatuses(updated);
     };
 
     listeners.push(listener);
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      pendingIds.push(...items);
+      scheduleFlush();
+    }, 30000);
     return () => {
+      clearInterval(timer);
       listeners = listeners.filter((l) => l !== listener);
     };
   }, [media]);

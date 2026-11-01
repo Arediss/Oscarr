@@ -12,6 +12,8 @@ import type { PluginEngine } from '../plugins/engine.js';
 import { logEvent } from '../utils/logEvent.js';
 import { purgeExpiredResets } from './passwordReset.js';
 import { syncLibraryConfirmations } from './mediaServerLibrary.js';
+import { runPostMigrationJobs } from './postMigrationJobs.js';
+import { maintenanceReason } from '../utils/maintenance.js';
 
 /** Strip control characters (newlines, tabs, etc.) to prevent log injection */
 function sanitize(input: string): string {
@@ -55,13 +57,15 @@ const DEFAULT_JOBS = [
 ];
 
 const activeTasks = new Map<string, ScheduledTask>();
-const pluginJobKeys = new Set<string>(); // Track which job keys belong to plugins
 // Per-key mutex — same job can't double-run (manual + cron tick collision).
 const runningJobs = new Set<string>();
+const LIBRARY_SYNC_KEYS = new Set(['full_sync', 'new_media_sync']);
+let postMigrationTimer: ReturnType<typeof setInterval> | null = null;
+let postMigrationDrain: Promise<void> | null = null;
 let _pluginEngine: PluginEngine | null = null;
 
 export type RunJobOutcome =
-  | { skipped: true; reason: 'already_running' | 'unknown_job' | 'plugin_disabled' }
+  | { skipped: true; reason: 'already_running' | 'unknown_job' | 'plugin_disabled' | 'maintenance' }
   | { skipped: false; result: unknown };
 
 async function seedJobs() {
@@ -76,33 +80,34 @@ async function seedJobs() {
 }
 
 async function runJob(key: string): Promise<RunJobOutcome> {
-  // Resolve plugin handlers lazily so a hot-installed plugin's job runs without restart —
-  // initScheduler's one-shot Object.assign would otherwise miss it until next boot.
-  const handler = JOB_HANDLERS[key] ?? _pluginEngine?.getJobHandlers()[key];
-  if (!handler) return { skipped: true, reason: 'unknown_job' };
-
-  // Guard: skip plugin jobs if their plugin is disabled
-  if (pluginJobKeys.has(key) && _pluginEngine) {
-    const pluginList = _pluginEngine.getPluginList();
-    const ownerPlugin = pluginList.find(p =>
-      _pluginEngine!.getPlugin(p.id)?.manifest.hooks?.jobs?.some(j => j.key === key)
-    );
-    if (ownerPlugin && !ownerPlugin.enabled) {
-      logEvent('debug', 'Job', `Skipping job "${sanitize(key)}" — plugin "${ownerPlugin.id}" is disabled`);
-      return { skipped: true, reason: 'plugin_disabled' };
-    }
-  }
-
-  if (runningJobs.has(key)) {
+  // Covers requests already past the HTTP maintenance hook when restore starts.
+  if (maintenanceReason()) return { skipped: true, reason: 'maintenance' };
+  if (runningJobs.has(key) || (LIBRARY_SYNC_KEYS.has(key)
+    && [...LIBRARY_SYNC_KEYS].some(syncKey => runningJobs.has(syncKey)))) {
     logEvent('debug', 'Job', `Job "${sanitize(key)}" already running, skipping concurrent trigger`);
     return { skipped: true, reason: 'already_running' };
   }
   runningJobs.add(key);
 
-  const wasFirstSync = !(await hasCompletedFirstSync());
-
   const start = Date.now();
   try {
+    let handler = JOB_HANDLERS[key];
+    if (!handler && _pluginEngine) {
+      // Ownership is persisted on the job. A disabled predecessor may declare the same key,
+      // so neither manifest order nor a handler cached at boot identifies the current owner.
+      const job = await prisma.cronJob.findUnique({ where: { key }, select: { pluginId: true } });
+      if (job?.pluginId) {
+        const owner = _pluginEngine.getPlugin(job.pluginId);
+        if (!owner || !owner.enabled || owner.error) {
+          logEvent('debug', 'Job', `Skipping job "${sanitize(key)}" — plugin "${sanitize(job.pluginId)}" is unavailable`);
+          return { skipped: true, reason: 'plugin_disabled' };
+        }
+        handler = _pluginEngine.getJobHandlers(job.pluginId)[key];
+      }
+    }
+    if (!handler) return { skipped: true, reason: 'unknown_job' };
+
+    const wasFirstSync = !(await hasCompletedFirstSync());
     const result = await handler();
     const duration = Date.now() - start;
     await prisma.cronJob.update({
@@ -186,6 +191,8 @@ async function startAllJobs() {
  *  mid-swap would query a disconnected client. `restartJobs()` brings them back afterwards.
  *  A job already executing keeps running; `runningJobKeys()` lets the caller see that. */
 export function stopAllJobs(): void {
+  if (postMigrationTimer) clearInterval(postMigrationTimer);
+  postMigrationTimer = null;
   for (const [key, task] of activeTasks) {
     task.stop();
     activeTasks.delete(key);
@@ -195,7 +202,41 @@ export function stopAllJobs(): void {
 
 /** Re-arm every enabled schedule after a maintenance window. */
 export async function restartJobs(): Promise<void> {
+  await seedJobs();
   await startAllJobs();
+  startPostMigrationJobs();
+}
+
+/** Independent of user cron preferences and first-sync gating: SQL queued a one-off upgrade,
+ *  not a new schedule. Called only after migrations, plugin init, HTTP listen and job seeding. */
+function startPostMigrationJobs(): void {
+  if (postMigrationTimer) clearInterval(postMigrationTimer);
+  const drain = async () => {
+    if (!postMigrationTimer || runningJobs.has('post_migration')) return;
+    runningJobs.add('post_migration');
+    try {
+      await runPostMigrationJobs(async key => {
+        // Only explicitly supported, idempotent core jobs may be enqueued by migrations.
+        if (key !== 'full_sync') throw new Error('Unsupported post-migration job');
+        return runJob(key);
+      }, () => !postMigrationTimer);
+    } catch {
+      await logEvent('error', 'MigrationJob', 'Unable to process migration jobs; retrying on the next tick');
+    } finally {
+      runningJobs.delete('post_migration');
+    }
+  };
+  const tick = () => {
+    if (!postMigrationDrain) postMigrationDrain = drain().finally(() => { postMigrationDrain = null; });
+  };
+  postMigrationTimer = setInterval(tick, 60_000);
+  postMigrationTimer.unref();
+  tick();
+}
+
+/** After stopping timers and refusing new jobs, let an in-flight queue poll release SQLite. */
+export async function settlePostMigrationJobs(): Promise<void> {
+  await postMigrationDrain;
 }
 
 /** Keys of jobs currently mid-execution. */
@@ -207,12 +248,8 @@ export async function initScheduler(pluginEngine?: PluginEngine) {
   // Register plugin job handlers and seed their definitions
   if (pluginEngine) {
     _pluginEngine = pluginEngine;
-    const pluginHandlers = pluginEngine.getJobHandlers();
-    Object.assign(JOB_HANDLERS, pluginHandlers);
-
     const pluginJobDefs = pluginEngine.getJobDefs();
     for (const job of pluginJobDefs) {
-      pluginJobKeys.add(job.key);
       await prisma.cronJob.upsert({
         where: { key: job.key },
         update: { pluginId: job.pluginId },
@@ -229,6 +266,7 @@ export async function initScheduler(pluginEngine?: PluginEngine) {
   } else {
     logEvent('debug', 'Job', 'Jobs seeded but not started — waiting for first full sync');
   }
+  startPostMigrationJobs();
 }
 
 export async function updateJobSchedule(key: string, cronExpression: string, enabled: boolean) {
@@ -259,7 +297,6 @@ export async function registerPluginJobs(
     if (existing && existing.pluginId && existing.pluginId !== pluginId) {
       throw new Error(`Job key "${job.key}" is already owned by plugin "${existing.pluginId}" — cannot register for "${pluginId}".`);
     }
-    pluginJobKeys.add(job.key);
     const row = await prisma.cronJob.upsert({
       where: { key: job.key },
       update: { pluginId },
@@ -278,7 +315,6 @@ export function cancelPluginJobs(pluginId: string, keys: string[]): void {
       task.stop();
       activeTasks.delete(key);
     }
-    pluginJobKeys.delete(key);
   }
   void pluginId; // tracked in the keys argument; explicit param keeps the call site clear.
 }

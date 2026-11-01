@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../utils/prisma.js';
 import { parseId, parsePage } from '../../utils/params.js';
 import { REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
@@ -22,19 +23,20 @@ export async function requestListRoutes(app: FastifyInstance) {
           userId: { type: 'string', description: 'Filter by user ID (admin only)' },
           mediaType: { type: 'string', enum: ['movie', 'tv'], description: 'Filter by media type' },
           qualityOptionId: { type: 'string', description: 'Filter by quality option ID' },
+          groupBy: { type: 'string', enum: ['mediaUser'], description: 'Paginate complete media/requester groups instead of individual requests' },
         },
       },
     },
   }, async (request) => {
     const user = request.user;
-    const { status, page, userId, mediaType, qualityOptionId } = request.query as {
-      status?: string; page?: string; userId?: string; mediaType?: string; qualityOptionId?: string;
+    const { status, page, userId, mediaType, qualityOptionId, groupBy } = request.query as {
+      status?: string; page?: string; userId?: string; mediaType?: string; qualityOptionId?: string; groupBy?: 'mediaUser';
     };
     const pageNum = parsePage(page);
     const take = 20;
     const skip = (pageNum - 1) * take;
 
-    const where: Record<string, unknown> = {};
+    const where: Prisma.MediaRequestWhereInput = {};
     if (request.ownerScoped) {
       where.userId = user.id;
     } else if (userId) {
@@ -48,9 +50,26 @@ export async function requestListRoutes(app: FastifyInstance) {
       if (qid) where.qualityOptionId = qid;
     }
 
+    // Select complete groups before fetching rows, so seasons cannot straddle pages.
+    // The same permission/filter predicate applies to both queries.
+    let groupedWhere: Prisma.MediaRequestWhereInput | undefined;
+    let groupTotal: number | undefined;
+    if (groupBy === 'mediaUser') {
+      const [groups, allGroups] = await Promise.all([
+        prisma.mediaRequest.groupBy({
+          by: ['mediaId', 'userId'], where, _max: { createdAt: true, id: true },
+          orderBy: [{ _max: { createdAt: 'desc' } }, { _max: { id: 'desc' } }], take, skip,
+        }),
+        prisma.mediaRequest.groupBy({ by: ['mediaId', 'userId'], where }),
+      ]);
+      groupTotal = allGroups.length;
+      if (groups.length === 0) return { results: [], total: groupTotal, page: pageNum, totalPages: Math.ceil(groupTotal / take) };
+      groupedWhere = { AND: [where, { OR: groups.map(({ mediaId, userId }) => ({ mediaId, userId })) }] };
+    }
+
     const [requests, total] = await Promise.all([
       prisma.mediaRequest.findMany({
-        where,
+        where: groupedWhere ?? where,
         include: {
           media: {
             select: {
@@ -69,11 +88,11 @@ export async function requestListRoutes(app: FastifyInstance) {
           approvedBy: { select: { id: true, displayName: true } },
           qualityOption: { select: { id: true, label: true } },
         },
-        orderBy: { createdAt: 'desc' },
-        take,
-        skip,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: groupedWhere ? undefined : take,
+        skip: groupedWhere ? undefined : skip,
       }),
-      prisma.mediaRequest.count({ where }),
+      groupTotal ?? prisma.mediaRequest.count({ where }),
     ]);
 
     return {

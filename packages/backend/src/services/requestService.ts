@@ -1,11 +1,13 @@
+import { createRequestVariantMatcher } from './requestVariants.js';
 import { prisma } from '../utils/prisma.js';
 import { getAppSettings } from '../utils/appSettings.js';
-import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService } from '../providers/index.js';
+import { getArrClient, getArrClientForService, getServiceTypeForMedia, arrIdFieldForService, createServiceTagClient } from '../providers/index.js';
+import type { ServiceTagClient } from '../providers/types.js';
 import { getMovieDetails, getTvDetails } from './tmdb.js';
 import { findTvPlaceholder, upgradeOrMergeTvPlaceholder } from './mediaService.js';
-import { matchFolderRule } from './folderRules.js';
+import { resolveServiceContext, type ServiceContext } from './requestRouting.js';
+export { resolveServiceContext } from './requestRouting.js';
 import { logEvent } from '../utils/logEvent.js';
-import { getServiceById, getAllServices } from '../utils/services.js';
 import { VALID_MEDIA_TYPES } from '../utils/params.js';
 import { ACTIVE_REQUEST_STATUSES, COMPLETABLE_REQUEST_STATUSES } from '@oscarr/shared';
 import type { RequestStatusKind } from '@oscarr/shared';
@@ -14,6 +16,8 @@ import { transitionRequestStatus } from './requestStatusTransition.js';
 import { Prisma } from '@prisma/client';
 import { trimTrailingSlashes } from '../utils/trimTrailingSlashes.js';
 import { checkRequestGuard, resolveRequestApproval, validateRequestCriteria } from './requestCreationPolicy.js';
+import { validateSeasonSelection } from './seriesCatalog.js';
+import { resolveSeriesIdentity } from './mediaIdentity.js';
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -29,9 +33,10 @@ export function validateRequestBody(body: { tmdbId: unknown; mediaType: unknown;
   if (!VALID_MEDIA_TYPES.includes(mediaType as string)) {
     return { valid: false, error: 'mediaType must be "movie" or "tv"' };
   }
-  const validSeasons = Array.isArray(seasons) && seasons.every((s) => typeof s === 'number' && Number.isFinite(s))
-    ? (seasons as number[])
-    : undefined;
+  if (seasons != null && (!Array.isArray(seasons) || !seasons.every(s => Number.isInteger(s) && s > 0))) {
+    return { valid: false, error: 'Seasons must be positive integers' };
+  }
+  const validSeasons = Array.isArray(seasons) && seasons.length > 0 ? [...new Set(seasons as number[])] : undefined;
   return { valid: true, tmdbId, mediaType: mediaType as 'movie' | 'tv', seasons: validSeasons };
 }
 
@@ -130,67 +135,6 @@ export async function getUserTagName(userId: number): Promise<string> {
 // Service dispatch
 // ---------------------------------------------------------------------------
 
-interface ServiceContext {
-  targetService: { id: number; config: Record<string, string> } | null;
-  targetProfileId: number | null;
-  defaultProfileId: number | null;
-  defaultFolder: string | null | undefined;
-  ruleMatch: Awaited<ReturnType<typeof matchFolderRule>>;
-}
-
-export async function resolveServiceContext(
-  mediaType: 'movie' | 'tv',
-  tmdbId: number,
-  userId: number | null,
-  qualityOptionId?: number,
-  criterionValueIds: number[] = [],
-): Promise<ServiceContext> {
-  const settings = await getAppSettings();
-  const defaultProfileId = settings?.defaultQualityProfile ?? null;
-
-  const tmdbData = mediaType === 'movie'
-    ? await getMovieDetails(tmdbId)
-    : await getTvDetails(tmdbId);
-
-  const ruleMatch = await matchFolderRule(mediaType, tmdbData, userId, qualityOptionId, criterionValueIds);
-  const defaultFolder = mediaType === 'movie' ? settings?.defaultMovieFolder : settings?.defaultTvFolder;
-
-  let targetServiceId: number | null = ruleMatch?.serviceId ?? null;
-  let targetProfileId: number | null = null;
-
-  if (qualityOptionId) {
-    const serviceType = getServiceTypeForMedia(mediaType);
-    const mapping = await prisma.qualityMapping.findFirst({
-      where: {
-        qualityOptionId,
-        // When a folder rule matched a service, look up the quality mapping on THAT service;
-        // otherwise (serviceId undefined = ignored) fall back to the first enabled service. The
-        // enabled/type filter stays on both branches so a matched-but-disabled service yields no
-        // mapping and falls back to the default profile, instead of applying a profile id that is
-        // only valid on another instance.
-        serviceId: targetServiceId ?? undefined,
-        service: { type: serviceType, enabled: true },
-      },
-      include: { service: true },
-    });
-    if (mapping) {
-      targetServiceId = mapping.serviceId;
-      targetProfileId = mapping.qualityProfileId;
-    }
-  }
-
-  let targetService: { id: number; config: Record<string, string> } | null = null;
-  if (targetServiceId) {
-    targetService = await getServiceById(targetServiceId) as { id: number; config: Record<string, string> } | null;
-  }
-  if (!targetService) {
-    const services = await getAllServices(getServiceTypeForMedia(mediaType));
-    if (services.length > 0) targetService = services[0];
-  }
-
-  return { targetService, targetProfileId, defaultProfileId, defaultFolder, ruleMatch };
-}
-
 /**
  * Root folders are instance-local, but a folder rule can set a path without pinning a service —
  * and a quality mapping may then redirect the request to a *different* instance. That combination
@@ -238,28 +182,54 @@ async function sendToArrService(
   ctx: ServiceContext,
   seasons?: number[],
   rootFolderOverride?: string | null,
+  seasonNumbering?: string | null,
 ): Promise<number | null> {
   const serviceType = getServiceTypeForMedia(mediaType);
   const client = ctx.targetService
     ? getArrClientForService(ctx.targetService.id, serviceType, ctx.targetService.config)
     : await getArrClient(serviceType);
 
+  let externalId: number;
+  try {
+    externalId = mediaType === 'movie' ? media.tmdbId : await resolveSeriesIdentity(client, media);
+  } catch {
+    // Do not include upstream URLs/errors: an Axios error may contain the instance API key.
+    throw new Error(`Cannot resolve ${mediaType} TMDB ${media.tmdbId} on service #${ctx.targetService?.id ?? 'default'}; check the service metadata lookup`);
+  }
+  if (!externalId) throw new Error(`Missing external ID for ${mediaType} "${media.title}"`);
+  if (mediaType === 'tv' && seasons?.length) {
+    if (!seasonNumbering) throw new Error('Season numbering is unknown; select the seasons again from the service catalog');
+    await validateSeasonSelection(client, externalId, seasons, seasonNumbering);
+  }
+
   // Priority: explicit override > rule match > default folder > first root folder
   const requested = rootFolderOverride || ctx.ruleMatch?.folderPath || ctx.defaultFolder;
   const folderPath = await resolveRootFolder(client, requested, ctx);
 
-  // User tagging is opt-in via AppSettings.arrUserTaggingEnabled. When off (default), no
-  // tag is created or attached — the *arr UI stays free of Oscarr-internal username tags.
-  // Read each call so the toggle takes effect without a server restart.
+  // Rule tags are instance-local and independent of optional requester tagging.
+  const ruleTags = ctx.ruleMatch?.tagIds ?? [];
+  let tagClient: ServiceTagClient | undefined;
+  if (ruleTags.length > 0) {
+    if (!ctx.targetService || ctx.ruleMatch?.serviceId !== ctx.targetService.id) {
+      throw new Error('RULE_TAGS_REQUIRE_SERVICE');
+    }
+    tagClient = createServiceTagClient(serviceType, ctx.targetService.config);
+    const knownIds = new Set((await tagClient.getTags()).map(tag => tag.id));
+    if (ruleTags.some(id => !knownIds.has(id))) throw new Error('RULE_TAGS_NOT_FOUND');
+  }
   const settings = await getAppSettings();
-  const tags: number[] = settings?.arrUserTaggingEnabled ? [await client.getOrCreateTag(username)] : [];
-
-  const externalId = mediaType === 'movie' ? media.tmdbId : media.tvdbId;
-  if (!externalId) throw new Error(`Missing external ID for ${mediaType} "${media.title}"`);
+  const userTags = settings?.arrUserTaggingEnabled ? [await client.getOrCreateTag(username)] : [];
+  const tags = [...new Set([...ruleTags, ...userTags])];
 
   const existing = await client.findByExternalId(externalId);
   if (existing) {
-    await client.searchMedia(existing.id);
+    if (tagClient) await tagClient.addTagsToMedia(existing.id, ruleTags);
+    if (mediaType === 'tv' && seasons?.length) {
+      if (!client.requestSeasons) throw new Error('This service does not support season requests');
+      await client.requestSeasons(existing.id, seasons);
+    } else {
+      await client.searchMedia(existing.id);
+    }
     return existing.id;
   }
 
@@ -289,33 +259,12 @@ export async function sendToService(
   rootFolderOverride?: string | null,
   /** Last, so the three callers that have no criteria to pass stay untouched. */
   criterionValueIds: number[] = [],
+  seasonNumbering?: string | null,
 ): Promise<boolean> {
   try {
     const ctx = await resolveServiceContext(mediaType as 'movie' | 'tv', media.tmdbId, userId, qualityOptionId, criterionValueIds);
 
-    // Resolve tvdbId from TMDB if missing
-    let resolvedMedia = media;
-    if (mediaType === 'tv' && !media.tvdbId) {
-      try {
-        const tmdbData = await getTvDetails(media.tmdbId);
-        const resolvedTvdbId = tmdbData.external_ids?.tvdb_id ?? null;
-        if (resolvedTvdbId) {
-          resolvedMedia = { ...media, tvdbId: resolvedTvdbId };
-          await prisma.media.update({
-            where: { tmdbId_mediaType: { tmdbId: media.tmdbId, mediaType: 'tv' } },
-            data: { tvdbId: resolvedTvdbId },
-          });
-        } else {
-          logEvent('debug', 'Request', `Cannot send TV request — tvdbId not found in TMDB for "${media.title}"`);
-          return false;
-        }
-      } catch {
-        logEvent('debug', 'Request', `Cannot send TV request — failed to resolve tvdbId for "${media.title}"`);
-        return false;
-      }
-    }
-
-    const arrMediaId = await sendToArrService(resolvedMedia, mediaType, username, ctx, seasons, rootFolderOverride);
+    const arrMediaId = await sendToArrService(media, mediaType, username, ctx, seasons, rootFolderOverride, seasonNumbering);
 
     // Claim the row now; otherwise ownership only lands at the next sync pass. serviceId and the
     // *arr id must move together — a serviceId pointing at B next to an id issued by A resolves to
@@ -364,6 +313,7 @@ export interface CreateRequestInput {
   tmdbId: unknown;
   mediaType: unknown;
   seasons?: unknown;
+  seasonNumbering?: unknown;
   rootFolder?: string;
   qualityOptionId?: number;
   /** One value per admin-defined criterion the requester picked. Order is irrelevant. */
@@ -401,6 +351,12 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
     return { ok: false, status: 400, code: 'INVALID_INPUT', error: validation.error };
   }
   const { tmdbId, mediaType, seasons: validSeasons } = validation;
+  if (input.seasonNumbering != null && (typeof input.seasonNumbering !== 'string'
+    || !/^[a-zA-Z0-9_-]+:[a-zA-Z0-9_-]{1,40}$/.test(input.seasonNumbering)
+    || mediaType !== 'tv' || !validSeasons?.length)) {
+    return { ok: false, status: 400, code: 'INVALID_INPUT', error: 'Invalid season numbering' };
+  }
+  const seasonNumbering = typeof input.seasonNumbering === 'string' ? input.seasonNumbering : null;
 
   const guardError = await checkRequestGuard({
     userId: user.id, role: user.role, skipPluginGuard: input.skipPluginGuard,
@@ -428,31 +384,39 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   const criteriaError = await validateRequestCriteria(criterionValueIds);
   if (criteriaError) return criteriaError;
 
+  const matchesVariant = await createRequestVariantMatcher(input,
+    option => resolveServiceContext(mediaType, tmdbId, user.id, option, criterionValueIds));
+
   // Dedup + create in one transaction so two concurrent calls by the same user can't both pass
   // the dedup check and both insert (SQLite serializes writes, but defensive against future
   // backends and intent-clarity for the reader).
   const initialStatus: RequestStatusKind = shouldAutoApprove ? 'approved' : 'pending';
   const mediaRequest = await prisma.$transaction(async (tx) => {
-    // The unit of uniqueness is (media, user, quality option, criterion values) — not (media,
-    // user). Two variants are two different asks: the option decides the profile, the criteria
-    // decide which *arr instance a folder rule sends it to, which is the whole point of discussion
-    // #228. Without them the interface offered a second variant on an available title and this
-    // answered 409, because `resolveButtonState` reads the variant path before the user's own
-    // request. Absent is its own value: the default is not the same ask as a named one.
-    //
-    // Compared in memory rather than in SQL: the candidates are one user's active requests on one
-    // title, so a handful of rows, and set equality is clearer here than a counting subquery.
+    // Compare one user's active requests for this title. Quality labels may be aliases, but
+    // different folders, routing actions, criteria or disjoint season scopes remain distinct.
+    // Routing is resolved above, keeping external lookups outside the write transaction.
     const candidates = await tx.mediaRequest.findMany({
       where: {
         mediaId: media.id,
         userId: user.id,
         status: { in: [...ACTIVE_REQUEST_STATUSES] },
-        qualityOptionId: input.qualityOptionId ?? null,
       },
-      select: { id: true, criteria: { select: { valueId: true } } },
+      select: { id: true, qualityOptionId: true, rootFolder: true, seasons: true, seasonNumbering: true, criteria: { select: { valueId: true } } },
     });
     const wanted = new Set(criterionValueIds);
     const dup = candidates.find((c) => {
+      if (!matchesVariant(c)) return false;
+      // Different seasons of the same variant are separate requests. A whole-series request
+      // overlaps every season; malformed legacy scopes remain conservative.
+      if (mediaType === 'tv' && validSeasons?.length && c.seasons) {
+        if (c.seasonNumbering !== seasonNumbering) return false;
+        try {
+          const existingSeasons: unknown = JSON.parse(c.seasons);
+          if (Array.isArray(existingSeasons) && existingSeasons.length > 0
+            && existingSeasons.every(s => Number.isInteger(s) && s > 0)
+            && !existingSeasons.some(s => validSeasons.includes(s))) return false;
+        } catch { /* Treat invalid legacy data as a whole-series request. */ }
+      }
       if (c.criteria.length !== wanted.size) return false;
       return c.criteria.every((row) => wanted.has(row.valueId));
     });
@@ -465,6 +429,7 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
           userId: user.id,
           mediaType,
           seasons: validSeasons ? JSON.stringify(validSeasons) : null,
+          seasonNumbering,
           rootFolder: typeof input.rootFolder === 'string' ? input.rootFolder : null,
           qualityOptionId: input.qualityOptionId ?? null,
           status: initialStatus,
@@ -487,7 +452,7 @@ export async function createUserRequest(input: CreateRequestInput): Promise<Crea
   let sendFailed = false;
   if (shouldAutoApprove) {
     const tagName = await getUserTagName(user.id);
-    const sent = await sendToService(media, mediaType, tagName, user.id, validSeasons, input.qualityOptionId, undefined, criterionValueIds);
+    const sent = await sendToService(media, mediaType, tagName, user.id, validSeasons, input.qualityOptionId, undefined, criterionValueIds, seasonNumbering);
 
     await recordRequestDispatch(sent, media, mediaRequest);
     sendFailed = !sent;
@@ -554,7 +519,8 @@ export async function requestCollectionMovie(
   movieTmdbId: number,
   user: { id: number; role: string },
 ): Promise<boolean> {
-  if ((await getAppSettings())?.requestsEnabled === false) return false;
+  const settings = await getAppSettings();
+  if (settings?.requestsEnabled === false) return false;
 
   const bl = await isBlacklisted(movieTmdbId, 'movie');
   if (bl.blacklisted) return false;
@@ -574,21 +540,24 @@ export async function requestCollectionMovie(
 
   const media = dbMedia ?? await findOrCreateMedia(movieTmdbId, 'movie');
 
-  const collectionInitialStatus: RequestStatusKind = user.role === 'admin' ? 'approved' : 'pending';
+  // Collections use the same default approval policy as individual movie requests.
+  const approval = await resolveRequestApproval(user.role, settings?.autoApproveRequests ?? false);
+  if (!approval.ok) return false;
+  const collectionInitialStatus: RequestStatusKind = approval.autoApprove ? 'approved' : 'pending';
   const req = await transitionRequestStatus(
-    { requestId: undefined, from: undefined, to: collectionInitialStatus, why: user.role === 'admin' ? 'collection-request-auto-approve' : 'collection-request-create' },
+    { requestId: undefined, from: undefined, to: collectionInitialStatus, why: approval.autoApprove ? 'collection-request-auto-approve' : 'collection-request-create' },
     () => prisma.mediaRequest.create({
       data: {
         mediaId: media.id,
         userId: user.id,
         mediaType: 'movie',
         status: collectionInitialStatus,
-        approvedById: user.role === 'admin' ? user.id : null,
+        approvedById: approval.autoApprove ? user.id : null,
       },
     }),
   );
 
-  if (user.role === 'admin') {
+  if (approval.autoApprove) {
     const tagName = await getUserTagName(user.id);
     const sent = await sendToService(media, 'movie', tagName, user.id);
     if (!sent) {
@@ -642,7 +611,7 @@ export async function retryFailedRequests(): Promise<{ retried: number; succeede
     const seasons = req.seasons ? JSON.parse(req.seasons) : undefined;
     const sent = await sendToService(
       req.media, req.mediaType, tagName, req.userId, seasons, req.qualityOptionId ?? undefined,
-      undefined, req.criteria?.map((c) => c.valueId) ?? [],
+      undefined, req.criteria?.map((c) => c.valueId) ?? [], req.seasonNumbering,
     );
     if (sent) {
       await transitionRequestStatus(

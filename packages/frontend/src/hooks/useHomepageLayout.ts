@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import api from '@/lib/api';
 
 export interface HomepageSection {
@@ -25,18 +25,31 @@ export interface HomepageSection {
 export function useHomepageLayout() {
   const [sections, setSections] = useState<HomepageSection[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const loaded = useRef(false);
 
   useEffect(() => {
-    api.get('/app/homepage-layout')
+    if (loaded.current) return;
+    const controller = new AbortController();
+    api.get('/app/homepage-layout', { signal: controller.signal })
       .then(({ data }) => {
+        if (controller.signal.aborted) return;
         if (Array.isArray(data)) {
           setSections(data);
         } else {
           setSections(null); // malformed response -> fallback
         }
       })
-      .catch((err) => { console.warn("[useHomepageLayout] failed, using hardcoded default", err); setSections(null); }) // fallback to null = use hardcoded default
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        console.warn('[useHomepageLayout] failed, using hardcoded default', err);
+        setSections(null);
+      })
+      .finally(() => {
+        if (controller.signal.aborted) return;
+        loaded.current = true;
+        setLoading(false);
+      });
+    return () => controller.abort();
   }, []);
 
   return { sections, loading };

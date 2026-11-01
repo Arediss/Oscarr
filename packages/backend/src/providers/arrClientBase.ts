@@ -17,8 +17,12 @@ export abstract class ArrClientBase {
   }
 
   async getTags(): Promise<ArrTag[]> {
-    const { data } = await this.api.get('/tag');
-    return data;
+    const { data } = await this.api.get<unknown>('/tag');
+    if (!Array.isArray(data) || !data.every((tag): tag is ArrTag => tag != null
+      && Number.isSafeInteger(tag.id) && tag.id > 0 && typeof tag.label === 'string' && tag.label.trim() !== '')) {
+      throw new Error('Invalid service tag response');
+    }
+    return data.map(({ id, label }) => ({ id, label }));
   }
 
   async createTag(label: string): Promise<ArrTag> {

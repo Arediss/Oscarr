@@ -1,6 +1,6 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useFeatures } from '@/context/FeaturesContext';
 import { useBackend } from '@/context/BackendGate';
@@ -8,6 +8,8 @@ import Layout from '@/components/Layout';
 import LoadingScreen from '@/components/LoadingScreen';
 import HomePage from '@/pages/HomePage';
 import LoginPage from '@/pages/LoginPage';
+import MediaDetailLoading from '@/components/media/MediaDetailLoading';
+import MediaLayers from '@/components/media/MediaLayers';
 
 const AdminPage = lazy(() => import('@/pages/AdminPage'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
@@ -50,18 +52,6 @@ function RequireFeature({ feature, children }: Readonly<{ feature: string; child
   if (loading) return null;
   if (!features[feature]) return <Navigate to="/" replace />;
   return <>{children}</>;
-}
-
-function PageTransition({ children }: Readonly<{ children: React.ReactNode }>) {
-  const location = useLocation();
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, [location.pathname]);
-  return (
-    <div key={location.pathname} className="animate-fade-in">
-      {children}
-    </div>
-  );
 }
 
 function SkipLink() {
@@ -117,12 +107,11 @@ export default function App() {
         element={
           <ProtectedRoute>
             <Layout>
-              <PageTransition>
-                <Routes>
+              <MediaLayers>
                   <Route path="/" element={<RequireAccess><HomePage /></RequireAccess>} />
                   <Route path="/search" element={<RequireAccess><SearchPage /></RequireAccess>} />
-                  <Route path="/movie/:id" element={<RequireAccess><MediaDetailPage type="movie" /></RequireAccess>} />
-                  <Route path="/tv/:id" element={<RequireAccess><MediaDetailPage type="tv" /></RequireAccess>} />
+                  <Route path="/movie/:id" element={<RequireAccess><Suspense fallback={<MediaDetailLoading />}><MediaDetailPage type="movie" /></Suspense></RequireAccess>} />
+                  <Route path="/tv/:id" element={<RequireAccess><Suspense fallback={<MediaDetailLoading />}><MediaDetailPage type="tv" /></Suspense></RequireAccess>} />
                   <Route path="/person/:id" element={<RequireAccess><PersonPage /></RequireAccess>} />
                   <Route path="/requests" element={<RequireFeature feature="requestsEnabled"><RequireAccess><RequestsPage /></RequireAccess></RequireFeature>} />
                   <Route path="/discover/:mediaType/genre/:genreId" element={<RequireAccess><DiscoverGenrePage /></RequireAccess>} />
@@ -130,8 +119,7 @@ export default function App() {
                   <Route path="/calendar" element={<RequireFeature feature="calendarEnabled"><RequireAccess><CalendarPage /></RequireAccess></RequireFeature>} />
                   <Route path="/p/:pluginId/*" element={<PluginPage />} />
                   <Route path="/install" element={<Navigate to="/" replace />} />
-                </Routes>
-              </PageTransition>
+              </MediaLayers>
             </Layout>
           </ProtectedRoute>
         }

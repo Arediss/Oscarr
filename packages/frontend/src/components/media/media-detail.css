@@ -1,0 +1,86 @@
+/* Keep the image center in the uncovered area instead of behind the synopsis. */
+.media-detail-hero {
+  position: relative;
+  isolation: isolate;
+  padding: 20rem 0 2rem;
+}
+
+.media-detail-container {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+.media-detail-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.media-detail-image {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 28rem;
+}
+
+.media-detail-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgb(10 14 23 / .15), transparent 10rem, #0a0e17 27rem);
+}
+
+.media-detail-veil { display: none; }
+
+.media-detail-title {
+  font-size: clamp(2.5rem, 4.8vw, 4.5rem);
+  line-height: 1.08;
+  letter-spacing: -.04em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+@media (min-width: 640px) {
+  .media-detail-container { padding-inline: 2rem; }
+}
+
+@media (min-width: 1024px) {
+  .media-detail-hero {
+    --media-art-start: 38%;
+    --media-art-height: clamp(46rem, calc(100svh - 4rem), 60rem);
+    display: flex;
+    align-items: center;
+    min-height: var(--media-art-height);
+    padding: 9rem 0 4rem;
+  }
+
+  .media-detail-container { padding-inline: clamp(2rem, 6vw, 6rem); }
+  .media-detail-copy { width: 46%; max-width: 38rem; }
+
+  .media-detail-image {
+    /* The image's midpoint is at 69% of the hero width. */
+    /* Metadata may grow the text column, but must never change the artwork's crop. */
+    inset: 0 0 auto var(--media-art-start);
+    height: var(--media-art-height);
+  }
+
+  .media-detail-shade {
+    /* Seal the image boundaries; the diffuse SVG supplies the irregular interior shading. */
+    background:
+      linear-gradient(90deg, #0a0e17, transparent 20%),
+      linear-gradient(0deg, #0a0e17, transparent 28%),
+      rgb(10 14 23 / .1);
+  }
+
+  .media-detail-veil {
+    display: block;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    color: #0a0e17;
+    pointer-events: none;
+  }
+}

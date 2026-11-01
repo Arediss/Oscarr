@@ -21,6 +21,7 @@ export async function requestCreateRoutes(app: FastifyInstance) {
           tmdbId: { type: 'number', description: 'TMDB ID of the media to request' },
           mediaType: { type: 'string', enum: ['movie', 'tv'], description: 'Type of media' },
           seasons: { type: 'array', items: { type: 'number' }, description: 'Season numbers to request (TV only)' },
+          seasonNumbering: { type: 'string', description: 'Numbering scheme returned by the native season catalog' },
           rootFolder: { type: 'string', description: 'Root folder path override' },
           qualityOptionId: { type: 'number', description: 'Quality option ID for quality profile mapping' },
           criterionValueIds: {
@@ -35,6 +36,7 @@ export async function requestCreateRoutes(app: FastifyInstance) {
     const user = request.user;
     const body = request.body as {
       tmdbId: unknown; mediaType: unknown; seasons?: unknown;
+      seasonNumbering?: unknown;
       rootFolder?: string; qualityOptionId?: number; criterionValueIds?: number[];
     };
 
@@ -43,6 +45,7 @@ export async function requestCreateRoutes(app: FastifyInstance) {
       tmdbId: body.tmdbId,
       mediaType: body.mediaType,
       seasons: body.seasons,
+      seasonNumbering: body.seasonNumbering,
       rootFolder: body.rootFolder,
       qualityOptionId: body.qualityOptionId,
       criterionValueIds: body.criterionValueIds,

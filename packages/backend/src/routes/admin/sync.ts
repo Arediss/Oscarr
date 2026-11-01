@@ -1,7 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { getAppSettings, patchAppSettings } from '../../utils/appSettings.js';
-import { syncArrService } from '../../services/sync/mediaSync.js';
-import { syncAvailabilityDates } from '../../services/sync/availabilitySync.js';
+import { getAppSettings } from '../../utils/appSettings.js';
 import { triggerJob } from '../../services/scheduler.js';
 
 export async function syncRoutes(app: FastifyInstance) {
@@ -24,10 +22,9 @@ export async function syncRoutes(app: FastifyInstance) {
 
   app.post('/sync/force', { config: { rateLimit: { max: 1, timeWindow: '5 minutes' } } }, async (request, reply) => {
 
-    await patchAppSettings({ lastRadarrSync: null, lastSonarrSync: null });
-    const radarrResult = await syncArrService('radarr', null);
-    const sonarrResult = await syncArrService('sonarr', null);
-    await syncAvailabilityDates(null);
-    return { radarr: radarrResult, sonarr: sonarrResult };
+    // full_sync already ignores incremental cutoffs; share its lock with upgrade/cron runs.
+    const outcome = await triggerJob('full_sync');
+    if (outcome.skipped) return reply.code(409).send(outcome);
+    return outcome.result;
   });
 }

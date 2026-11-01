@@ -15,6 +15,16 @@ export interface TmdbSeason {
   air_date: string;
 }
 
+export interface TmdbEpisode {
+  episode_number: number;
+  name: string;
+  air_date: string | null;
+}
+
+export interface TmdbSeasonDetails {
+  episodes: TmdbEpisode[];
+}
+
 export interface TmdbCast {
   id: number;
   name: string;

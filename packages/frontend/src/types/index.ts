@@ -91,6 +91,7 @@ export interface MediaRequest {
   status: 'pending' | 'approved' | 'declined' | 'processing' | 'available' | 'failed';
   mediaType: 'movie' | 'tv';
   seasons: string | null;
+  seasonNumbering?: string | null;
   rootFolder: string | null;
   qualityOptionId: number | null;
   approvedById: number | null;

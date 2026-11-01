@@ -8,3 +8,6 @@ export * from './notificationTemplates.js';
 export * from './mediaState.js';
 export * from './canRequest.js';
 export * from './folderRuleSchema.js';
+export * from './serviceTags.js';
+export type { SeriesSeason, ProviderSeasonCatalog, SeriesCatalog, SeriesEpisode, SeriesEpisodes } from './seriesCatalog.js';
+export type { ProviderMediaMetadata, ServiceMetadata } from './serviceMetadata.js';

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, memo } from 'react';
+import { useState, useEffect, useCallback, useRef, useId, memo, type Dispatch, type SetStateAction, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -16,14 +16,19 @@ import {
   X,
   Save,
   Eraser,
+  ChevronDown,
   SlidersHorizontal, } from 'lucide-react';
 import { clsx } from 'clsx';
 import api, { posterUrl, backdropUrl } from '@/lib/api';
+import MediaLink from '@/components/MediaLink';
 import { useAuth } from '@/context/AuthContext';
 import { useDownloadForMedia } from '@/hooks/useDownloads';
 import { localizedDate } from '@/i18n/formatters';
 import type { MediaRequest } from '@/types';
 import { useModal } from '@/hooks/useModal';
+import { parseRequestSeasons } from '@/utils/requestSeasons';
+import { groupRequests, sortRequestsBySeason } from '@/utils/requestGroups';
+import { useExpandableRequestCard } from '@/hooks/useExpandableRequestCard';
 
 const STATUS_CONFIG: Record<string, { labelKey: string; icon: typeof Clock; color: string; bg: string; dot: string }> = {
   pending: { labelKey: 'pending', icon: Clock, color: 'text-ndp-warning', bg: 'bg-ndp-warning', dot: 'bg-ndp-warning' },
@@ -58,6 +63,7 @@ export default function RequestsPage() {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const [requests, setRequests] = useState<MediaRequest[]>([]);
+  const [expandedGroupId, setExpandedGroupId] = useState<string | null>(null);
   const [stats, setStats] = useState<RequestStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [filtering, setFiltering] = useState(false);
@@ -95,9 +101,13 @@ export default function RequestsPage() {
   }, [canAccessAdmin]);
 
   const fetchRequests = useCallback(async (pageNum: number, append = false) => {
-    if (!append) setFiltering(true);
+    if (!append) {
+      setFiltering(true);
+      setExpandedGroupId(null);
+    }
     try {
       const params = new URLSearchParams();
+      params.set('groupBy', 'mediaUser');
       if (filter) params.set('status', filter);
       if (filterUser) params.set('userId', filterUser);
       if (filterMediaType) params.set('mediaType', filterMediaType);
@@ -258,8 +268,9 @@ export default function RequestsPage() {
         <>
           <div className={clsx('transition-opacity duration-300', filtering ? 'opacity-40' : 'opacity-100')}>
             {(() => {
-              const pendingRequests = !filter ? requests.filter(r => r.status === 'pending') : [];
-              const otherRequests = !filter ? requests.filter(r => r.status !== 'pending') : requests;
+              const groups = groupRequests(requests);
+              const pendingRequests = !filter ? groups.filter(group => group.some(r => r.status === 'pending')) : [];
+              const otherRequests = !filter ? groups.filter(group => group.every(r => r.status !== 'pending')) : groups;
 
               return (
                 <>
@@ -267,11 +278,11 @@ export default function RequestsPage() {
                     <div className="mb-8">
                       <h2 className="text-sm font-semibold text-ndp-warning uppercase tracking-wider mb-3 flex items-center gap-2">
                         <Clock className="w-4 h-4" />
-                        {t('requests.pending_section', { count: pendingRequests.length })}
+                        {t('requests.pending_section', { count: pendingRequests.flat().filter(r => r.status === 'pending').length })}
                       </h2>
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                        {pendingRequests.map((req, index) => (
-                          <RequestCard key={req.id} request={req} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
+                        {pendingRequests.map((group, index) => (
+                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} expandedGroupId={expandedGroupId} setExpandedGroupId={setExpandedGroupId} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
                         ))}
                       </div>
                     </div>
@@ -285,8 +296,8 @@ export default function RequestsPage() {
                         </h2>
                       )}
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
-                        {otherRequests.map((req, index) => (
-                          <RequestCard key={req.id} request={req} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
+                        {otherRequests.map((group, index) => (
+                          <RequestGroupCard key={`${group[0].mediaId}:${group[0].userId}`} requests={group} expandedGroupId={expandedGroupId} setExpandedGroupId={setExpandedGroupId} canApprove={hasPermission('requests.approve')} canDecline={hasPermission('requests.decline')} actionLoading={actionLoading} onAction={handleAction} onDelete={onDeleteCard} qualityOptions={qualityOptions} index={index} />
                         ))}
                       </div>
                     </div>
@@ -456,6 +467,9 @@ export default function RequestsPage() {
 
 interface RequestCardProps {
   request: MediaRequest;
+  compact?: boolean;
+  groupDetails?: ReactNode;
+  onSettingsChange?: (open: boolean) => void;
   canApprove: boolean;
   canDecline?: boolean;
   actionLoading: number | null;
@@ -465,8 +479,49 @@ interface RequestCardProps {
   index: number;
 }
 
+function RequestGroupCard({ requests, expandedGroupId, setExpandedGroupId, ...props }: Omit<RequestCardProps, 'request' | 'compact' | 'groupDetails' | 'onSettingsChange'> & {
+  requests: MediaRequest[];
+  expandedGroupId: string | null;
+  setExpandedGroupId: Dispatch<SetStateAction<string | null>>;
+}) {
+  const { t } = useTranslation();
+  const panelId = useId();
+  const first = requests[0];
+  const expansion = useExpandableRequestCard(`${first.mediaId}:${first.userId}`, expandedGroupId, setExpandedGroupId);
+  if (requests.length === 1) return <RequestCard request={first} {...props} />;
+  const title = first.media?.title || t('requests.unknown_media');
+  return (
+    <div ref={expansion.anchorRef} className="relative self-start h-[160px]" onPointerEnter={expansion.enter} onPointerLeave={expansion.leave} onBlurCapture={expansion.blur}>
+      <div ref={expansion.panelRef} role="group" aria-label={title} tabIndex={-1}
+        style={expansion.open ? expansion.position : undefined}
+        className={clsx('absolute inset-x-0 top-0 flex flex-col overflow-hidden rounded-2xl border bg-ndp-surface focus:outline-none', expansion.open ? 'z-40 border-white/15 shadow-2xl shadow-black/60' : 'border-white/5')}>
+        <RequestCard request={first} {...props} groupDetails={
+          <button ref={expansion.triggerRef} type="button" aria-expanded={expansion.open} aria-controls={panelId}
+            aria-label={t('requests.show_all_requests', { count: requests.length })}
+            onClick={event => expansion.open ? expansion.close() : expansion.show(event.detail === 0)}
+            onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); expansion.show(true); } }}
+            className="relative z-10 pointer-events-auto flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs font-semibold text-ndp-accent hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent">
+            <span>{t('requests.group_count', { count: requests.length })}</span>
+            <ChevronDown className={clsx('w-4 h-4 transition-transform', expansion.open && 'rotate-180')} />
+          </button>
+        } />
+        {expansion.open && (
+          <div id={panelId} className="relative min-h-0 overflow-y-auto overscroll-contain px-3.5 pb-3.5">
+            <div className="flex flex-wrap items-start gap-2">
+              {sortRequestsBySeason(requests).map(request => <RequestCard key={request.id} request={request} {...props} compact onSettingsChange={expansion.setModalOpen} />)}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RequestCardInner({
   request: req,
+  compact = false,
+  groupDetails,
+  onSettingsChange,
   canApprove,
   canDecline,
   actionLoading,
@@ -478,6 +533,12 @@ function RequestCardInner({
   const { t } = useTranslation();
   const [selectedQuality, setSelectedQuality] = useState<number | undefined>(req.qualityOptionId ?? undefined);
   const [showSettings, setShowSettings] = useState(false);
+  const settingsModal = useModal({ open: showSettings, onClose: () => setShowSettings(false) });
+  useEffect(() => {
+    if (!showSettings) return;
+    onSettingsChange?.(true);
+    return () => onSettingsChange?.(false);
+  }, [showSettings, onSettingsChange]);
   interface ResolvedCtx {
     folderPath: string | null;
     matchedRule: string | null;
@@ -501,50 +562,58 @@ function RequestCardInner({
   const mediaLink = hasValidTmdbId ? `/${req.mediaType}/${req.media!.tmdbId}` : '#';
   const year = req.media?.releaseDate?.slice(0, 4);
   const backdrop = req.media?.backdropPath;
-  const isPending = req.status === 'pending';
+  const isPending = req.status === 'pending' && !groupDetails;
+  const seasons = req.mediaType === 'tv' && !groupDetails ? parseRequestSeasons(req.seasons) : null;
+  const seasonLabel = seasons === 'all' ? t('media.all_seasons')
+    : seasons === 'unknown' ? t('requests.seasons_unknown')
+    : seasons ? seasons.map(number => t('media.season_label', { number })).join(' · ') : '';
 
   return (
     // Card is a <div> (not <Link>) so nested <button>s are valid HTML.
     // The clickable area is a sibling <Link className="absolute inset-0"> positioned under the
     // buttons via z-index — screen readers announce one link + the buttons independently.
     <div
-      className="group relative rounded-2xl overflow-hidden h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5"
-      style={{ animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
+      className={compact ? clsx('relative flex flex-col max-w-full rounded-lg border border-white/10 bg-white/[0.03]', isPending && 'w-full') : groupDetails ? 'group relative flex h-[158px] shrink-0 overflow-hidden' : 'group self-start relative rounded-2xl overflow-hidden min-h-[160px] flex transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/40 animate-fade-in border border-white/5'}
+      style={compact || groupDetails ? undefined : { animationDelay: `${Math.min(index * 50, 400)}ms`, animationFillMode: 'backwards' }}
+      title={compact ? `${localizedDate(req.createdAt)} · ${req.qualityOption?.label || t('requests.no_quality')}` : undefined}
     >
-      {hasValidTmdbId && (
-        <Link
+      {hasValidTmdbId && !compact && (
+        <MediaLink
           to={mediaLink}
-          className="absolute inset-0 z-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent/60 rounded-2xl"
-          aria-label={req.media?.title || t('requests.unknown_media')}
+          className="absolute inset-0 z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ndp-accent/60 rounded-2xl"
+          aria-label={[req.media?.title || t('requests.unknown_media'), seasonLabel].filter(Boolean).join(' — ')}
         />
       )}
 {/* No left bar — status shown inline */}
 
       {/* Background — subtle backdrop hint */}
-      <div className="absolute inset-0 bg-ndp-surface">
-        {backdrop && (
+      {!compact && <div className="absolute inset-0 bg-ndp-surface">
+        {backdrop && !compact && (
           <>
             <img src={backdropUrl(backdrop, 'w300')} alt="" className="absolute right-0 top-0 h-full w-2/3 object-cover opacity-[0.07]" />
             <div className="absolute inset-0 bg-gradient-to-r from-ndp-surface via-ndp-surface/95 to-transparent" />
           </>
         )}
-      </div>
+      </div>}
 
       {/* Content */}
-      <div className="relative flex w-full p-3.5">
+      <div className={clsx('relative flex pointer-events-none', compact ? 'px-2.5 py-2' : 'w-full p-3.5', isPending && !compact && 'pb-12')}>
         {/* Left: info */}
-        <div className="flex-1 flex flex-col min-w-0 pr-3">
-          <h3 className="text-base font-bold text-white leading-tight line-clamp-1">
+        <div className={compact ? 'flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0' : 'flex-1 flex flex-col min-w-0 pr-3'}>
+          {!compact && <h3 className="text-base font-bold text-white leading-tight line-clamp-1 shrink-0">
             {req.media?.title || t('requests.unknown_media')}
-          </h3>
+          </h3>}
 
-          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-white/50">
-            {year && <span className="text-white/70">{year}</span>}
-            {year && <span>·</span>}
+          {seasonLabel && <p className={clsx('text-xs font-semibold', compact ? 'text-ndp-text' : 'mt-1 shrink-0 text-ndp-accent')}>{seasonLabel}</p>}
+          {compact && <span className="sr-only">{localizedDate(req.createdAt)} · {req.qualityOption?.label || t('requests.no_quality')}</span>}
+
+          {!compact && <div className="flex items-center gap-1.5 mt-1.5 text-xs text-white/50">
+            {year && !compact && <span className="text-white/70">{year}</span>}
+            {year && !compact && <span>·</span>}
             <span>{localizedDate(req.createdAt)}</span>
-          </div>
+          </div>}
 
-          <div className="flex items-center gap-1.5 mt-2">
+          {!compact && <div className="flex items-center gap-1.5 mt-2">
             {req.user?.avatar ? (
               <img src={req.user.avatar} alt="" className="w-4 h-4 rounded-full ring-1 ring-white/20" />
             ) : (
@@ -553,10 +622,10 @@ function RequestCardInner({
               </div>
             )}
             <span className="text-xs text-white/60 truncate">{req.user?.displayName}</span>
-          </div>
+          </div>}
 
-          {qualityOptions.length > 0 && (
-            <div className="mt-1.5">
+          {qualityOptions.length > 0 && !groupDetails && (!compact || req.mediaType === 'movie' || req.qualityOption) && (
+            <div className={compact ? 'order-last' : 'mt-1.5'}>
               <span className={clsx('text-[11px] font-semibold', req.qualityOption ? 'text-ndp-accent' : 'text-ndp-text-dim')}>
                 {req.qualityOption?.label || t('requests.no_quality')}
               </span>
@@ -564,8 +633,8 @@ function RequestCardInner({
           )}
 
           {/* Status badge — hidden when pending (bottom bar shows intent) */}
-          {!isPending && (
-            <div className="mt-auto pt-1.5">
+          {!groupDetails && (!isPending || compact) && (
+            <div className={compact ? '' : 'mt-auto pt-1.5'}>
               <span className={clsx('inline-flex text-[11px] font-semibold px-2 py-0.5 rounded-md', status.color,
                 req.status === 'available' ? 'bg-ndp-success/15' :
                 req.status === 'approved' ? 'bg-ndp-accent/15' :
@@ -577,8 +646,10 @@ function RequestCardInner({
             </div>
           )}
 
+          {groupDetails && <div className="mt-auto pt-1">{groupDetails}</div>}
+
           {/* Download progress */}
-          {download && (
+          {download && !compact && (
             <div className="flex items-center gap-2 mt-auto pt-1.5">
               <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-ndp-accent rounded-full transition-all duration-1000" style={{ width: `${download.progress}%` }} />
@@ -589,21 +660,21 @@ function RequestCardInner({
         </div>
 
         {/* Right: poster */}
-        <div className="flex-shrink-0 w-[80px] self-center">
+        {!compact && <div className="flex-shrink-0 w-[80px] self-center">
           <div className="aspect-[2/3] rounded-xl overflow-hidden ring-1 ring-white/10 shadow-lg group-hover:ring-white/20 transition-all">
             {req.media?.posterPath ? (
-              <img src={posterUrl(req.media.posterPath, 'w185')} alt="" className="w-full h-full object-cover" />
+              <img data-media-cover src={posterUrl(req.media.posterPath, 'w185')} alt="" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-ndp-surface-light flex items-center justify-center">
                 <Film className="w-5 h-5 text-ndp-text-dim" />
               </div>
             )}
           </div>
-        </div>
+        </div>}
       </div>
       {/* Bottom action bar */}
       {isPending && (
-        <div className="absolute bottom-2 left-2 right-[108px] z-10 flex items-center bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07] rounded-xl" onClick={(e) => e.preventDefault()}>
+        <div className={clsx('z-10 flex items-center bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07] rounded-xl', compact ? 'relative mx-2 mb-2' : 'absolute bottom-2 left-2 right-[108px]')} onClick={(e) => e.preventDefault()}>
           {canApprove ? (
             <>
               <button
@@ -640,6 +711,7 @@ function RequestCardInner({
                     .catch(() => {})
                     .finally(() => setResolvingCtx(false));
                 }}
+                aria-label={[t('requests.request_settings'), seasonLabel].filter(Boolean).join(' — ')}
                 className="px-4 py-2 text-white/50 hover:text-white hover:bg-white/5 transition-colors rounded-r-xl"
               >
                 <Settings2 className="w-3.5 h-3.5" />
@@ -661,9 +733,9 @@ function RequestCardInner({
       {/* Settings modal */}
       {showSettings && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowSettings(false); }}>
-          <div className="bg-ndp-surface border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+          <div ref={settingsModal.dialogRef} role="dialog" aria-modal="true" aria-labelledby={settingsModal.titleId} className="bg-ndp-surface border border-white/10 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-bold text-ndp-text flex items-center gap-2">
+              <h3 id={settingsModal.titleId} className="text-base font-bold text-ndp-text flex items-center gap-2">
                 <Settings2 className="w-4 h-4 text-ndp-text-muted" />
                 {t('requests.request_settings')}
               </h3>

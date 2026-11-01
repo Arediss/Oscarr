@@ -6,13 +6,13 @@ import { MediaMetaBar } from '@/components/media/MediaMetaBar';
 import { QualityPicker } from '@/components/media/QualityPicker';
 import CriteriaPicker from './CriteriaPicker';
 import { LanguageTags } from '@/components/media/LanguageTags';
-import { SeasonsPicker } from '@/components/media/SeasonsPicker';
 import type { ButtonState } from '@/utils/resolveButtonState';
 import { Link } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 interface Props {
+  onBrowseSeasons?: () => void;
   media: Record<string, any>;
   dbMedia: Record<string, any> | null;
   type: 'movie' | 'tv';
@@ -22,7 +22,6 @@ interface Props {
   director?: { name: string };
   trailer?: { key: string };
   isAvailable: boolean;
-  userHasRequest: boolean;
   buttonState: ButtonState;
   requesting: boolean;
   justRequested: boolean;
@@ -40,22 +39,19 @@ interface Props {
   setSelectedQuality: (updater: (prev: number | null) => number | null) => void;
   audioLanguages: string[];
   subtitleLanguages: string[];
-  sonarrSeasons: { seasonNumber: number; episodeFileCount: number; totalEpisodeCount: number }[];
-  selectedSeasons: number[];
-  setSelectedSeasons: (updater: (prev: number[]) => number[]) => void;
-  onOpenEpisodes: () => void;
+  libraryLoading: boolean;
 }
 
-/** Everything shown beside the poster: title, facts, synopsis, actions and request options. */
+/** Title, facts, synopsis, actions and request options in the hero's readable left column. */
 export function MediaInfoColumn({
+  onBrowseSeasons,
   media, dbMedia, type, title, year, genres, director, trailer,
-  isAvailable, userHasRequest, buttonState,
+  isAvailable, buttonState,
   requesting, justRequested, requestError, download, blacklisted, searchMissingError,
   onRequest, onSearchMissing,
   qualityOptions, takenQualityIds, selectedQuality, setSelectedQuality,
   selectedCriteria, setSelectedCriteria,
-  audioLanguages, subtitleLanguages,
-  sonarrSeasons, selectedSeasons, setSelectedSeasons, onOpenEpisodes,
+  audioLanguages, subtitleLanguages, libraryLoading,
 }: Readonly<Props>) {
   const { t } = useTranslation();
   const { isAdmin } = useAuth();
@@ -68,7 +64,7 @@ export function MediaInfoColumn({
 
   return (
       <div className="flex-1 min-w-0">
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-white">{title}</h1>
+        <h1 id="media-title" tabIndex={-1} className="media-detail-title font-extrabold text-white outline-none">{title}</h1>
 
         {media.tagline && (
           <p className="text-ndp-text-muted italic mt-2">{media.tagline}</p>
@@ -86,8 +82,8 @@ export function MediaInfoColumn({
 
         {/* Synopsis */}
         <div className="mt-6">
-          <h3 className="text-sm font-semibold text-ndp-text-muted uppercase tracking-wider mb-2">{t('media.synopsis')}</h3>
-          <p className="text-ndp-text leading-relaxed">{media.overview || t('media.no_description')}</p>
+          <h2 className="sr-only">{t('media.synopsis')}</h2>
+          <p className="text-ndp-text/80 leading-relaxed">{media.overview || t('media.no_description')}</p>
 
           {/* Plugin hook: media detail info */}
           <PluginSlot hookPoint="media.detail.info" context={{ media, type, dbMedia }} />
@@ -115,14 +111,16 @@ export function MediaInfoColumn({
           )}
 
           <ActionButton
+            loading={libraryLoading}
+            requestLabel={onBrowseSeasons ? t('media.explorer.request_series') : undefined}
             state={buttonState}
             requesting={requesting}
             justRequested={justRequested}
             download={download}
             searchMissingError={searchMissingError}
             blacklistReason={blacklisted?.reason ?? undefined}
-            onRequest={onRequest}
-            onSearchMissing={onSearchMissing}
+            onRequest={onBrowseSeasons ?? onRequest}
+            onSearchMissing={onBrowseSeasons ?? onSearchMissing}
             t={t}
           />
 
@@ -137,6 +135,7 @@ export function MediaInfoColumn({
           <PluginSlot hookPoint="media.detail.actions" context={{ media, type, isAvailable, dbMedia }} />
         </div>
 
+        {!onBrowseSeasons && <>
         <QualityPicker
           options={qualityOptions}
           takenIds={takenQualityIds}
@@ -153,23 +152,13 @@ export function MediaInfoColumn({
             setSelectedCriteria(next);
           }}
         />
+        </>}
 
         {/* What is actually on disk, read from the file after import. Descriptive, not a choice —
             the pickers above are the choices. */}
-        <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} />
+        <LanguageTags audioLanguages={audioLanguages} subtitleLanguages={subtitleLanguages} loading={libraryLoading} />
 
 
-        {/* Seasons */}
-        {type === 'tv' && media.seasons && media.seasons.length > 0 && (
-          <SeasonsPicker
-            seasons={media.seasons}
-            sonarrSeasons={sonarrSeasons}
-            selectedSeasons={selectedSeasons}
-            setSelectedSeasons={setSelectedSeasons}
-            canSelect={!userHasRequest}
-            onOpenDetails={onOpenEpisodes}
-          />
-        )}
 
       </div>
   );

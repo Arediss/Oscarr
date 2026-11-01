@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import MediaLink from './MediaLink';
 import { useTranslation } from 'react-i18next';
 import { Check, Loader2, Plus, Film } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -68,10 +68,10 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
     : t('media.request_collection');
 
   return (
-    <div className="mt-12 px-4 sm:px-8">
-      <div className="flex items-center justify-between mb-4 gap-4">
+    <div className="mt-12">
+      <div className="flex flex-wrap items-center justify-between mb-4 gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <h3 className="text-lg font-bold text-ndp-text truncate">{collection.name}</h3>
+          <h2 className="text-xl font-bold text-ndp-text">{t('media.collection')}</h2>
           {!loading && (
             <span className="text-xs text-ndp-text-dim flex-shrink-0">{handledCount}/{totalCount}</span>
           )}
@@ -98,7 +98,7 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
             const isAvail = status?.statusCategory === 'AVAILABLE';
             const isRequested = !isAvail && status?.requestStatus && (ACTIVE_REQUEST_STATUSES as readonly string[]).includes(status.requestStatus);
             return (
-              <Link key={movie.id} to={`/movie/${movie.id}`} className="flex-shrink-0 w-[120px] group">
+              <MediaLink key={movie.id} to={`/movie/${movie.id}`} className="flex-shrink-0 w-[120px] group">
                 <div className="aspect-[2/3] rounded-xl overflow-hidden bg-ndp-surface-light mb-1.5 relative">
                   {movie.poster_path ? (
                     <img src={posterUrl(movie.poster_path, 'w185')} alt="" className={clsx('w-full h-full object-cover group-hover:scale-105 transition-transform', !isAvail && !isRequested && status && 'opacity-50')} />
@@ -108,7 +108,7 @@ export default function CollectionSection({ collection }: Readonly<Props>) {
                   <MediaStateBadge availability={status} mediaType="movie" className="absolute top-1.5 right-1.5" />
                 </div>
                 <p className="text-xs text-ndp-text-muted truncate">{movie.title}</p>
-              </Link>
+              </MediaLink>
             );
           })}
         </div>

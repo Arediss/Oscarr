@@ -180,6 +180,7 @@ model MediaRequest {
   status        String    @default("pending") // "pending" | "approved" | "declined" | "processing" | "available" | "failed"
   mediaType     String    // "movie" | "tv"
   seasons       String?   // JSON array of season numbers for TV requests, null = all seasons
+  seasonNumbering String? // Provider numbering at selection time; null = unknown legacy provenance
   rootFolder    String?   // Root folder path override
   qualityOptionId Int?    // Selected quality option
   approvedById  Int?
@@ -293,6 +294,20 @@ model AppSettings {
   updatedAt             DateTime  @updatedAt
 }
 
+/// Durable, one-off work enqueued by SQL migrations; executed after application boot.
+model PostMigrationJob {
+  key           String    @id // Stable migration/task identity, never reuse for different work.
+  jobKey        String    // Allowlisted core scheduler handler.
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(dbgenerated("(CAST(strftime('%s', 'now') AS INTEGER) * 1000)")) // Retry deadline, or renewable lease.
+  leaseToken    String?
+  lastError     String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(dbgenerated("(CAST(strftime('%s', 'now') AS INTEGER) * 1000)"))
+
+  @@index([completedAt, nextAttemptAt])
+}
+
 model CronJob {
   id              Int       @id @default(autoincrement())
   key             String    @unique // "full_sync" | "request_sync"
@@ -334,6 +349,7 @@ model FolderRule {
   folderPath    String    // Target root folder path
   seriesType    String?   // Sonarr series type override: "anime" | "standard" | "daily"
   serviceId     Int?      // Target service for this rule
+  tagIds        String    @default("[]") // JSON array of tag IDs on the target service
   enabled       Boolean   @default(true)
   createdAt     DateTime  @default(now())
 

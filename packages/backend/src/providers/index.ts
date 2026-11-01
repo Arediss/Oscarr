@@ -13,7 +13,7 @@ import { delugeProvider } from './deluge/index.js';
 import { tautulliProvider } from './tautulli/index.js';
 import { emailProvider } from './email/index.js';
 import { discordProvider } from './discord/index.js';
-import type { Provider, ServiceDefinition, AuthProvider, ArrClient } from './types.js';
+import type { Provider, ServiceDefinition, AuthProvider, ArrClient, ServiceTagClient } from './types.js';
 import { getServiceById, getServiceConfig } from '../utils/services.js';
 import { getProviderSettings, listAllProviderSettings } from './authSettings.js';
 
@@ -63,6 +63,9 @@ export function getServiceSchemas() {
     fields: p.service.fields,
     untested: p.service.untested ?? false,
     requiredForInstall: p.service.requiredForInstall ?? false,
+    handlesMediaTypes: p.service.handlesMediaTypes ?? [],
+    supportsRouting: !!p.service.createClient,
+    supportsTags: !!p.service.createTagClient,
   }));
 }
 
@@ -154,6 +157,13 @@ export function createArrClient(type: string, config: Record<string, string>): A
   const def = getServiceDefinition(type);
   if (!def?.createClient) throw new Error(`Provider "${type}" does not support client creation`);
   return def.createClient(config);
+}
+
+/** The registry is the sole source of tag support; no provider-name or category checks. */
+export function createServiceTagClient(type: string, config: Record<string, string>): ServiceTagClient {
+  const definition = getServiceDefinition(type);
+  if (!definition?.createTagClient) throw new Error('SERVICE_TAGS_UNSUPPORTED');
+  return definition.createTagClient(config);
 }
 
 /** Resolves which service type owns a given media type (e.g. `movie` → `radarr`) by scanning

@@ -1,14 +1,19 @@
-import { Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import MediaLink from './MediaLink';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Star, CheckCircle, Film, Tv, Plus, Loader2, EyeOff } from 'lucide-react';
+import { Star, CheckCircle, Film, Tv, EyeOff } from 'lucide-react';
+import { PosterRequestButton } from './PosterRequestButton';
 import api, { posterUrl } from '@/lib/api';
-import { canRequest, MEDIA_STATE_DISPLAY, type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
+import { type MediaStateCategory, type RequestStatus } from '@oscarr/shared';
 import type { TmdbMedia } from '@/types';
 import { clsx } from 'clsx';
 import { useNsfwFilter } from '@/hooks/useNsfwFilter';
 import { MediaStateBadge } from '@/utils/mediaStateDisplay';
 import { toastApiError } from '@/utils/toast';
+import { useFeatures } from '@/context/FeaturesContext';
+import { cardRequestAction } from '@/utils/cardRequestAction';
+import { invalidateMediaStatus } from '@/hooks/useMediaStatus';
 
 interface MediaCardProps {
   media: TmdbMedia;
@@ -25,6 +30,8 @@ interface MediaCardProps {
 export default function MediaCard({ media, className, availability, index = 0 }: Readonly<MediaCardProps>) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { features, loading: featuresLoading } = useFeatures();
+  const submitting = useRef(false);
   const { isNsfw } = useNsfwFilter();
   const [loaded, setLoaded] = useState(false);
   const [requesting, setRequesting] = useState(false);
@@ -37,33 +44,24 @@ export default function MediaCard({ media, className, availability, index = 0 }:
   const type = media.media_type || (media.title ? 'movie' : 'tv');
   const link = `/${type}/${media.id}`;
 
-  const showRequest = !availability
-    || canRequest(
-      availability.statusCategory,
-      availability.requestStatus ?? null,
-      availability.hasFreeQualityOption ?? false,
-    );
-
-  // True when the only reason to offer anything is a free quality option. A card has no picker, and
-  // posting blind would send the default option, not the one this person came for — which is the
-  // whole point of asking again. So the click opens the page that does have the picker.
-  const needsQualityChoice = !!availability
-    && (availability.hasFreeQualityOption ?? false)
-    && !MEDIA_STATE_DISPLAY[availability.statusCategory].showsRequestCTA;
+  const requestAction = cardRequestAction(availability, !featuresLoading && features.requestsEnabled, type);
+  const showRequest = requestAction !== 'none';
 
   const handleRequest = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (requesting || requested) return;
-    if (needsQualityChoice) { navigate(link); return; }
+    if (submitting.current || requested || !showRequest) return;
+    if (requestAction === 'details') { navigate(link); return; }
+    submitting.current = true;
     setRequesting(true);
     try {
       await api.post('/requests', { tmdbId: media.id, mediaType: type });
       setRequested(true);
+      invalidateMediaStatus(media.id, type);
     } catch (err) {
       toastApiError(err, t('status.request_send_failed'));
     }
-    finally { setRequesting(false); }
+    finally { submitting.current = false; setRequesting(false); }
   };
 
   return (
@@ -79,7 +77,7 @@ export default function MediaCard({ media, className, availability, index = 0 }:
         className
       )}
     >
-      <Link to={link} className="block">
+      <MediaLink to={link} className="block">
       {/* Poster */}
       <div className="aspect-[2/3] bg-ndp-surface-light relative">
         {media.poster_path ? (
@@ -159,20 +157,13 @@ export default function MediaCard({ media, className, availability, index = 0 }:
         mediaType={type}
         className="absolute bottom-2 right-2 transition-opacity duration-300 group-hover:opacity-0"
       />
-      </Link>
+      </MediaLink>
 
       {/* Quick request — rendered OUTSIDE the Link so the click never bubbles to the
        *  anchor. Visible only on hover (matches the rest of the overlay), positioned
        *  absolute so it overlays the top-right of the card. */}
       {showRequest && !requested && (
-        <button
-          onClick={handleRequest}
-          className="absolute top-2 right-2 p-1.5 bg-ndp-accent rounded-full hover:bg-ndp-accent/80 transition-colors shadow-lg opacity-0 group-hover:opacity-100 z-10"
-          title={t('media.request')}
-          aria-label={t('media.request')}
-        >
-          {requesting ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Plus className="w-4 h-4 text-white" />}
-        </button>
+        <PosterRequestButton onClick={handleRequest} loading={requesting} label={t('media.request')} />
       )}
       {requested && (
         <div className="absolute top-2 right-2 p-1.5 bg-ndp-success rounded-full shadow-lg opacity-0 group-hover:opacity-100 z-10 pointer-events-none">

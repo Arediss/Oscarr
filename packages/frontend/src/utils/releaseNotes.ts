@@ -1,7 +1,7 @@
 /**
  * A very small reader for the release-note bodies stored in `Patchnote.bodyEn` / `bodyFr`.
  *
- * Those bodies are written by us, in migrations — nothing else can write to that table, no route
+ * Those bodies are written by us, in migrations or release seeds — no route
  * and no plugin. That is what makes this safe without a sanitizer: the parser only understands the
  * handful of constructs our own notes use, and the renderer turns them into React elements, so no
  * HTML is ever injected. It also keeps `marked` + `dompurify` (~60 kB) out of a bundle that would

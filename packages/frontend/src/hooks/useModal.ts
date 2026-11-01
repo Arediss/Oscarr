@@ -25,7 +25,8 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
     '[tabindex]:not([tabindex="-1"])',
   ];
   return Array.from(container.querySelectorAll<HTMLElement>(selectors.join(',')))
-    .filter((el) => !el.hasAttribute('disabled') && el.offsetParent !== null);
+    // :disabled also covers controls disabled by a parent fieldset while a form is saving.
+    .filter((el) => !el.matches(':disabled') && el.offsetParent !== null);
 }
 
 export function useModal({ open, onClose, disableFocusTrap = false }: UseModalOptions): UseModalResult {

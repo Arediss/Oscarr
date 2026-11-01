@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import api, { backdropUrl } from '@/lib/api';
+import { useDragScroll } from '@/hooks/useDragScroll';
 
 export interface GenreItem {
   id: number;
@@ -86,6 +87,7 @@ export const ALL_GENRES: GenreItem[] = [
 function GenreRow() {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
+  useDragScroll(scrollRef, ALL_GENRES.length);
   const [backdrops, setBackdrops] = useState<Record<number, string | null>>({});
 
   useEffect(() => {

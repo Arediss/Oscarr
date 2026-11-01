@@ -28,6 +28,7 @@ export function QualityPicker({ options, takenIds, selected, onSelect }: Readonl
           const isSelected = selected === q.id;
           return (
             <button
+              type="button"
               key={q.id}
               onClick={() => !taken && onSelect((prev) => (prev === q.id ? null : q.id))}
               className={clsx(

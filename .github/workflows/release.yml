@@ -11,6 +11,10 @@ on:
         description: "Optional full source commit SHA for rebuilding an existing release without moving its Git tag."
         required: false
         type: string
+      wolfi_digest:
+        description: "Optional sha256 digest of the official Wolfi base index for a security rebuild."
+        required: false
+        type: string
       nightly:
         description: "Push as :nightly (not :latest). Use for in-prod test builds."
         required: false
@@ -50,6 +54,16 @@ jobs:
         with:
           ref: ${{ env.SOURCE_SHA }}
 
+      - name: Validate base image override
+        id: base
+        env:
+          WOLFI_DIGEST: ${{ inputs.wolfi_digest }}
+        run: |
+          if [ -n "$WOLFI_DIGEST" ]; then
+            [[ "$WOLFI_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+            echo "build_args=WOLFI=cgr.dev/chainguard/wolfi-base@${WOLFI_DIGEST}" >> "$GITHUB_OUTPUT"
+          fi
+
       # An empty auth map makes Docker auto-detect osxkeychain even without credsStore.
       # Use a job-local config with a registry entry; keep the user's config untouched.
       # RUNNER_TEMP is cleaned by the runner after the action's logout/Buildx cleanup.
@@ -87,6 +101,7 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
+          build-args: ${{ steps.base.outputs.build_args }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:build-${{ steps.slug.outputs.pair }}
           cache-from: type=local,src=/tmp/docker-cache-${{ steps.slug.outputs.pair }}

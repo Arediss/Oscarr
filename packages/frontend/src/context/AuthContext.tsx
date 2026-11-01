@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
 import api from '@/lib/api';
+import { advanceAuthSession, getAuthSessionVersion, subscribeSessionExpired } from '@/lib/authSession';
 import type { User } from '@/types';
 
 interface AuthContextType {
@@ -24,53 +25,64 @@ export function AuthProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [loading, setLoading] = useState(true);
   const [permissions, setPermissions] = useState<string[]>([]);
 
+  const clearSession = useCallback(() => {
+    setUser(null);
+    setPermissions([]);
+    setLoading(false);
+  }, []);
+
   const fetchUser = useCallback(async () => {
+    const version = getAuthSessionVersion();
     try {
       const { data } = await api.get('/auth/me');
+      // A refresh started before logout/expiry must not restore an obsolete user.
+      if (version !== getAuthSessionVersion()) return;
       const { permissions: perms = [], ...userData } = data;
       setUser(userData);
       setPermissions(perms);
     } catch (err) {
+      if (version !== getAuthSessionVersion()) return;
       // 401/403 = genuine logout. Network error or 5xx = backend hiccup — don't log the user
       // out silently, keep last state and just stop the loading spinner. BackendGate already
       // blocks mount until backend is reachable, so this only fires on mid-session transients.
       const status = (err as { response?: { status?: number } }).response?.status;
       if (status === 401 || status === 403) {
-        setUser(null);
-        setPermissions([]);
+        advanceAuthSession();
+        clearSession();
       } else {
         console.warn('[AuthContext] /auth/me transient failure, keeping session', err);
       }
     } finally {
-      setLoading(false);
+      if (version === getAuthSessionVersion()) setLoading(false);
     }
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
-    fetchUser();
-  }, [fetchUser]);
+    const unsubscribe = subscribeSessionExpired(clearSession);
+    void fetchUser();
+    return () => {
+      unsubscribe();
+      advanceAuthSession();
+    };
+  }, [fetchUser, clearSession]);
 
   const login = useCallback(async (_token: string, userData: User) => {
     // Token is now stored exclusively in httpOnly cookie by the backend
+    advanceAuthSession();
     setUser(userData);
+    setPermissions([]);
     // Fetch full user data including permissions
-    try {
-      const { data } = await api.get('/auth/me');
-      const { permissions: perms = [], ...rest } = data;
-      setUser(rest);
-      setPermissions(perms);
-    } catch {
-      // Fallback: user is set but permissions will be empty until next page load
-    }
-  }, []);
+    await fetchUser();
+  }, [fetchUser]);
 
   const logout = useCallback(async () => {
+    const version = advanceAuthSession();
     try {
       await api.post('/auth/logout');
     } catch { /* ignore */ }
-    setUser(null);
-    setPermissions([]);
-  }, []);
+    // Wait for the cookie-clearing response before exposing the login form.
+    if (version === getAuthSessionVersion()) clearSession();
+  }, [clearSession]);
 
   const hasPermission = useCallback((permission: string): boolean => {
     if (permissions.length === 0) return false;

@@ -1,10 +1,12 @@
 import axios from 'axios';
 import i18n from '@/i18n';
+import { expireAuthSession, getAuthSessionVersion } from './authSession';
 
 const api = axios.create({
   baseURL: '/api',
   withCredentials: true,
 });
+const requestSessions = new WeakMap<object, number>();
 
 // In-memory setup secret. Held only in the JS heap for the lifetime of the install wizard;
 // never written to sessionStorage / localStorage so a tab snoop or stale tab can't read it.
@@ -14,6 +16,7 @@ export function setSetupSecret(value: string | null): void { setupSecret = value
 
 // Add language header (auth is via httpOnly cookie, no Bearer token needed)
 api.interceptors.request.use((config) => {
+  requestSessions.set(config, getAuthSessionVersion());
   config.headers['Accept-Language'] = i18n.language;
   // CSRF gate — paired with the backend X-Requested-With check.
   config.headers['X-Requested-With'] = 'oscarr';
@@ -62,7 +65,15 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // 401 handling is done by AuthContext + InstallGuard, not here
+    // Only the backend's session errors invalidate auth. Wrong login/backup passwords,
+    // permission denials and service failures must keep their normal local error handling.
+    const status = error.response?.status;
+    const code = error.response?.data?.error;
+    const version = error.config && requestSessions.get(error.config);
+    if (version !== undefined && ((status === 401 && code === 'UNAUTHORIZED')
+      || (status === 403 && code === 'ACCOUNT_DISABLED'))) {
+      expireAuthSession(version);
+    }
     if (error.response?.status === 403) {
       const translated = i18n.t('common.forbidden', 'Access denied');
       showErrorToast(translated);

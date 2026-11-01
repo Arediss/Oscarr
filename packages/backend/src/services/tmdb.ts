@@ -254,9 +254,17 @@ export async function getTvDetails(tvId: number, lang?: string): Promise<TmdbTv>
 }
 
 export async function getTvSeasonDetails(tvId: number, seasonNumber: number, lang?: string): Promise<TmdbSeasonDetails> {
+  const safeTvId = Number(tvId);
+  const safeSeason = Number(seasonNumber);
+  if (typeof tvId !== 'number' || !Number.isInteger(safeTvId) || safeTvId < 1 || safeTvId > 2147483647) {
+    throw new Error('Invalid TMDB series ID');
+  }
+  if (typeof seasonNumber !== 'number' || !Number.isInteger(safeSeason) || safeSeason < 0 || safeSeason > 2147483647) {
+    throw new Error('Invalid TMDB season number');
+  }
   const l = normalizeLang(lang);
-  return cachedRequest(`tv:${tvId}:season:${seasonNumber}:${l}`, async () => {
-    const { data } = await getTmdbApi(l).get(`/tv/${tvId}/season/${seasonNumber}`);
+  return cachedRequest(`tv:${safeTvId}:season:${safeSeason}:${l}`, async () => {
+    const { data } = await getTmdbApi(l).get(`/tv/${safeTvId}/season/${safeSeason}`);
     return data;
   }, 24);
 }

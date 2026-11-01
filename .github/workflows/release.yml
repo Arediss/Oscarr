@@ -7,6 +7,10 @@ on:
         description: "Image tag (e.g. 0.1.0). Leave empty to tag as 'latest' only."
         required: false
         type: string
+      source_sha:
+        description: "Optional full source commit SHA for rebuilding an existing release without moving its Git tag."
+        required: false
+        type: string
       nightly:
         description: "Push as :nightly (not :latest). Use for in-prod test builds."
         required: false
@@ -22,6 +26,7 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: arediss/oscarr
+  SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
 
 jobs:
   # Build both platforms on the Mac mini self-hosted runner. arm64 builds natively (M-series),
@@ -38,18 +43,24 @@ jobs:
         platform: [linux/amd64, linux/arm64]
     runs-on: [self-hosted, macOS, ARM64]
     steps:
-      - uses: actions/checkout@v5
+      - name: Validate source commit
+        run: '[[ "$SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]'
 
-      # The runner service runs outside a GUI login session, so docker-credential-osxkeychain
-      # can't unlock the keychain (errSecInteractionNotAllowed / -25308) and `docker login` fails
-      # with "error storing credentials". Strip credsStore/credHelpers so login writes a base64
-      # token into config.json instead of the keychain. Idempotent; leaves the docker context
-      # (currentContext) untouched. No-op on Linux runners (no such config).
-      - name: Drop macOS keychain cred store (headless self-hosted runner)
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+
+      # An empty auth map makes Docker auto-detect osxkeychain even without credsStore.
+      # Use a job-local config with a registry entry; keep the user's config untouched.
+      # RUNNER_TEMP is cleaned by the runner after the action's logout/Buildx cleanup.
+      - name: Prepare isolated Docker credentials
         run: |
-          cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
-          [ -f "$cfg" ] || exit 0
-          /usr/bin/python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d.pop('credsStore',None); d.pop('credHelpers',None); json.dump(d,open(p,'w'),indent=2)" "$cfg"
+          umask 077
+          docker_host=$(docker context inspect --format '{{.Endpoints.docker.Host}}')
+          case "$docker_host" in unix://*) ;; *) echo 'Expected a local Docker socket'; exit 1 ;; esac
+          config_dir=$(mktemp -d "$RUNNER_TEMP/oscarr-docker.XXXXXX")
+          printf '{"auths":{"ghcr.io":{}}}\n' > "$config_dir/config.json"
+          printf 'DOCKER_CONFIG=%s\nDOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$config_dir" "$docker_host" >> "$GITHUB_ENV"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@49b3bc8e6bdd4a60e6116a5414239cba5943d3cf # v3
@@ -98,12 +109,15 @@ jobs:
       packages: read
     runs-on: [self-hosted, macOS, ARM64]
     steps:
-      # See the build job: strip the macOS keychain cred store so headless `docker login` works.
-      - name: Drop macOS keychain cred store (headless self-hosted runner)
+      # Each self-hosted job gets a fresh config; credentials never enter the login keychain.
+      - name: Prepare isolated Docker credentials
         run: |
-          cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json"
-          [ -f "$cfg" ] || exit 0
-          /usr/bin/python3 -c "import json,sys; p=sys.argv[1]; d=json.load(open(p)); d.pop('credsStore',None); d.pop('credHelpers',None); json.dump(d,open(p,'w'),indent=2)" "$cfg"
+          umask 077
+          docker_host=$(docker context inspect --format '{{.Endpoints.docker.Host}}')
+          case "$docker_host" in unix://*) ;; *) echo 'Expected a local Docker socket'; exit 1 ;; esac
+          config_dir=$(mktemp -d "$RUNNER_TEMP/oscarr-docker.XXXXXX")
+          printf '{"auths":{"ghcr.io":{}}}\n' > "$config_dir/config.json"
+          printf 'DOCKER_CONFIG=%s\nDOCKER_HOST=%s\nDOCKER_CONTEXT=\n' "$config_dir" "$docker_host" >> "$GITHUB_ENV"
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -180,6 +194,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -221,6 +237,8 @@ jobs:
       first_tag: ${{ steps.manifest.outputs.first_tag }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
@@ -259,6 +277,9 @@ jobs:
                 fi
               fi
             fi
+          elif [ -n "$INPUT_SOURCE_SHA" ] && [[ "$INPUT_TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            # A manual rebuild of a stable version keeps the same aliases as a tag push.
+            TAGS="${INPUT_TAG} latest ${INPUT_TAG%.*} ${INPUT_TAG%%.*}"
           else
             TAGS="latest"
             if [ -n "$INPUT_TAG" ]; then
@@ -269,6 +290,7 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_NIGHTLY: ${{ inputs.nightly }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -308,6 +330,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SOURCE_SHA }}
 
       - name: Login to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3

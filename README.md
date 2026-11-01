@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/projects/arediss-oscarr/badge.svg?lang=en" alt="Quality gate" /></a>
-  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/projects/arediss-oscarr/badge.svg?metric=reliability&amp;lang=en" alt="Reliability" /></a>
-  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/projects/arediss-oscarr/badge.svg?metric=security&amp;lang=en" alt="Security" /></a>
-  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/projects/arediss-oscarr/badge.svg?metric=maintainability&amp;lang=en" alt="Maintainability" /></a>
-  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/projects/arediss-oscarr/badge.svg?metric=vulnerabilities&amp;lang=en" alt="Vulnerabilities" /></a>
+  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/public/badges/d7a2a65d-d876-49c8-95b6-7c0138d9da52/badge.svg?lang=en" alt="Quality gate" /></a>
+  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/public/badges/d7a2a65d-d876-49c8-95b6-7c0138d9da52/badge.svg?metric=reliability&amp;lang=en" alt="Reliability" /></a>
+  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/public/badges/d7a2a65d-d876-49c8-95b6-7c0138d9da52/badge.svg?metric=security&amp;lang=en" alt="Security" /></a>
+  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/public/badges/d7a2a65d-d876-49c8-95b6-7c0138d9da52/badge.svg?metric=maintainability&amp;lang=en" alt="Maintainability" /></a>
+  <a href="https://argus.arediss.fr"><img src="https://argus.arediss.fr/api/public/badges/d7a2a65d-d876-49c8-95b6-7c0138d9da52/badge.svg?metric=vulnerabilities&amp;lang=en" alt="Vulnerabilities" /></a>
 </p>
 
 <p align="center">

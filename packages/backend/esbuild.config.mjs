@@ -12,7 +12,7 @@ await build({
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
-  target: 'node22',
+  target: 'node24',
   format: 'esm',
   outfile: 'dist/server.js',
   // esbuild emits `import { createRequire } from 'module'` shims for CJS-native deps (archiver

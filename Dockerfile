@@ -7,7 +7,7 @@ ARG WOLFI=cgr.dev/chainguard/wolfi-base@sha256:24f549a7fcace88e69b9557941168c746
 
 # ── Stage 1: Build ──
 FROM ${WOLFI} AS builder
-RUN apk add --no-cache nodejs-22 npm
+RUN apk add --no-cache nodejs-24 npm
 WORKDIR /app
 
 # Install dependencies (leverage Docker cache)
@@ -44,12 +44,12 @@ RUN npm run build --workspace=packages/frontend
 # ── Stage 2: Production ──
 FROM ${WOLFI}
 
-# nodejs-22 pinned to the same major the bundle targets — better-sqlite3 and bcrypt ship
+# nodejs-24 pinned to the same major the bundle targets — better-sqlite3 and bcrypt ship
 # prebuilds per Node ABI, so a runtime major bump silently breaks them.
 # tini = PID 1 init (signal forwarding + zombie reaping).
 # su-exec = drop from root → oscarr in the entrypoint after chowning /data.
 # wget = HEALTHCHECK binary.
-RUN apk add --no-cache nodejs-22 npm tini su-exec wget
+RUN apk add --no-cache nodejs-24 npm tini su-exec wget
 
 # Create the non-root user BEFORE any COPY so --chown=oscarr:oscarr on the COPY lines
 # bakes ownership into each layer without a 300+ MB post-copy `chown -R`.
